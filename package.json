@@ -1,0 +1,10 @@
+{
+  "name": "metalix-root",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "cd client && npm install && npm run build",
+    "start": "node server/server.js",
+    "start:prod": "npm run build && npm start"
+  }
+}

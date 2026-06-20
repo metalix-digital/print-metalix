@@ -1,0 +1,91 @@
+.app-wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(180deg,#f3f6ff 0%, #f6f7fb 60%); color: #111827; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px; }
+.app-header { margin-bottom: 20px; display: flex; gap: 16px; align-items: center; }
+.app-header h1 { font-size: 28px; margin: 0 0 6px 0; }
+.subtitle { color: #6b7280; margin: 0; }
+.logo { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; background: linear-gradient(180deg,#fff,#f3f4f6); padding: 8px; box-shadow: 0 6px 18px rgba(15,23,42,0.06); }
+
+.card { background: #ffffff; border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(2,6,23,0.08); width: 100%; max-width: 860px; }
+.file-area { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+/* drag-over state */
+.file-area.drag-over { border: 2px dashed rgba(79,70,229,0.32); padding: 12px; border-radius: 12px; background: linear-gradient(180deg, rgba(79,70,229,0.03), rgba(6,182,212,0.01)); }
+.empty { color: #9ca3af; padding: 18px 24px; border: 1px dashed #e5e7eb; border-radius: 10px; background: linear-gradient(180deg,#fff,#fbfbff); }
+.file-info { display: flex; align-items: center; gap: 12px; }
+.file-icon { font-size: 32px; }
+.file-meta { display: flex; flex-direction: column; }
+.file-name { font-weight: 600; }
+.file-size { color: #6b7280; font-size: 13px; }
+
+.actions { margin-left: auto; display: flex; gap: 10px; }
+.btn { border: none; padding: 10px 14px; border-radius: 10px; cursor: pointer; background: #eef2ff; color: #3730a3; font-weight: 700; transition: transform .12s ease, box-shadow .12s ease; }
+.btn:hover { transform: translateY(-2px); }
+.btn.primary { background: linear-gradient(90deg,#4f46e5,#06b6d4); color: #fff; box-shadow: 0 10px 30px rgba(79,70,229,0.12); }
+.btn.ghost { background: transparent; color: #374151; padding: 8px 12px; border: 1px solid #e6e9ef; }
+
+.hint { display: block; margin-top: 16px; color: #9ca3af; }
+
+/* center smaller elements inside the card for a cleaner look */
+.file-info, .file-meta { align-items: center; }
+.file-meta .file-name { font-size: 15px }
+
+/* subtle header layout */
+.app-header { justify-content: center; text-align: center; }
+.app-header img.logo { margin-right: 0; }
+.app-header > div { display: inline-block; }
+
+/* responsive improvements */
+@media (max-width: 640px) {
+	.card { padding: 18px; }
+	.app-wrap { padding: 0 12px; }
+	.app-header { gap: 10px; }
+}
+
+/* tablet */
+@media (max-width: 900px) {
+	.card { max-width: 720px; padding: 22px; }
+	.app-header h1 { font-size: 22px; }
+	.logo { width: 56px; height: 56px; }
+	.file-area { gap: 14px; }
+}
+
+/* mobile: stack layout and larger touch targets */
+@media (max-width: 640px) {
+	.app-header { flex-direction: column; align-items: center; text-align: center; }
+	.app-header > div { margin-top: 6px }
+	.card { width: 100%; border-radius: 12px; }
+	.file-area { flex-direction: column; align-items: center; }
+	.actions { width: 100%; justify-content: center; gap: 8px; }
+	.btn { width: 100%; padding: 12px 16px; font-size: 16px; }
+	.btn.ghost { width: auto; }
+	.file-area .empty { min-width: 90%; }
+	.modal { width: 92%; }
+}
+
+/* tablet medium adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+	.btn { font-size: 15px; }
+	.file-area img { width: 160px; height: auto }
+}
+
+@media (max-width: 640px) {
+	.actions { width: 100%; justify-content: space-between; margin-top: 12px; }
+}
+
+/* toast */
+.toast { position: fixed; right: 20px; bottom: 20px; background: #10b981; color: white; padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(16,185,129,0.18); }
+
+/* modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(2,6,23,0.5); display:flex; align-items:center; justify-content:center; z-index:1000 }
+.modal { background: white; padding: 18px; border-radius: 12px; width: 480px; max-width: 95%; box-shadow: 0 10px 30px rgba(2,6,23,0.4); }
+.modal h3 { margin: 0 0 12px 0 }
+
+/* processing overlay */
+.processing-overlay { position: absolute; inset: 0; display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center; background: rgba(255,255,255,0.8); border-radius: 14px; z-index: 50 }
+.spinner { width: 48px; height: 48px; border-radius: 50%; border: 5px solid rgba(0,0,0,0.08); border-top-color: #2563eb; animation: spin 1s linear infinite; }
+.processing-text { color: #111827; font-weight: 600 }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+/* small tweaks */
+.file-area img { border-radius: 10px; box-shadow: 0 8px 24px rgba(2,6,23,0.06); }
+.file-area .empty { min-width: 140px; min-height: 110px; display:flex; align-items:center; justify-content:center }
+.app-header { justify-content: flex-start; text-align: left; }
