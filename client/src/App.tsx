@@ -1,5 +1,5 @@
 
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useRef, useState } from 'react'
 // Use the ESM build provided by pdfjs-dist for Vite bundling
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs'
 // Import the worker file from the package build
