@@ -328,7 +328,7 @@ export default function App() {
         )}
         {step === 'upload' ? (
           <div>
-            <div className={`file-area ${dragActive ? 'drag-over' : ''}`} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+            <div className={`file-area ${dragActive ? 'drag-over' : ''}`} onClick={onSelectClick} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
               <input
                 ref={inputRef}
                 type="file"
@@ -350,7 +350,17 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="empty">No file selected</div>
+                <div className="empty" style={{ padding: 40, textAlign: 'center', cursor: 'pointer' }} onClick={onSelectClick}>
+                  <div style={{ width: 96, height: 96, margin: '0 auto 14px', borderRadius: 48, background: '#fff', boxShadow: '0 8px 20px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                      <path d="M12 16V6" stroke="#f97316" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M8 10l4-4 4 4" stroke="#f97316" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M21 16v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2" stroke="#f97316" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Drop your PDF here</div>
+                  <div style={{ marginTop: 8, color: '#6b7280' }}>or <span style={{ color: '#f97316', textDecoration: 'underline' }}>click to browse</span> — we'll count pages and detect color automatically</div>
+                </div>
               )}
 
               <div className="actions">
