@@ -1,4 +1,7 @@
+const path = require('path')
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf')
+
+const STANDARD_FONT_DATA_URL = path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts') + path.sep
 
 function NodeCanvasFactory(createCanvas) {
   this.createCanvas = createCanvas
@@ -26,13 +29,20 @@ NodeCanvasFactory.prototype = {
 async function analyzePdfBuffer(buffer) {
   let createCanvas
   try {
-    ;({ createCanvas } = require('canvas'))
+    const canvasPkg = require('canvas')
+    createCanvas = canvasPkg.createCanvas
+    // pdfjs-dist renders inline images via the global Image/ImageData/Path2D
+    // constructors rather than the canvas factory — without these, PDFs with
+    // embedded images (logos, photos) throw "Image or Canvas expected".
+    if (!global.Image) global.Image = canvasPkg.Image
+    if (!global.ImageData) global.ImageData = canvasPkg.ImageData
+    if (!global.Path2D) global.Path2D = canvasPkg.Path2D
   } catch (err) {
     throw Object.assign(new Error('canvas_missing'), { code: 'canvas_missing' })
   }
 
   const data = new Uint8Array(buffer)
-  const loadingTask = pdfjsLib.getDocument({ data })
+  const loadingTask = pdfjsLib.getDocument({ data, standardFontDataUrl: STANDARD_FONT_DATA_URL })
   const doc = await loadingTask.promise
   const n = doc.numPages
 
