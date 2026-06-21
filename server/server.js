@@ -294,5 +294,8 @@ if (fs.existsSync(clientDist)) {
   })
 }
 
+const { loadSecretsIntoEnv } = require('./secrets')
 const PORT = process.env.PORT || 5050
-app.listen(PORT, () => console.log(`Running on ${PORT}`))
+loadSecretsIntoEnv().then(() => {
+  app.listen(PORT, () => console.log(`Running on ${PORT}`))
+})

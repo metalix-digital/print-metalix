@@ -8,6 +8,7 @@
     "dev": "node server.js"
   },
   "dependencies": {
+    "@google-cloud/secret-manager": "^6.2.0",
     "better-sqlite3": "^12.11.1",
     "canvas": "^2.11.2",
     "express": "^4.18.2",
