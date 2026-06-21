@@ -305,7 +305,7 @@ export default function App() {
     <div className="app-wrap">
       <header className="app-header">
         <img
-          src="SERVER/METALIX-LOGO.SVG"
+          src="/metalix-logo.svg"
           alt="Logo"
           className="logo"
           onError={(e) => {
