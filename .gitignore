@@ -1,0 +1,7 @@
+server/data/
+server/uploads/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.DS_Store
