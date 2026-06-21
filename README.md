@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
- - The server listens on port 5000. Health check: `http://localhost:5000/api/health`
+ - The server listens on port 5050. Health check: `http://localhost:5050/api/health`
 
 Production (single-process)
  - Place your logo file named `logo.png` in `server/public` (optional). A placeholder `logo.svg` is included.
@@ -19,7 +19,7 @@ Production (single-process)
 npm run start:prod
 ```
 
- - The server will serve the built client and API on the configured port (default `5000`). Health check: `http://localhost:5000/api/health`
+ - The server will serve the built client and API on the configured port (default `5050`). Health check: `http://localhost:5050/api/health`
 
 Server-side PDF analysis
 - The server exposes `POST /api/analyze` which accepts a `multipart/form-data` upload with `file` field and will return `{ pageCount, colorCount, colorFlags, thumbnail }` after analyzing all pages. This uses `canvas` and `pdfjs-dist` and may require native libraries on macOS/Linux.

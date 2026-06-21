@@ -165,9 +165,14 @@
     <button type="submit" id="analyzeBtn" class="btn btn-ghost">Analyze</button>
     <span id="analyzeSpinner" style="display:none;margin-left:6px;color:var(--ink-soft);font-size:13px;">⏳</span>
   </form>
-  <div style="display:flex;gap:10px;align-items:flex-start;margin-top:8px;">
-    <pre id="analyzeResult" style="margin:0;max-width:220px;white-space:pre-wrap;font-size:12px;color:var(--ink-soft);"></pre>
-    <img id="analyzeThumb" alt="thumbnail" style="display:none;width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#fff;" />
+  <div style="margin-top:8px;">
+    <div id="analyzeProgress" style="width:200px;height:8px;background:var(--paper-dim);border-radius:6px;overflow:hidden;margin-bottom:8px;">
+      <div id="analyzeProgressInner" style="height:100%;width:0%;background:var(--orange);transition:width .18s ease;"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <pre id="analyzeResult" style="margin:0;max-width:220px;white-space:pre-wrap;font-size:12px;color:var(--ink-soft);"></pre>
+      <img id="analyzeThumb" alt="thumbnail" style="display:none;width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#fff;" />
+    </div>
   </div>
 </div>
 
@@ -238,24 +243,43 @@
     const input = document.getElementById('analyzeFile');
     const out = document.getElementById('analyzeResult');
     if(!form || !input || !out) return;
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
       const file = input.files[0];
       const btn = document.getElementById('analyzeBtn');
       const spinner = document.getElementById('analyzeSpinner');
       const thumb = document.getElementById('analyzeThumb');
+      const progressInner = document.getElementById('analyzeProgressInner');
       if(!file){ out.textContent = 'Select a PDF first'; return; }
       out.textContent = '';
       thumb.style.display = 'none'; thumb.src = '';
+      progressInner.style.width = '0%';
       btn.disabled = true; spinner.style.display = 'inline'; spinner.textContent = 'Uploading…';
-      try{
-        const fd = new FormData(); fd.append('file', file);
-        const r = await fetch('/api/analyze', { method: 'POST', body: fd });
-        const json = await r.json();
-        out.textContent = JSON.stringify(json, null, 2);
-        if(json && json.thumbnail){ thumb.src = json.thumbnail; thumb.style.display = 'block'; }
-      }catch(err){ out.textContent = 'Error: '+(err.message||err); }
-      finally{ btn.disabled = false; spinner.style.display = 'none'; }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/analyze');
+      xhr.upload.onprogress = function(evt){
+        if(evt.lengthComputable){
+          const pct = Math.round((evt.loaded / evt.total) * 100);
+          progressInner.style.width = pct + '%';
+        }
+      };
+      xhr.onload = function(){
+        spinner.style.display = 'none'; btn.disabled = false;
+        if(xhr.status >= 200 && xhr.status < 300){
+          try{
+            const json = JSON.parse(xhr.responseText);
+            out.textContent = JSON.stringify(json, null, 2);
+            if(json && json.thumbnail){ thumb.src = json.thumbnail; thumb.style.display = 'block'; }
+            progressInner.style.width = '100%';
+          }catch(err){ out.textContent = 'Invalid JSON response'; }
+        }else{
+          out.textContent = 'Server error: ' + xhr.status;
+        }
+      };
+      xhr.onerror = function(){ spinner.style.display = 'none'; btn.disabled = false; out.textContent = 'Network error'; };
+      const fd = new FormData(); fd.append('file', file);
+      xhr.send(fd);
     });
   })();
 

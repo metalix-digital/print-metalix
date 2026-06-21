@@ -83,7 +83,7 @@ export default function App() {
         canvas.width = Math.floor(vp.width)
         canvas.height = Math.floor(vp.height)
         const ctx = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport: vp }).promise
+        await page.render({ canvas, canvasContext: ctx, viewport: vp }).promise
 
         if (i === 1) {
           setThumbnail(canvas.toDataURL('image/png'))
@@ -305,7 +305,7 @@ export default function App() {
     <div className="app-wrap">
       <header className="app-header">
         <img
-          src="/logo.png"
+          src="SERVER/METALIX-LOGO.SVG"
           alt="Logo"
           className="logo"
           onError={(e) => {
