@@ -225,8 +225,11 @@ function listOrdersForFileCleanup() {
   `).all(cutoff)
 }
 
+// Order history only ever shows orders that actually received payment —
+// abandoned checkouts (payment_status 'created') and failed payments never
+// show up here, though the rows themselves are kept in the database.
 function listOrders({ status, search, limit, offset } = {}) {
-  const clauses = []
+  const clauses = ["payment_status = 'paid'"]
   const params = {}
   if (status) {
     clauses.push('order_status = @status')
@@ -236,7 +239,7 @@ function listOrders({ status, search, limit, offset } = {}) {
     clauses.push('(customer_name LIKE @search OR customer_mobile LIKE @search OR id LIKE @search)')
     params.search = `%${search}%`
   }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  const where = `WHERE ${clauses.join(' AND ')}`
   params.limit = limit || 50
   params.offset = offset || 0
   return db.prepare(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params)
@@ -252,6 +255,7 @@ function listCustomers() {
       SUM(total_amount) as total_spent,
       MAX(created_at) as last_order_at
     FROM orders
+    WHERE payment_status = 'paid'
     GROUP BY customer_mobile
     ORDER BY last_order_at DESC
   `).all()
