@@ -67,6 +67,19 @@ const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles } = require('./fileRetention')
+
+// Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
+// staff member transcribing one off a job sheet by hand can't misread it.
+const ORDER_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function generateOrderId() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const bytes = crypto.randomBytes(7)
+    let id = ''
+    for (let i = 0; i < 7; i++) id += ORDER_ID_CHARS[bytes[i] % ORDER_ID_CHARS.length]
+    if (!db.getOrder(id)) return id
+  }
+  throw new Error('could_not_generate_unique_order_id')
+}
 const { backupDatabase } = require('./backupDb')
 
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -335,6 +348,15 @@ app.get('/api/admin/orders', requireAdmin, (req, res) => {
   return res.json({ orders })
 })
 
+// Full single-order lookup for the printable job sheet — distinct from the
+// public /api/orders/:id (which any customer with the order ID can hit) since
+// this is gated behind requireAdmin.
+app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  return res.json({ order })
+})
+
 app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -464,7 +486,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     deliveryMethod: deliveryMethod || 'pickup'
   })
 
-  const orderId = `ORD_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
+  const orderId = generateOrderId()
   const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
   let razorpayOrder = null
   let simulated = true
@@ -530,6 +552,20 @@ app.get('/api/orders/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   return res.json({ order })
+})
+
+// Minimal public tracking lookup behind the job sheet's QR code — deliberately
+// returns only status/timing, never customer name, contact, or files, since
+// order IDs aren't secret enough to gate anything sensitive behind.
+const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000
+app.get('/api/track/:id', (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order || order.payment_status !== 'paid') return res.status(404).json({ error: 'not_found' })
+  return res.json({
+    id: order.id,
+    order_status: order.order_status,
+    ready_by: (order.updated_at || order.created_at) + READY_BY_WINDOW_MS
+  })
 })
 
 // Verify the Razorpay checkout response (or simulated payment) and advance the order.
@@ -630,6 +666,17 @@ app.get('/', (req, res) => {
 // Password-protected admin dashboard (orders, customers, pricing).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'))
+})
+
+// Printable job sheet — admin-only, fetched client-side via the admin token,
+// never billed to the customer (separate from order pricing/page counts).
+app.get('/jobsheet.html', (req, res) => {
+  res.sendFile(path.join(publicDir, 'jobsheet.html'))
+})
+
+// Public scan-to-track page linked from the job sheet's QR code.
+app.get('/track/:id', (req, res) => {
+  res.sendFile(path.join(publicDir, 'track.html'))
 })
 
 // If a production client build exists, serve it (single-process deploy)

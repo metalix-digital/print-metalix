@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Metalix Print — Track Order</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card{ background:var(--white); border-radius:16px; max-width:360px; width:100%; padding:28px 24px; text-align:center; box-shadow:0 12px 32px -16px rgba(26,35,50,.25); }
+  .logo{ font-size:20px; font-weight:800; }
+  .logo .dot{ color:var(--orange); }
+  .status-badge{ display:inline-block; margin-top:18px; background:var(--steel); color:var(--white); border-radius:999px; padding:8px 18px; font-size:14px; font-weight:700; }
+  .row{ margin-top:16px; display:flex; justify-content:space-between; font-size:13px; padding:8px 0; border-bottom:1px solid var(--mist); }
+  .row span:first-child{ color:#8893A2; font-weight:600; }
+  .row span:last-child{ font-weight:700; }
+  .footer{ margin-top:18px; font-size:11px; color:#8893A2; }
+  .error{ color:#5B6472; font-size:14px; margin-top:14px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">Metalix<span class="dot">.</span>Print</div>
+  <div id="content">
+    <p class="error">Loading…</p>
+  </div>
+  <div class="footer">print.metalix.in</div>
+</div>
+
+<script>
+function formatDateTime(ms){
+  const d = new Date(ms);
+  const day = d.getDate();
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${day} ${month} · ${h}:${m} ${ampm}`;
+}
+
+async function loadStatus(){
+  const orderId = window.location.pathname.split('/').filter(Boolean).pop();
+  const content = document.getElementById('content');
+  try {
+    const res = await fetch('/api/track/' + encodeURIComponent(orderId));
+    if (!res.ok) {
+      content.innerHTML = '<p class="error">We couldn\'t find that order.</p>';
+      return;
+    }
+    const data = await res.json();
+    content.innerHTML =
+      '<div class="status-badge">' + data.order_status + '</div>' +
+      '<div class="row"><span>Order ID</span><span>#' + data.id + '</span></div>' +
+      '<div class="row"><span>Ready By</span><span>' + formatDateTime(data.ready_by) + '</span></div>';
+  } catch (err) {
+    content.innerHTML = '<p class="error">Could not load order status.</p>';
+  }
+}
+loadStatus();
+</script>
+
+</body>
+</html>

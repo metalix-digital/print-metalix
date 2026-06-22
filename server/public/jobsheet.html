@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Metalix Print — Job Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --steel:#1A2332;
+    --orange:#FF4D1C;
+    --silver:#C8CDD6;
+    --mist:#F2F4F7;
+    --white:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); }
+
+  /* ---- Tab bar ---- */
+  .tabbar{ position:sticky; top:0; z-index:50; display:flex; gap:8px; background:var(--white); border-bottom:1px solid var(--silver); padding:10px 14px; }
+  .tabbar button{ flex:1; font-family:'DM Sans',sans-serif; font-weight:700; font-size:13.5px; padding:10px 14px; border-radius:9px; border:1.5px solid var(--silver); background:var(--mist); color:var(--steel); cursor:pointer; transition:all .15s ease; }
+  .tabbar button.active{ background:var(--steel); border-color:var(--steel); color:var(--white); }
+  .tabbar .print-btn{ flex:0 0 auto; background:var(--orange); border-color:var(--orange); color:var(--white); }
+
+  .sheet{ display:none; max-width:480px; margin:0 auto; background:var(--white); }
+  .sheet.active{ display:block; }
+
+  /* ===================== SHEET 1 ===================== */
+  .s1-topbar{ display:flex; align-items:center; justify-content:space-between; background:var(--steel); color:var(--white); padding:16px 20px; }
+  .s1-logo{ font-weight:800; font-size:19px; letter-spacing:-0.01em; }
+  .s1-logo .dot{ color:var(--orange); }
+  .s1-url{ font-size:12px; font-weight:500; color:var(--silver); }
+  .s1-stripe{ height:4px; background:var(--orange); }
+
+  .s1-banner{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; padding:24px 20px 20px; background:var(--white); }
+  .s1-banner-text{ flex:1; min-width:180px; }
+  .s1-heading{ font-size:21px; font-weight:800; margin:0 0 8px; }
+  .s1-sub{ font-size:12.5px; color:#5B6472; line-height:1.55; margin:0; }
+  .s1-orderbadge{ flex-shrink:0; background:var(--steel); color:var(--white); border-radius:10px; padding:10px 14px; text-align:center; min-width:110px; }
+  .s1-orderbadge .ob-label{ font-size:9.5px; font-weight:700; letter-spacing:.08em; color:var(--silver); }
+  .s1-orderbadge .ob-value{ font-size:14.5px; font-weight:800; margin-top:4px; word-break:break-all; }
+  .s1-orderbadge .ob-underline{ height:3px; width:32px; background:var(--orange); border-radius:2px; margin:6px auto 0; }
+
+  .s1-section{ padding:18px 20px; border-top:1px solid var(--mist); }
+  .s1-section-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 12px; }
+
+  .s1-infogrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+  .s1-field{ display:flex; flex-direction:column; gap:4px; }
+  .s1-field.full{ grid-column:1 / -1; }
+  .s1-field .f-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; }
+  .s1-field .f-value{ font-size:14.5px; font-weight:700; color:var(--steel); }
+  .s1-custid{ display:inline-block; letter-spacing:.04em; background:var(--mist); border:1px solid var(--silver); border-radius:6px; padding:3px 8px; font-size:13px; font-weight:700; width:fit-content; }
+  .s1-pages-pill{ display:inline-block; background:var(--orange); color:var(--white); border-radius:999px; padding:4px 12px; font-size:13.5px; font-weight:800; width:fit-content; }
+
+  .s1-spectable{ width:100%; border-collapse:collapse; font-size:13px; }
+  .s1-spectable tr{ border-bottom:1px solid var(--mist); }
+  .s1-spectable tr:last-child{ border-bottom:none; }
+  .s1-spectable td{ padding:8px 0; }
+  .s1-spectable td:first-child{ color:#8893A2; font-weight:600; width:46%; }
+  .s1-spectable td:last-child{ font-weight:700; text-align:right; }
+
+  .s1-qrrow{ display:flex; align-items:center; gap:16px; }
+  .s1-qrbox{ flex-shrink:0; background:var(--white); border:1px solid var(--silver); border-radius:10px; padding:8px; }
+  .s1-qrurl{ font-size:9.5px; color:#8893A2; text-align:center; margin-top:6px; word-break:break-all; max-width:110px; }
+  .s1-barcode{ flex:1; height:54px; border-radius:8px; background:repeating-linear-gradient(90deg, var(--steel) 0 2px, transparent 2px 5px, var(--steel) 5px 6px, transparent 6px 11px, var(--steel) 11px 14px, transparent 14px 17px); opacity:.85; }
+
+  .s1-notes-line{ height:26px; border-bottom:1.5px dashed var(--silver); }
+
+  .s1-statusrow{ display:flex; flex-wrap:wrap; gap:10px; }
+  .s1-statusitem{ flex:1; min-width:120px; display:flex; align-items:center; gap:8px; border:1.5px solid var(--silver); border-radius:9px; padding:10px 12px; font-size:12.5px; font-weight:700; }
+  .s1-statusitem input{ width:16px; height:16px; accent-color:var(--orange); }
+
+  .s1-footer{ display:flex; justify-content:space-between; align-items:center; background:var(--steel); color:var(--silver); padding:12px 20px; font-size:10.5px; font-weight:600; }
+
+  /* ===================== SHEET 2 ===================== */
+  .s2-hero{ position:relative; background:var(--steel); color:var(--white); padding:54px 20px 40px; text-align:center; overflow:hidden; }
+  .s2-hero::before{ content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size:26px 26px; }
+  .s2-hero::after{ content:''; position:absolute; top:-40%; right:-30%; width:80%; height:140%; background:radial-gradient(circle, rgba(255,77,28,.35), transparent 65%); transform:rotate(20deg); }
+  .s2-hero-inner{ position:relative; z-index:1; }
+  .s2-logo{ font-size:34px; font-weight:800; letter-spacing:-0.02em; margin:0; }
+  .s2-logo .dot{ color:var(--orange); }
+  .s2-tagline{ font-size:13.5px; font-weight:600; color:var(--silver); margin:10px 0 0; letter-spacing:.03em; }
+  .s2-hero-bar{ position:absolute; left:0; right:0; bottom:0; height:6px; background:var(--orange); }
+
+  .s2-section{ padding:22px 20px; }
+  .s2-cardgrid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .s2-card{ background:var(--mist); border:1px solid var(--silver); border-radius:12px; padding:14px; }
+  .s2-card .c-icon{ font-size:18px; }
+  .s2-card .c-label{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8893A2; margin-top:6px; }
+  .s2-card .c-value{ font-size:13px; font-weight:700; color:var(--steel); margin-top:3px; line-height:1.35; }
+
+  .s2-services-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 12px; text-align:center; }
+  .s2-services{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media (min-width:600px){ .s2-services{ grid-template-columns:repeat(4,1fr); } }
+  .s2-service-tag{ background:var(--white); border:1.5px solid var(--silver); border-radius:999px; padding:9px 10px; text-align:center; font-size:11.5px; font-weight:700; color:var(--steel); }
+
+  .s2-cta{ background:var(--mist); padding:22px 20px; text-align:center; }
+  .s2-cta p{ margin:0; font-size:13px; font-weight:600; color:var(--steel); line-height:1.5; }
+
+  .s2-footer{ background:#000; color:var(--white); padding:20px 20px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:14px; }
+  .s2-footer-brand{ font-size:16px; font-weight:800; }
+  .s2-footer-brand .sub{ font-size:11px; font-weight:500; color:var(--silver); margin-top:3px; }
+  .s2-footer-pills{ display:flex; flex-wrap:wrap; gap:6px; }
+  .s2-footer-pills span{ border:1px solid #3A4252; border-radius:999px; padding:5px 10px; font-size:10.5px; font-weight:600; color:var(--silver); }
+
+  .js-error{ padding:40px 20px; font-family:'DM Sans',sans-serif; text-align:center; color:#5B6472; }
+  .js-overlay{ position:fixed; inset:0; background:rgba(26,35,50,.55); display:none; align-items:center; justify-content:center; z-index:200; }
+  .js-overlay.show{ display:flex; }
+  .js-overlay-box{ background:var(--white); border-radius:12px; padding:18px 26px; font-weight:700; font-size:13.5px; color:var(--steel); }
+
+  /* ===================== PRINT ===================== */
+  @media print{
+    body{ background:var(--white); }
+    .tabbar{ display:none !important; }
+    .sheet{ display:block !important; max-width:none; margin:0; width:210mm; min-height:297mm; page-break-after:always; }
+    .sheet:last-child{ page-break-after:auto; }
+    .s1-qrbox, .s2-card, .s1-statusitem{ border-radius:0 !important; box-shadow:none !important; }
+  }
+  @page{ size:A4; margin:0; }
+</style>
+</head>
+<body>
+
+<div class="js-overlay" id="jsOverlay"><div class="js-overlay-box">Generating PDF…</div></div>
+<div class="tabbar" id="tabbar">
+  <button id="tabBtn1" class="active">Sheet 1 · Cover</button>
+  <button id="tabBtn2">Sheet 2 · Branding</button>
+  <button class="print-btn" id="printBtn">Print</button>
+</div>
+
+<div id="jsRoot">
+  <!-- SHEET 1: COVER -->
+  <div class="sheet active" id="sheet1">
+    <div class="s1-topbar">
+      <div class="s1-logo">Metalix<span class="dot">.</span>Print</div>
+      <div class="s1-url">print.metalix.in</div>
+    </div>
+    <div class="s1-stripe"></div>
+
+    <div class="s1-banner">
+      <div class="s1-banner-text">
+        <h1 class="s1-heading">Print Job Cover Sheet</h1>
+        <p class="s1-sub">Upload a PDF, Word or PowerPoint at print.metalix.in — pay via Razorpay — printed &amp; delivered in 3–4 hrs.</p>
+      </div>
+      <div class="s1-orderbadge">
+        <div class="ob-label">ORDER ID</div>
+        <div class="ob-value" id="jsOrderId">—</div>
+        <div class="ob-underline"></div>
+      </div>
+    </div>
+
+    <div class="s1-section">
+      <div class="s1-infogrid">
+        <div class="s1-field">
+          <span class="f-label">Customer ID</span>
+          <span class="s1-custid" id="jsCustomerId">—</span>
+        </div>
+        <div class="s1-field">
+          <span class="f-label">Total Pages</span>
+          <span class="s1-pages-pill" id="jsTotalPages">—</span>
+        </div>
+        <div class="s1-field full">
+          <span class="f-label">Customer Name</span>
+          <span class="f-value" id="jsCustomerName">—</span>
+        </div>
+        <div class="s1-field">
+          <span class="f-label">Order Date</span>
+          <span class="f-value" id="jsOrderDate">—</span>
+        </div>
+        <div class="s1-field">
+          <span class="f-label">Ready By</span>
+          <span class="f-value" id="jsReadyBy">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="s1-section">
+      <div class="s1-section-title">Print Specifications</div>
+      <table class="s1-spectable">
+        <tr><td>Paper Size</td><td id="jsPaperSize">—</td></tr>
+        <tr><td>Paper Type</td><td id="jsPaperType">—</td></tr>
+        <tr><td>Print Mode</td><td id="jsPrintMode">—</td></tr>
+        <tr><td>Binding</td><td id="jsBinding">—</td></tr>
+        <tr><td>Copies</td><td id="jsCopies">—</td></tr>
+        <tr><td>Special Instructions</td><td id="jsInstructions">—</td></tr>
+      </table>
+    </div>
+
+    <div class="s1-section">
+      <div class="s1-qrrow">
+        <div>
+          <div class="s1-qrbox" id="jsQrBox"></div>
+          <div class="s1-qrurl" id="jsQrUrl"></div>
+        </div>
+        <div class="s1-barcode"></div>
+      </div>
+    </div>
+
+    <div class="s1-section">
+      <div class="s1-section-title">Operator Notes</div>
+      <div class="s1-notes-line"></div>
+      <div class="s1-notes-line"></div>
+      <div class="s1-notes-line"></div>
+      <div class="s1-notes-line"></div>
+    </div>
+
+    <div class="s1-section">
+      <div class="s1-statusrow">
+        <label class="s1-statusitem"><input type="checkbox"> Print Ready</label>
+        <label class="s1-statusitem"><input type="checkbox"> QC Passed</label>
+        <label class="s1-statusitem"><input type="checkbox"> Packaged</label>
+        <label class="s1-statusitem"><input type="checkbox"> Dispatched</label>
+      </div>
+    </div>
+
+    <div class="s1-footer">
+      <span>Metalix Print · print.metalix.in</span>
+      <span>Auto-generated · Not a tax invoice</span>
+    </div>
+  </div>
+
+  <!-- SHEET 2: BACK BRANDING -->
+  <div class="sheet" id="sheet2">
+    <div class="s2-hero">
+      <div class="s2-hero-inner">
+        <div class="s2-logo">Metalix<span class="dot">.</span>Print</div>
+        <div class="s2-tagline">Upload · Print · Deliver</div>
+      </div>
+      <div class="s2-hero-bar"></div>
+    </div>
+
+    <div class="s2-section">
+      <div class="s2-cardgrid">
+        <div class="s2-card"><div class="c-icon">🌐</div><div class="c-label">Order Online</div><div class="c-value">print.metalix.in</div></div>
+        <div class="s2-card"><div class="c-icon">📄</div><div class="c-label">Accepted Files</div><div class="c-value">PDF · DOC · PPT</div></div>
+        <div class="s2-card"><div class="c-icon">⏱️</div><div class="c-label">Ready In</div><div class="c-value">3–4 hrs after payment</div></div>
+        <div class="s2-card"><div class="c-icon">🚚</div><div class="c-label">Delivery</div><div class="c-value">Collect in-store or home delivery (+₹30)</div></div>
+      </div>
+    </div>
+
+    <div class="s2-section">
+      <div class="s2-services-title">What We Print</div>
+      <div class="s2-services">
+        <div class="s2-service-tag">PDF Printing</div>
+        <div class="s2-service-tag">Word Printing</div>
+        <div class="s2-service-tag">PowerPoint Printing</div>
+        <div class="s2-service-tag">Colour Printing</div>
+        <div class="s2-service-tag">B&amp;W Printing</div>
+        <div class="s2-service-tag">Bulk Printing</div>
+        <div class="s2-service-tag">Single-sided</div>
+        <div class="s2-service-tag">Double-sided</div>
+      </div>
+    </div>
+
+    <div class="s2-cta">
+      <p>⚡ Upload your file at print.metalix.in, configure &amp; pay via Razorpay — ready in just 3–4 hours.</p>
+    </div>
+
+    <div class="s2-footer">
+      <div>
+        <div class="s2-footer-brand">Metalix.Print</div>
+        <div class="sub">print.metalix.in</div>
+      </div>
+      <div class="s2-footer-pills">
+        <span>print.metalix.in</span>
+        <span>Ready in 3–4 hrs</span>
+        <span>Pay via Razorpay</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ADMIN_TOKEN_KEY = 'metalix_admin_token';
+function getAdminToken(){ return localStorage.getItem(ADMIN_TOKEN_KEY); }
+
+const tabBtn1 = document.getElementById('tabBtn1');
+const tabBtn2 = document.getElementById('tabBtn2');
+const sheet1 = document.getElementById('sheet1');
+const sheet2 = document.getElementById('sheet2');
+tabBtn1.addEventListener('click', () => {
+  sheet1.classList.add('active'); sheet2.classList.remove('active');
+  tabBtn1.classList.add('active'); tabBtn2.classList.remove('active');
+});
+tabBtn2.addEventListener('click', () => {
+  sheet2.classList.add('active'); sheet1.classList.remove('active');
+  tabBtn2.classList.add('active'); tabBtn1.classList.remove('active');
+});
+document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+const PAPER_TYPE_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM)', premium: 'Premium digital color', mixed: 'Mixed' };
+const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
+const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+function formatDateTime(ms){
+  const d = new Date(ms);
+  const day = d.getDate();
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  const year = d.getFullYear();
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${day} ${month} ${year} · ${h}:${m} ${ampm}`;
+}
+
+function populate(order){
+  document.getElementById('jsOrderId').textContent = '#' + order.id;
+  document.getElementById('jsCustomerId').textContent = order.customer_id
+    ? 'CUST-' + order.customer_id.slice(0, 8).toUpperCase()
+    : 'GUEST ORDER';
+  document.getElementById('jsTotalPages').textContent = order.page_count != null ? order.page_count : '—';
+  document.getElementById('jsCustomerName').textContent = order.customer_name || '—';
+  document.getElementById('jsOrderDate').textContent = formatDateTime(order.created_at);
+  const readyByMs = (order.updated_at || order.created_at) + READY_BY_WINDOW_MS;
+  document.getElementById('jsReadyBy').textContent = formatDateTime(readyByMs);
+
+  document.getElementById('jsPaperSize').textContent = (order.paper_size || 'a4').toUpperCase();
+  document.getElementById('jsPaperType').textContent = PAPER_TYPE_LABELS[order.paper_type] || order.paper_type || '—';
+  document.getElementById('jsPrintMode').textContent = MODE_LABELS[order.print_mode] || order.print_mode || '—';
+  document.getElementById('jsBinding').textContent = '—';
+  document.getElementById('jsCopies').textContent = order.copies != null ? order.copies : '—';
+  document.getElementById('jsInstructions').textContent = '—';
+
+  const trackUrl = window.location.origin + '/track/' + order.id;
+  document.getElementById('jsQrUrl').textContent = trackUrl;
+  // eslint-disable-next-line no-undef
+  new QRCode(document.getElementById('jsQrBox'), { text: trackUrl, width: 96, height: 96, colorDark: '#1A2332', colorLight: '#FFFFFF' });
+}
+
+// Renders each sheet to a canvas in turn (html2canvas can't capture a
+// display:none element) and assembles them into one multi-page A4 PDF —
+// done client-side so the server never needs a headless-Chromium dependency.
+async function downloadAsPdf(order){
+  const overlay = document.getElementById('jsOverlay');
+  overlay.classList.add('show');
+  const wasActive = sheet1.classList.contains('active') ? sheet1 : sheet2;
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const sheets = [sheet1, sheet2];
+    for (let i = 0; i < sheets.length; i++) {
+      sheets.forEach((s) => s.classList.remove('active'));
+      sheets[i].classList.add('active');
+      await new Promise((r) => setTimeout(r, 80));
+      const canvas = await html2canvas(sheets[i], { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      const pdfWidth = 210;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(imgHeight, 297));
+    }
+    pdf.save('jobsheet-' + order.id + '.pdf');
+  } finally {
+    sheets1and2Reset(wasActive);
+    overlay.classList.remove('show');
+  }
+}
+function sheets1and2Reset(activeSheet){
+  sheet1.classList.remove('active'); sheet2.classList.remove('active');
+  activeSheet.classList.add('active');
+  tabBtn1.classList.toggle('active', activeSheet === sheet1);
+  tabBtn2.classList.toggle('active', activeSheet === sheet2);
+}
+
+async function loadOrder(){
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get('order');
+  const action = params.get('action');
+  if (!orderId) {
+    document.getElementById('jsRoot').innerHTML = '<div class="js-error">Missing order ID — open this page from the admin order list.</div>';
+    return;
+  }
+  const token = getAdminToken();
+  if (!token) {
+    window.location.href = '/admin';
+    return;
+  }
+  try {
+    const res = await fetch('/api/admin/orders/' + encodeURIComponent(orderId), {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (res.status === 401) { window.location.href = '/admin'; return; }
+    if (!res.ok) {
+      document.getElementById('jsRoot').innerHTML = '<div class="js-error">Order not found.</div>';
+      return;
+    }
+    const { order } = await res.json();
+    populate(order);
+    if (action === 'print') {
+      setTimeout(() => window.print(), 300);
+    } else if (action === 'download') {
+      setTimeout(() => downloadAsPdf(order), 300);
+    }
+  } catch (err) {
+    document.getElementById('jsRoot').innerHTML = '<div class="js-error">Could not load order details.</div>';
+  }
+}
+loadOrder();
+</script>
+
+</body>
+</html>
