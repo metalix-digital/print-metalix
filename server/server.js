@@ -5,7 +5,9 @@ const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const app = express()
 
-app.use(express.json())
+// 20mb to fit the two full-page JPEG screenshots the job sheet PDF merge
+// endpoint receives (html2canvas captures at 1.5x scale).
+app.use(express.json({ limit: '20mb' }))
 
 // Read at request time, not at module load — loadSecretsIntoEnv() (see bottom of
 // this file) populates these from Secret Manager asynchronously before the
@@ -357,6 +359,78 @@ app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
   return res.json({ order })
 })
 
+// Merges the job-sheet cover/back pages (rendered to images client-side via
+// html2canvas, since we deliberately avoid a headless-Chromium server
+// dependency) with the customer's actual print-ready document(s) into one
+// PDF — page 1 cover, middle pages the real document(s), last page branding.
+const A4_PT = { width: 595.28, height: 841.89 }
+app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  const { coverImage, backImage } = req.body || {}
+  if (!coverImage || !backImage) return res.status(400).json({ error: 'missing_images' })
+  if (order.files_deleted_at) {
+    return res.status(410).json({ error: 'files_deleted', message: 'The original files for this order were already auto-deleted (7 days after completion) — only the job sheet cover/back pages can be generated, not the merged document.' })
+  }
+
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  if (!files.length && order.file_path) {
+    files = [{ fileId: order.file_path, fileName: order.file_name }]
+  }
+
+  try {
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib')
+    const merged = await PDFDocument.create()
+
+    async function addImagePage(dataUrl) {
+      const base64 = dataUrl.split(',')[1] || ''
+      const bytes = Buffer.from(base64, 'base64')
+      const img = dataUrl.startsWith('data:image/png') ? await merged.embedPng(bytes) : await merged.embedJpg(bytes)
+      const scale = A4_PT.width / img.width
+      const drawHeight = Math.min(img.height * scale, A4_PT.height)
+      const page = merged.addPage([A4_PT.width, A4_PT.height])
+      page.drawImage(img, { x: 0, y: A4_PT.height - drawHeight, width: A4_PT.width, height: drawHeight })
+    }
+
+    await addImagePage(coverImage)
+
+    const font = await merged.embedFont(StandardFonts.Helvetica)
+    for (const f of files) {
+      const safeFileId = path.basename(String(f.fileId || ''))
+      const filePath = path.join(uploadsDir, safeFileId)
+      if (!safeFileId || !fs.existsSync(filePath)) continue
+      try {
+        const buffer = fs.readFileSync(filePath)
+        const ext = path.extname(f.fileName || safeFileId).toLowerCase() || '.pdf'
+        const pdfBuffer = ext === '.pdf' ? buffer : await convertToPdf(buffer, ext)
+        const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
+        const pages = await merged.copyPages(srcDoc, srcDoc.getPageIndices())
+        pages.forEach((p) => merged.addPage(p))
+      } catch (err) {
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        const lines = [
+          `Could not auto-include "${f.fileName || safeFileId}".`,
+          'It may be password-protected or in an unsupported format.',
+          'Use the per-file Download button in admin to print it manually.'
+        ]
+        if (f.password) lines.push(`Document password on file: ${f.password}`)
+        lines.forEach((line, i) => page.drawText(line, { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
+      }
+    }
+
+    await addImagePage(backImage)
+
+    const pdfBytes = await merged.save()
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="jobsheet-${order.id}.pdf"`)
+    return res.send(Buffer.from(pdfBytes))
+  } catch (err) {
+    console.error('jobsheet-pdf merge failed', err)
+    return res.status(500).json({ error: 'merge_failed', message: 'Could not generate the combined job sheet PDF.' })
+  }
+})
+
 app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -581,10 +655,9 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   if (simulated) {
     db.updateOrder(order.id, {
       razorpay_payment_id: `SIM_PAY_${order.id}`,
-      payment_status: 'paid',
-      order_status: 'Payment Successful'
+      payment_status: 'paid'
     })
-    printQueue.enqueue(order.id)
+    printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
     notify.sendOrderConfirmationEmail(fresh)
@@ -601,10 +674,9 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   db.updateOrder(order.id, {
     razorpay_payment_id,
     razorpay_signature,
-    payment_status: 'paid',
-    order_status: 'Payment Successful'
+    payment_status: 'paid'
   })
-  printQueue.enqueue(order.id)
+  printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
   const fresh = db.getOrder(order.id)
   notify.sendOrderConfirmationSms(fresh)
   notify.sendOrderConfirmationEmail(fresh)

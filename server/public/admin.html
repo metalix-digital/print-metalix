@@ -170,7 +170,16 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 
 <script>
 const TOKEN_KEY = 'metalix_admin_token';
-const ORDER_STATUSES = ['Received','Payment Successful','Queued For Printing','Printing','Completed','Manual Intervention Required','Failed'];
+// Paid orders always start at "Queued For Printing" (set automatically on
+// payment) — "Received"/"Payment Successful" are pre-payment states that
+// never appear here since the admin order list only ever shows paid orders.
+// The middle status branches by delivery method since "Awaiting Customer
+// Pickup" only makes sense for in-store pickup and "Out For Delivery" only
+// for home delivery.
+function getStatusesForOrder(order){
+  const middle = order.delivery_method === 'delivery' ? 'Out For Delivery' : 'Awaiting Customer Pickup';
+  return ['Queued For Printing', 'Printing', middle, 'Completed', 'Manual Intervention Required', 'Failed'];
+}
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY); }
 function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -258,9 +267,13 @@ async function loadOrders(){
   }
 }
 
-function statusSelectHtml(orderId, current){
-  return '<select class="status-select" data-order="' + orderId + '">' +
-    ORDER_STATUSES.map((s) => '<option' + (s === current ? ' selected' : '') + '>' + s + '</option>').join('') +
+function statusSelectHtml(order){
+  const statuses = getStatusesForOrder(order);
+  // Defensive: keep showing a legacy/unexpected stored value as a selectable
+  // option even if it's not in the canonical list, so old data never vanishes.
+  if (order.order_status && !statuses.includes(order.order_status)) statuses.unshift(order.order_status);
+  return '<select class="status-select" data-order="' + order.id + '">' +
+    statuses.map((s) => '<option' + (s === order.order_status ? ' selected' : '') + '>' + s + '</option>').join('') +
     '</select>';
 }
 
@@ -328,7 +341,7 @@ function renderOrders(orders){
       '<td>' + o.customer_name + '<div class="subtle">' + o.customer_mobile + '</div></td>' +
       '<td>₹' + o.total_amount + '</td>' +
       '<td>' + o.payment_status + '</td>' +
-      '<td>' + statusSelectHtml(o.id, o.order_status) + '</td>' +
+      '<td>' + statusSelectHtml(o) + '</td>' +
       '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
@@ -339,8 +352,8 @@ function renderOrders(orders){
       '</div>' +
       (o.customer_email ? '<div><strong>Email:</strong> ' + o.customer_email + '</div>' : '') +
       '<div class="jobsheet-actions">' +
-        '<button class="jobsheet-btn" data-action="print" data-order="' + o.id + '">🖨 Print Job Sheet</button>' +
-        '<button class="jobsheet-btn" data-action="download" data-order="' + o.id + '">⬇ Download PDF</button>' +
+        '<button class="jobsheet-btn" data-action="print" data-order="' + o.id + '" data-status="' + o.order_status + '">🖨 Print Job Sheet</button>' +
+        '<button class="jobsheet-btn" data-action="download" data-order="' + o.id + '" data-status="' + o.order_status + '">⬇ Download PDF</button>' +
       '</div>' +
     '</div></td></tr>'
   )).join('');
@@ -360,9 +373,21 @@ function renderOrders(orders){
     });
   });
   body.querySelectorAll('.jobsheet-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
+      // Printing the job sheet is the real-world trigger that the print job
+      // is starting — auto-advance the status so admin doesn't have to
+      // remember to do it manually, but only from the initial queued state
+      // so re-printing a later-stage order never moves it backward.
+      if (btn.dataset.status === 'Queued For Printing') {
+        await adminFetch('/api/admin/orders/' + btn.dataset.order, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_status: 'Printing' })
+        });
+        loadOrders();
+      }
     });
   });
   body.querySelectorAll('select.status-select').forEach((sel) => {

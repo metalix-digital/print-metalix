@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
     --steel:#1A2332;
@@ -130,7 +129,7 @@
 <div class="tabbar" id="tabbar">
   <button id="tabBtn1" class="active">Sheet 1 · Cover</button>
   <button id="tabBtn2">Sheet 2 · Branding</button>
-  <button class="print-btn" id="printBtn">Print</button>
+  <button class="print-btn" id="printBtn" title="Prints only the currently visible sheet — use the admin order list's Print/Download buttons for the full combined document">Print This Sheet</button>
 </div>
 
 <div id="jsRoot">
@@ -333,39 +332,72 @@ function populate(order){
   new QRCode(document.getElementById('jsQrBox'), { text: trackUrl, width: 96, height: 96, colorDark: '#1A2332', colorLight: '#FFFFFF' });
 }
 
-// Renders each sheet to a canvas in turn (html2canvas can't capture a
-// display:none element) and assembles them into one multi-page A4 PDF —
-// done client-side so the server never needs a headless-Chromium dependency.
-async function downloadAsPdf(order){
-  const overlay = document.getElementById('jsOverlay');
-  overlay.classList.add('show');
-  const wasActive = sheet1.classList.contains('active') ? sheet1 : sheet2;
-  try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
-    const sheets = [sheet1, sheet2];
-    for (let i = 0; i < sheets.length; i++) {
-      sheets.forEach((s) => s.classList.remove('active'));
-      sheets[i].classList.add('active');
-      await new Promise((r) => setTimeout(r, 80));
-      const canvas = await html2canvas(sheets[i], { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
-      const pdfWidth = 210;
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-      if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(imgHeight, 297));
-    }
-    pdf.save('jobsheet-' + order.id + '.pdf');
-  } finally {
-    sheets1and2Reset(wasActive);
-    overlay.classList.remove('show');
-  }
-}
 function sheets1and2Reset(activeSheet){
   sheet1.classList.remove('active'); sheet2.classList.remove('active');
   activeSheet.classList.add('active');
   tabBtn1.classList.toggle('active', activeSheet === sheet1);
   tabBtn2.classList.toggle('active', activeSheet === sheet2);
+}
+
+// Captures both sheets as images (html2canvas can't capture a display:none
+// element, so each is made active in turn) then asks the server to merge them
+// with the order's actual print-ready document(s) — page 1 cover, middle
+// pages the real document, last page branding — into one PDF via pdf-lib.
+async function fetchMergedPdfBlob(order){
+  const overlay = document.getElementById('jsOverlay');
+  overlay.classList.add('show');
+  const wasActive = sheet1.classList.contains('active') ? sheet1 : sheet2;
+  try {
+    const images = {};
+    const pairs = [['coverImage', sheet1], ['backImage', sheet2]];
+    for (const [key, el] of pairs) {
+      sheet1.classList.remove('active'); sheet2.classList.remove('active');
+      el.classList.add('active');
+      await new Promise((r) => setTimeout(r, 80));
+      const canvas = await html2canvas(el, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
+      images[key] = canvas.toDataURL('image/jpeg', 0.85);
+    }
+    sheets1and2Reset(wasActive);
+
+    const res = await fetch('/api/admin/orders/' + encodeURIComponent(order.id) + '/jobsheet-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getAdminToken() },
+      body: JSON.stringify(images)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || 'Could not generate the combined job sheet PDF.');
+      return null;
+    }
+    return await res.blob();
+  } finally {
+    overlay.classList.remove('show');
+  }
+}
+
+async function downloadMergedPdf(order){
+  const blob = await fetchMergedPdfBlob(order);
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'jobsheet-' + order.id + '.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function printMergedPdf(order){
+  const blob = await fetchMergedPdfBlob(order);
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0';
+  iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+  iframe.src = url;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  };
 }
 
 async function loadOrder(){
@@ -393,9 +425,9 @@ async function loadOrder(){
     const { order } = await res.json();
     populate(order);
     if (action === 'print') {
-      setTimeout(() => window.print(), 300);
+      setTimeout(() => printMergedPdf(order), 300);
     } else if (action === 'download') {
-      setTimeout(() => downloadAsPdf(order), 300);
+      setTimeout(() => downloadMergedPdf(order), 300);
     }
   } catch (err) {
     document.getElementById('jsRoot').innerHTML = '<div class="js-error">Could not load order details.</div>';
