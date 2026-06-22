@@ -452,12 +452,25 @@ function showOrderingAs(user){
   document.getElementById('customerName').value = user.name || '';
   document.getElementById('customerMobile').value = user.mobile || '';
   document.getElementById('customerEmail').value = user.email || '';
+  headerActions.style.display = 'flex';
+
+  // The "ordering as" shortcut hides the editable mobile field — only safe to
+  // show it when we actually have a valid mobile on file. Accounts created via
+  // Google sign-in have no mobile number, so fall through to the editable
+  // fields (pre-filled with name/email) instead, or "Review & pay" would fail
+  // validation with no visible field to fix.
+  const mobileValid = /^[0-9]{10}$/.test(user.mobile || '');
+  if(!mobileValid){
+    orderingAs.style.display = 'none';
+    detailsFields.style.display = 'grid';
+    fieldEmail.style.display = 'block';
+    return;
+  }
   oaName.textContent = user.name || '';
-  oaMobile.textContent = user.mobile ? (' · ' + user.mobile) : '';
+  oaMobile.textContent = ' · ' + user.mobile;
   orderingAs.style.display = 'flex';
   detailsFields.style.display = 'none';
   fieldEmail.style.display = 'none';
-  headerActions.style.display = 'flex';
 }
 oaChangeBtn.addEventListener('click', () => {
   orderingAs.style.display = 'none';
@@ -902,22 +915,38 @@ function showToast(msg, isError){
 
 function validateForConfirm(){
   let ok = true;
+  let firstInvalidFieldId = null;
   const name = document.getElementById('customerName').value.trim();
   const mobile = document.getElementById('customerMobile').value.trim();
-  setFieldError('fieldName', !name); if(!name) ok = false;
   const mobileValid = /^[0-9]{10}$/.test(mobile);
-  setFieldError('fieldMobile', !mobileValid); if(!mobileValid) ok = false;
+  // The "ordering as" shortcut hides the editable fields entirely — if either
+  // is invalid (e.g. a Google account with no mobile on file), reveal the
+  // editable fields first or the red-border feedback would be invisible.
+  if((!name || !mobileValid) && orderingAs.style.display !== 'none'){
+    orderingAs.style.display = 'none';
+    detailsFields.style.display = 'grid';
+    fieldEmail.style.display = 'block';
+  }
+  setFieldError('fieldName', !name); if(!name){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldName'; }
+  setFieldError('fieldMobile', !mobileValid); if(!mobileValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldMobile'; }
   if(!state.files.length){ showToast('Please upload at least one document', true); ok = false; }
   if(state.deliveryMethod === 'delivery'){
     const addr = document.getElementById('addrLine').value.trim();
     const city = document.getElementById('addrCity').value.trim();
     const st = document.getElementById('addrState').value.trim();
     const pin = document.getElementById('addrPincode').value.trim();
-    setFieldError('fieldAddress', !addr); if(!addr) ok = false;
-    setFieldError('fieldCity', !city); if(!city) ok = false;
-    setFieldError('fieldState', !st); if(!st) ok = false;
+    setFieldError('fieldAddress', !addr); if(!addr){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldAddress'; }
+    setFieldError('fieldCity', !city); if(!city){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldCity'; }
+    setFieldError('fieldState', !st); if(!st){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldState'; }
     const pinValid = /^[0-9]{6}$/.test(pin);
-    setFieldError('fieldPincode', !pinValid); if(!pinValid) ok = false;
+    setFieldError('fieldPincode', !pinValid); if(!pinValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldPincode'; }
+  }
+  if(!ok && firstInvalidFieldId){
+    showToast('Please fix the highlighted fields above', true);
+    const field = document.getElementById(firstInvalidFieldId);
+    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = field.querySelector('input');
+    if(input) input.focus();
   }
   return ok;
 }
