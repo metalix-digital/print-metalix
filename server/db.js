@@ -67,6 +67,15 @@ db.exec(`
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile) WHERE mobile IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_at INTEGER
+  );
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -310,6 +319,31 @@ function getUserById(id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null
 }
 
+function updateUserPassword(userId, password_hash) {
+  db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(password_hash, Date.now(), userId)
+}
+
+function createPasswordReset({ id, user_id, token_hash, expires_at }) {
+  db.prepare(`
+    INSERT INTO password_resets (id, user_id, token_hash, expires_at, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, user_id, token_hash, expires_at, Date.now())
+}
+
+// Only ever looked up by the hash of the raw token (never the raw token
+// itself) — mirrors the password_hash pattern so a DB leak alone can't be
+// used to reset accounts.
+function findValidPasswordReset(token_hash) {
+  return db.prepare(`
+    SELECT * FROM password_resets
+    WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(token_hash, Date.now()) || null
+}
+
+function markPasswordResetUsed(id) {
+  db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(Date.now(), id)
+}
+
 module.exports = {
   db,
   getPricing,
@@ -330,5 +364,9 @@ module.exports = {
   findUserByGoogleId,
   findUserByEmail,
   linkGoogleId,
-  getUserById
+  getUserById,
+  updateUserPassword,
+  createPasswordReset,
+  findValidPasswordReset,
+  markPasswordResetUsed
 }

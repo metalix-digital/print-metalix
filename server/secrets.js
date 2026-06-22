@@ -9,7 +9,9 @@ async function loadSecretsIntoEnv() {
     ['ADMIN_PASSWORD', 'admin-password'],
     ['ADMIN_JWT_SECRET', 'admin-jwt-secret'],
     ['GOOGLE_CLIENT_ID', 'google-client-id'],
-    ['GOOGLE_CLIENT_SECRET', 'google-client-secret']
+    ['GOOGLE_CLIENT_SECRET', 'google-client-secret'],
+    ['GMAIL_USER', 'gmail-user'],
+    ['GMAIL_APP_PASSWORD', 'gmail-app-password']
   ].filter(([envVar]) => !process.env[envVar])
 
   if (!needed.length) return

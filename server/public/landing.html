@@ -897,8 +897,33 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
           <button class="toggle-pass" onclick="togglePass('loginPass',this)" type="button">👁</button>
         </div>
       </div>
+      <div style="text-align:right;margin:-8px 0 16px;"><a style="font-size:12.5px;color:var(--orange);font-weight:600;cursor:pointer;" onclick="showForgotPassword()">Forgot password?</a></div>
       <button class="submit-btn" id="loginSubmitBtn" onclick="realLogin()">Log in</button>
       <div class="modal-footer-text">Don't have an account? <a onclick="switchTab('signup', document.querySelectorAll('.mtab')[1])">Sign up</a></div>
+    </div>
+
+    <!-- FORGOT PASSWORD PANE -->
+    <div class="modal-pane" id="pane-forgot">
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:18px;">Enter the email on your account and we'll send you a link to reset your password.</p>
+      <div class="modal-field">
+        <label>Email</label>
+        <input type="email" placeholder="you@example.com" id="forgotEmail">
+      </div>
+      <button class="submit-btn" id="forgotSubmitBtn" onclick="submitForgotPassword()">Send reset link</button>
+      <div class="modal-footer-text"><a onclick="switchTab('login', document.querySelectorAll('.mtab')[0])">Back to log in</a></div>
+    </div>
+
+    <!-- RESET PASSWORD PANE -->
+    <div class="modal-pane" id="pane-reset">
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:18px;">Choose a new password for your account.</p>
+      <div class="modal-field">
+        <label>New password</label>
+        <div class="pass-row">
+          <input type="password" placeholder="At least 8 characters" id="resetNewPass">
+          <button class="toggle-pass" onclick="togglePass('resetNewPass',this)" type="button">👁</button>
+        </div>
+      </div>
+      <button class="submit-btn" id="resetSubmitBtn" onclick="submitResetPassword()">Update password</button>
     </div>
 
     <!-- SIGN UP PANE -->
@@ -1131,6 +1156,7 @@ function showPolicyTab(tab, btn){
 function openModal(tab){
   document.getElementById('authModal').classList.add('show');
   document.body.style.overflow='hidden';
+  document.getElementById('authTabs').classList.remove('hidden');
   switchTab(tab, document.querySelector(`.mtab:${tab==='signup'?'last-child':'first-child'}`));
   document.getElementById('pane-success').classList.remove('active');
   if(tab==='login'){
@@ -1167,6 +1193,72 @@ function switchTab(tab, btn){
     document.getElementById('modalSub').textContent='Free account — track orders, cancel before printing';
   }
 }
+
+function showForgotPassword(){
+  switchTab('forgot', null);
+  document.getElementById('modalTitle').textContent='Reset your password';
+  document.getElementById('modalSub').textContent='We\'ll email you a link';
+}
+
+async function submitForgotPassword(){
+  const email = document.getElementById('forgotEmail').value.trim();
+  if(!email){ showToast('Please enter your email','⚠️'); return; }
+  const btn = document.getElementById('forgotSubmitBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    showSuccess('Check your email', data.message || 'If that email is registered, a reset link has been sent.');
+  } catch (err) {
+    showToast('Something went wrong. Please try again.', '⚠️');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let resetTokenInFlight = null;
+function showResetPassword(token){
+  resetTokenInFlight = token;
+  document.getElementById('authModal').classList.add('show');
+  document.body.style.overflow='hidden';
+  document.querySelectorAll('.mtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('authTabs').classList.add('hidden');
+  document.getElementById('pane-reset').classList.add('active');
+  document.getElementById('modalTitle').textContent='Set a new password';
+  document.getElementById('modalSub').textContent='';
+}
+
+async function submitResetPassword(){
+  const newPassword = document.getElementById('resetNewPass').value;
+  if(!newPassword || newPassword.length < 8){ showToast('Password must be at least 8 characters','⚠️'); return; }
+  const btn = document.getElementById('resetSubmitBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: resetTokenInFlight, newPassword })
+    });
+    const data = await res.json();
+    if(!res.ok){ showToast(data.message || 'Reset link is invalid or expired', '⚠️'); return; }
+    document.getElementById('authTabs').classList.remove('hidden');
+    showSuccess('Password updated', 'You can now log in with your new password.');
+    window.history.replaceState({}, '', window.location.pathname);
+  } catch (err) {
+    showToast('Something went wrong. Please try again.', '⚠️');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+(function checkResetTokenInUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('resetToken');
+  if(token) showResetPassword(token);
+})();
 
 /* -- AUTH (real) -- */
 const CUSTOMER_TOKEN_KEY = 'metalix_customer_token';

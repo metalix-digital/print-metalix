@@ -62,6 +62,7 @@ const bcrypt = require('bcryptjs')
 const db = require('./db')
 const printQueue = require('./printQueue')
 const notify = require('./notify')
+const mailer = require('./mailer')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
@@ -210,6 +211,48 @@ app.get('/api/me', requireCustomer, (req, res) => {
   const user = db.getUserById(req.userId)
   if (!user) return res.status(404).json({ error: 'not_found' })
   return res.json({ user: publicUser(user) })
+})
+
+// Always returns the same generic response whether or not the email is
+// registered — avoids leaking which emails have accounts.
+app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
+  const { email } = req.body || {}
+  const generic = { message: 'If that email is registered, a reset link has been sent.' }
+  if (!email) return res.json(generic)
+
+  const user = db.findUserByEmail(email)
+  if (user) {
+    const rawToken = crypto.randomBytes(32).toString('hex')
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
+    db.createPasswordReset({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      token_hash: tokenHash,
+      expires_at: Date.now() + 60 * 60 * 1000 // 1 hour
+    })
+    const resetUrl = `${req.protocol}://${req.get('host')}/?resetToken=${rawToken}`
+    try {
+      await mailer.sendPasswordResetEmail(user.email, resetUrl)
+    } catch (err) {
+      console.error('[auth] failed to send password reset email', err.message)
+    }
+  }
+  return res.json(generic)
+})
+
+app.post('/api/auth/reset-password', express.json(), async (req, res) => {
+  const { token, newPassword } = req.body || {}
+  if (!token || !newPassword) return res.status(400).json({ error: 'missing_fields' })
+  if (newPassword.length < 8) return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' })
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+  const reset = db.findValidPasswordReset(tokenHash)
+  if (!reset) return res.status(400).json({ error: 'invalid_or_expired_token' })
+
+  const password_hash = await bcrypt.hash(newPassword, 10)
+  db.updateUserPassword(reset.user_id, password_hash)
+  db.markPasswordResetUsed(reset.id)
+  return res.json({ message: 'Password updated — you can now log in.' })
 })
 
 // View-only order history for the logged-in customer — deliberately omits
