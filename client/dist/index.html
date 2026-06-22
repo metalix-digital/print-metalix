@@ -75,7 +75,8 @@
   .file-pill .fdot{ width:34px;height:34px;border-radius:8px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600; text-transform:uppercase;}
   .file-pill .fname{font-size:13px;font-weight:600;color:var(--ink); overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .file-pill .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace;}
-  .file-pill .fremove{ margin-left:auto; flex-shrink:0; width:24px; height:24px; border-radius:50%; border:none; background:#fff; color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .file-pill .fmode{ flex-shrink:0; border:1px solid var(--line); border-radius:7px; padding:5px 6px; font-size:11.5px; font-family:'Inter',sans-serif; color:var(--ink); background:#fff; }
+  .file-pill .fremove{ margin-left:0; flex-shrink:0; width:24px; height:24px; border-radius:50%; border:none; background:#fff; color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
   .file-pill .fremove:hover{ background:var(--red); color:#fff; }
   .file-total{ font-size:11.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; text-align:center; width:100%; }
   .add-more-btn{ font-size:12.5px; font-weight:600; color:var(--orange-deep); background:none; border:1px dashed var(--line-strong); border-radius:9px; padding:8px 14px; cursor:pointer; width:100%; }
@@ -587,20 +588,32 @@ function fetchPricing(){
 }
 fetchPricing();
 
+// Resolves a single file's color/bw page split given its own print mode —
+// mirrors server/pricing.js's resolveFileColorPages so client estimate and
+// server authoritative total always agree.
+function resolveFileColorPages(f){
+  const pageCount = f.pageCount || 0;
+  const mode = f.printMode || 'auto';
+  let colorPages;
+  if(mode === 'color') colorPages = pageCount;
+  else if(mode === 'bw') colorPages = 0;
+  else colorPages = f.colorCount || 0;
+  return { colorPages, bwPages: Math.max(0, pageCount - colorPages) };
+}
+
 function calcEstimate(){
   if(!pricingConfig || !state.files.length){
     return { colorPages: 0, bwPages: 0, printCost: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
   }
-  const pageCount = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
-  const colorPageCount = state.files.reduce((sum, f) => sum + (f.colorCount || 0), 0);
+  let colorPages = 0, bwPages = 0;
+  state.files.forEach((f) => {
+    const split = resolveFileColorPages(f);
+    colorPages += split.colorPages;
+    bwPages += split.bwPages;
+  });
   const sizeRates = pricingConfig.rates[state.paperSize];
   const effectiveType = state.paperSize === 'a4' ? state.paperType : 'normal';
   const rates = (sizeRates[effectiveType] || sizeRates.normal);
-  let colorPages;
-  if(state.mode === 'color') colorPages = pageCount;
-  else if(state.mode === 'bw') colorPages = 0;
-  else colorPages = colorPageCount;
-  const bwPages = Math.max(0, pageCount - colorPages);
   const perCopy = colorPages * rates.color[state.side] + bwPages * rates.bw[state.side];
   const printCost = Math.round(perCopy * Math.max(1, state.copies));
   const deliveryCharge = state.deliveryMethod === 'delivery' ? pricingConfig.deliveryCharge : 0;
@@ -636,6 +649,10 @@ function setMode(mode){
   document.getElementById('modeAutoCard').classList.toggle('active', mode==='auto');
   document.getElementById('modeColorCard').classList.toggle('active', mode==='color');
   document.getElementById('modeBwCard').classList.toggle('active', mode==='bw');
+  // Bulk-apply to every currently uploaded file — per-file overrides (the
+  // per-pill selector) can still be set individually afterward.
+  state.files.forEach((f) => { f.printMode = mode; });
+  renderFileList();
   recalc();
 }
 document.querySelectorAll('input[name=mode]').forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
@@ -689,10 +706,15 @@ function renderFileList(){
   fileList.innerHTML = state.files.map((f, i) => `
     <div class="file-pill">
       <div class="fdot">${fileDot(f.fileType)}</div>
-      <div style="min-width:0;">
+      <div style="min-width:0;flex:1;">
         <div class="fname">${f.fileName}</div>
         <div class="fmeta">${f.pageCount} page${f.pageCount===1?'':'s'} · ${(f.fileSize/1024/1024).toFixed(2)} MB</div>
       </div>
+      <select class="fmode" data-index="${i}" aria-label="Print mode for this file">
+        <option value="auto" ${f.printMode==='auto'?'selected':''}>Auto</option>
+        <option value="color" ${f.printMode==='color'?'selected':''}>Color</option>
+        <option value="bw" ${f.printMode==='bw'?'selected':''}>B&amp;W</option>
+      </select>
       <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
     </div>
   `).join('');
@@ -702,6 +724,13 @@ function renderFileList(){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeFile(Number(btn.dataset.index));
+    });
+  });
+  fileList.querySelectorAll('.fmode').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', (e) => {
+      state.files[Number(sel.dataset.index)].printMode = e.target.value;
+      recalc();
     });
   });
 }
@@ -775,6 +804,7 @@ async function uploadFiles(fileArray){
     uploadProgressInner.style.width = '0%';
     try{
       const json = await uploadOneFile(validFiles[i]);
+      json.printMode = state.mode;
       state.files.push(json);
     }catch(err){
       trayError.textContent = err.message || 'Upload failed';
@@ -857,7 +887,7 @@ confirmBtn.addEventListener('click', ()=>{
     : state.files[0].fileName;
   document.getElementById('mPages').textContent = totalPages;
   document.getElementById('mOrientation').textContent = state.orientation === 'portrait' ? 'Portrait' : 'Landscape';
-  document.getElementById('mMode').textContent = state.mode === 'auto' ? 'Auto' : state.mode === 'color' ? 'Color' : 'Black & White';
+  document.getElementById('mMode').textContent = modeSummaryLabel();
   document.getElementById('mSide').textContent = state.side === 'single' ? 'Single side' : 'Double side';
   document.getElementById('mPaper').textContent = state.paperSize.toUpperCase();
   document.getElementById('mPaperType').textContent = PAPER_TYPE_LABELS[state.paperType] || 'Normal';
@@ -868,6 +898,14 @@ confirmBtn.addEventListener('click', ()=>{
   confirmModal.classList.add('show');
 });
 document.getElementById('modalCancel').addEventListener('click', ()=> confirmModal.classList.remove('show'));
+
+function modeLabel(mode){
+  return mode === 'color' ? 'Color' : mode === 'bw' ? 'Black & White' : 'Auto';
+}
+function modeSummaryLabel(){
+  const modes = new Set(state.files.map((f) => f.printMode || 'auto'));
+  return modes.size === 1 ? modeLabel([...modes][0]) : 'Mixed';
+}
 
 function buildOrderPayload(){
   return {
@@ -880,10 +918,11 @@ function buildOrderPayload(){
       fileType: f.fileType,
       pageCount: f.pageCount,
       colorPageCount: f.colorCount,
-      fileSize: f.fileSize
+      fileSize: f.fileSize,
+      printMode: f.printMode || 'auto'
     })),
     orientation: state.orientation,
-    printMode: state.mode,
+    printMode: modeSummaryLabel() === 'Mixed' ? 'mixed' : state.mode,
     printSide: state.side,
     paperSize: state.paperSize,
     paperType: state.paperSize === 'a4' ? state.paperType : 'normal',

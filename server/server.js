@@ -212,6 +212,27 @@ app.get('/api/me', requireCustomer, (req, res) => {
   return res.json({ user: publicUser(user) })
 })
 
+// View-only order history for the logged-in customer — deliberately omits
+// delivery address and other internal fields (downloads remain admin-only).
+app.get('/api/my/orders', requireCustomer, (req, res) => {
+  const orders = db.listOrdersForCustomer(req.userId).map((o) => {
+    let files = []
+    try { files = o.files_json ? JSON.parse(o.files_json) : [] } catch (err) { files = [] }
+    return {
+      id: o.id,
+      created_at: o.created_at,
+      order_status: o.order_status,
+      total_amount: o.total_amount,
+      paper_size: o.paper_size,
+      paper_type: o.paper_type,
+      print_mode: o.print_mode,
+      copies: o.copies,
+      fileNames: files.length ? files.map((f) => f.fileName) : [o.file_name].filter(Boolean)
+    }
+  })
+  return res.json({ orders })
+})
+
 // Public — the OAuth Client ID is not secret; the frontend needs it to render the Google button.
 app.get('/api/auth/config', (req, res) => {
   res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || '' })
@@ -337,26 +358,34 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'missing_file_info' })
   }
 
-  let totalPageCount = 0
-  let totalColorPageCount = 0
+  const VALID_MODES = ['auto', 'color', 'bw']
   let totalFileSize = 0
+  let totalColorPages = 0
+  let totalBwPages = 0
   const safeFiles = []
   for (const f of files) {
     const safeFileId = path.basename(String(f.fileId || ''))
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
       return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
     }
-    totalPageCount += Number(f.pageCount) || 0
-    totalColorPageCount += Number(f.colorPageCount) || 0
-    totalFileSize += Number(f.fileSize) || 0
-    safeFiles.push({
+    const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
+    const fileData = {
       fileId: safeFileId,
       fileName: f.fileName || safeFileId,
       fileType: f.fileType || null,
       pageCount: Number(f.pageCount) || 0,
       colorPageCount: Number(f.colorPageCount) || 0,
-      fileSize: Number(f.fileSize) || 0
-    })
+      fileSize: Number(f.fileSize) || 0,
+      printMode: fileMode
+    }
+    const { colorPages, bwPages } = pricing.resolveFileColorPages(
+      { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
+      fileMode
+    )
+    totalColorPages += colorPages
+    totalBwPages += bwPages
+    totalFileSize += fileData.fileSize
+    safeFiles.push(fileData)
   }
   if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
     return res.status(400).json({ error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' })
@@ -365,11 +394,14 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'missing_delivery_address' })
   }
 
+  const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
+  const fileModes = new Set(safeFiles.map((f) => f.printMode))
+  const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
+
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
-    pageCount: totalPageCount,
-    colorPageCount: totalColorPageCount,
-    printMode: printMode || 'auto',
+    colorPages: totalColorPages,
+    bwPages: totalBwPages,
     printSide: printSide || 'single',
     paperSize: paperSize || 'a4',
     paperType: paperType || 'normal',
@@ -416,7 +448,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     page_count: totalPageCount,
     files_json: JSON.stringify(safeFiles),
     orientation: orientation || 'portrait',
-    print_mode: printMode || 'auto',
+    print_mode: summaryMode,
     print_side: printSide || 'single',
     copies: Number(copies) || 1,
     paper_size: paperSize || 'a4',

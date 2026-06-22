@@ -245,6 +245,14 @@ function listOrders({ status, search, limit, offset } = {}) {
   return db.prepare(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params)
 }
 
+function listOrdersForCustomer(customerId) {
+  return db.prepare(`
+    SELECT * FROM orders
+    WHERE customer_id = ? AND payment_status = 'paid'
+    ORDER BY created_at DESC
+  `).all(customerId)
+}
+
 function listCustomers() {
   return db.prepare(`
     SELECT
@@ -314,6 +322,7 @@ module.exports = {
   getOrder,
   updateOrder,
   listOrders,
+  listOrdersForCustomer,
   listOrdersForFileCleanup,
   listCustomers,
   createPrintJob,

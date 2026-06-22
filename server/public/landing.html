@@ -467,6 +467,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
     </div>
     <div class="h-actions hidden" id="loggedInActions">
       <span class="hi-text" id="hiText">Hi, there</span>
+      <button class="btn-ghost-sm" onclick="showPage('orders')">My Orders</button>
       <button class="btn-ghost-sm" onclick="customerLogout()">Log out</button>
     </div>
     <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu" id="hamburgerBtn">
@@ -485,6 +486,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <button class="btn-orange-sm" onclick="closeMobileMenu();openModal('signup')">Sign up</button>
       </div>
       <div class="mm-actions hidden" id="mmLoggedInActions">
+        <button class="btn-ghost-sm" onclick="closeMobileMenu();showPage('orders')">My Orders</button>
         <button class="btn-ghost-sm" onclick="closeMobileMenu();customerLogout()">Log out</button>
       </div>
     </div>
@@ -717,6 +719,20 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 
 </div><!-- /page-home -->
 
+<!-- ================ PAGE: MY ORDERS ================ -->
+<div class="page" id="page-orders">
+  <div class="policy-wrap">
+    <div class="section-eyebrow" style="margin-bottom:10px;">Your account</div>
+    <h1>My Orders</h1>
+    <p class="meta" id="ordersMeta">Orders placed while logged in, once payment is confirmed.</p>
+    <div id="ordersLoggedOut" class="hidden" style="padding:40px 0;text-align:center;">
+      <p style="margin-bottom:16px;color:var(--ink2);">Log in to see your order history.</p>
+      <button class="btn-hero btn-hero-primary" onclick="openModal('login')">Log in</button>
+    </div>
+    <div class="pricing-table" id="ordersTable" style="margin-top:24px;"></div>
+  </div>
+</div>
+
 <!-- ================ PAGE: POLICY ================ -->
 <div class="page" id="page-policy">
   <div class="policy-wrap">
@@ -830,7 +846,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <li><a onclick="showPage('home'); scrollToSection('services')">Our services</a></li>
         <li><a onclick="showPage('home'); scrollToSection('pricing')">Pricing</a></li>
         <li><a onclick="showPage('home'); scrollToSection('how')">How it works</a></li>
-        <li><a onclick="openModal('login')">Track my order</a></li>
+        <li><a onclick="getCustomerToken() ? showPage('orders') : openModal('login')">Track my order</a></li>
       </ul>
     </div>
     <div class="footer-col">
@@ -1054,6 +1070,43 @@ function showPage(id){
   document.querySelectorAll('.mobile-menu a').forEach(a=>a.classList.remove('active'));
   const mnavEl = document.getElementById('mnav-'+id);
   if(mnavEl) mnavEl.classList.add('active');
+  if(id === 'orders') loadMyOrders();
+}
+
+const ORDER_MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
+function loadMyOrders(){
+  const token = getCustomerToken();
+  const table = document.getElementById('ordersTable');
+  const loggedOut = document.getElementById('ordersLoggedOut');
+  if(!token){
+    loggedOut.classList.remove('hidden');
+    table.innerHTML = '';
+    return;
+  }
+  loggedOut.classList.add('hidden');
+  table.innerHTML = '<div class="pt-row"><span class="name">Loading…</span></div>';
+  fetch('/api/my/orders', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => { if(!r.ok) throw new Error('unauthorized'); return r.json(); })
+    .then(data => {
+      const orders = data.orders || [];
+      if(!orders.length){
+        table.innerHTML = '<div class="pt-row"><span class="name">No orders yet — place your first order to see it here.</span></div>';
+        return;
+      }
+      table.innerHTML =
+        '<div class="pt-head"><span>Order</span><span>Status</span><span>Amount</span></div>' +
+        orders.map((o) => {
+          const itemSummary = o.fileNames.length > 1
+            ? `${o.fileNames[0]} +${o.fileNames.length - 1} more`
+            : (o.fileNames[0] || '—');
+          const dateStr = new Date(o.created_at).toLocaleDateString();
+          return '<div class="pt-row"><span class="name">' + o.id + '<br><span class="note">' + itemSummary + ' · ' + dateStr + ' · ' + (ORDER_MODE_LABELS[o.print_mode] || o.print_mode) + '</span></span><span>' + o.order_status + '</span><span class="price">₹' + o.total_amount + '</span></div>';
+        }).join('');
+    })
+    .catch(() => {
+      loggedOut.classList.remove('hidden');
+      table.innerHTML = '';
+    });
 }
 
 function scrollToSection(id){

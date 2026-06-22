@@ -261,12 +261,15 @@ function statusSelectHtml(orderId, current){
     '</select>';
 }
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, deleted){
+const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
+
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
+  const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
   const action = deleted
     ? '<span class="subtle">File auto-deleted after 7 days</span>'
     : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
-  return '<li><span>' + fileName + meta + '</span> ' + action + '</li>';
+  return '<li><span>' + fileName + meta + modeText + '</span> ' + action + '</li>';
 }
 
 function filesDetailHtml(o){
@@ -274,11 +277,11 @@ function filesDetailHtml(o){
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
   if (!files || !files.length) {
     return '<div><strong>File:</strong></div><ul class="file-list">' +
-      fileRowHtml(o.id, o.file_path, o.file_name, null, !!o.files_deleted_at) +
+      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at) +
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, !!o.files_deleted_at)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at)).join('') +
     '</ul>';
 }
 
@@ -321,7 +324,7 @@ function renderOrders(orders){
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
       filesDetailHtml(o) +
-      '<div><strong>Paper:</strong> ' + o.paper_size + (o.paper_type ? ' (' + o.paper_type + ')' : '') + ' · ' + o.print_mode + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
+      '<div><strong>Paper:</strong> ' + o.paper_size + (o.paper_type ? ' (' + o.paper_type + ')' : '') + ' · ' + (o.print_mode === 'mixed' ? 'Mixed' : (MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
       '<div><strong>Delivery:</strong> ' + o.delivery_method +
         (o.delivery_method === 'delivery' ? ' — ' + o.delivery_address + ', ' + o.delivery_city + ', ' + o.delivery_state + ' ' + o.delivery_pincode : '') +
       '</div>' +
