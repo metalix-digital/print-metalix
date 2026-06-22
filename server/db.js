@@ -59,11 +59,11 @@ db.exec(`
 
 const DEFAULT_PRICING = {
   rates: {
-    a4: { bw: { single: 3, double: 5 }, color: { single: 10, double: 18 } },
-    a3: { bw: { single: 6, double: 10 }, color: { single: 20, double: 36 } }
+    a4: { bw: { single: 1.5, double: 2.5 }, color: { single: 6, double: 10 } },
+    a3: { bw: { single: 4, double: 7 }, color: { single: 14, double: 24 } }
   },
   deliveryCharge: 30,
-  gstPercent: 0
+  gstPercent: 5
 }
 
 const seedPricing = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
@@ -116,6 +116,38 @@ function updateOrder(id, updates) {
   return getOrder(id)
 }
 
+function listOrders({ status, search, limit, offset } = {}) {
+  const clauses = []
+  const params = {}
+  if (status) {
+    clauses.push('order_status = @status')
+    params.status = status
+  }
+  if (search) {
+    clauses.push('(customer_name LIKE @search OR customer_mobile LIKE @search OR id LIKE @search)')
+    params.search = `%${search}%`
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  params.limit = limit || 50
+  params.offset = offset || 0
+  return db.prepare(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params)
+}
+
+function listCustomers() {
+  return db.prepare(`
+    SELECT
+      customer_mobile,
+      customer_name,
+      customer_email,
+      COUNT(*) as order_count,
+      SUM(total_amount) as total_spent,
+      MAX(created_at) as last_order_at
+    FROM orders
+    GROUP BY customer_mobile
+    ORDER BY last_order_at DESC
+  `).all()
+}
+
 function createPrintJob(orderId) {
   const now = Date.now()
   const info = db.prepare('INSERT INTO print_jobs (order_id, status, created_at, updated_at) VALUES (?, ?, ?, ?)')
@@ -138,6 +170,8 @@ module.exports = {
   createOrder,
   getOrder,
   updateOrder,
+  listOrders,
+  listCustomers,
   createPrintJob,
   updatePrintJob
 }

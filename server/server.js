@@ -2,9 +2,29 @@ const express = require('express')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
 const app = express()
 
 app.use(express.json())
+
+// Read at request time, not at module load — loadSecretsIntoEnv() (see bottom of
+// this file) populates these from Secret Manager asynchronously before the
+// server starts listening, so by the time any request arrives they're set.
+function getAdminJwtSecret() {
+  return process.env.ADMIN_JWT_SECRET || 'dev-only-insecure-secret'
+}
+
+function requireAdmin(req, res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    jwt.verify(token, getAdminJwtSecret())
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+}
 
 const multer = require('multer')
 const db = require('./db')
@@ -96,6 +116,50 @@ app.post('/api/upload', (req, res) => {
 
 app.get('/api/pricing', (req, res) => {
   res.json(db.getPricing())
+})
+
+app.post('/api/admin/login', express.json(), (req, res) => {
+  const { password } = req.body || {}
+  const adminPassword = process.env.ADMIN_PASSWORD || 'metalix-admin'
+  if (password !== adminPassword) {
+    return res.status(401).json({ error: 'invalid_password' })
+  }
+  const token = jwt.sign({ role: 'admin' }, getAdminJwtSecret(), { expiresIn: '12h' })
+  return res.json({ token })
+})
+
+app.get('/api/admin/orders', requireAdmin, (req, res) => {
+  const { status, search, limit, offset } = req.query
+  const orders = db.listOrders({
+    status: status || undefined,
+    search: search || undefined,
+    limit: limit ? Number(limit) : undefined,
+    offset: offset ? Number(offset) : undefined
+  })
+  return res.json({ orders })
+})
+
+app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  const { order_status, failure_reason } = req.body || {}
+  const updates = {}
+  if (order_status !== undefined) updates.order_status = order_status
+  if (failure_reason !== undefined) updates.failure_reason = failure_reason
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
+  const updated = db.updateOrder(order.id, updates)
+  return res.json({ order: updated })
+})
+
+app.get('/api/admin/customers', requireAdmin, (req, res) => {
+  return res.json({ customers: db.listCustomers() })
+})
+
+app.put('/api/admin/pricing', requireAdmin, express.json(), (req, res) => {
+  const pricing = req.body
+  if (!pricing || !pricing.rates) return res.status(400).json({ error: 'invalid_pricing' })
+  db.setPricing(pricing)
+  return res.json(db.getPricing())
 })
 
 // Create an order: validates the previously-uploaded file still exists,
@@ -285,6 +349,16 @@ if (fs.existsSync(publicDir)) {
   })
 }
 
+// Marketing landing page at the root path, served ahead of the SPA catch-all below.
+app.get('/', (req, res) => {
+  res.sendFile(path.join(publicDir, 'landing.html'))
+})
+
+// Password-protected admin dashboard (orders, customers, pricing).
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(publicDir, 'admin.html'))
+})
+
 // If a production client build exists, serve it (single-process deploy)
 const clientDist = path.join(__dirname, '..', 'client', 'dist')
 if (fs.existsSync(clientDist)) {
@@ -297,5 +371,8 @@ if (fs.existsSync(clientDist)) {
 const { loadSecretsIntoEnv } = require('./secrets')
 const PORT = process.env.PORT || 5050
 loadSecretsIntoEnv().then(() => {
+  if (!process.env.ADMIN_PASSWORD || !process.env.ADMIN_JWT_SECRET) {
+    console.warn('Warning: ADMIN_PASSWORD/ADMIN_JWT_SECRET not set, using insecure development defaults.')
+  }
   app.listen(PORT, () => console.log(`Running on ${PORT}`))
 })

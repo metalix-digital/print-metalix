@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Metalix Print — Upload · Print · Deliver</title>
+<link rel="icon" type="image/png" href="/logo.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Inter',sans-serif;background:#FAFAF8;color:#1C1917;-webkit-font-smoothing:antialiased;}
+
+/* -- TOKENS -- */
+:root{
+  --orange:#FF6600;
+  --orange-d:#E05500;
+  --orange-l:#FFF4EB;
+  --ink:#1C1917;
+  --ink2:#44403C;
+  --ink3:#78716C;
+  --line:#E7E5E4;
+  --white:#FFFFFF;
+  --paper:#FAFAF8;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+  --shadow-lg:0 2px 4px rgba(0,0,0,.06),0 20px 48px -12px rgba(0,0,0,.22);
+}
+
+/* -- HEADER -- */
+header{
+  position:sticky;top:0;z-index:50;
+  background:rgba(250,250,248,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.header-inner{
+  max-width:1140px;margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;gap:8px;height:64px;
+}
+.h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;}
+.h-logo img{width:34px;height:34px;border-radius:50%;}
+.h-logo span{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;}
+nav{display:flex;align-items:center;gap:2px;margin-left:32px;}
+nav a{
+  font-size:14px;font-weight:500;color:var(--ink2);text-decoration:none;
+  padding:8px 14px;border-radius:8px;transition:all .15s;cursor:pointer;
+}
+nav a:hover{color:var(--ink);background:#F5F4F2;}
+nav a.active{color:var(--orange);}
+.h-space{flex:1;}
+.h-actions{display:flex;align-items:center;gap:10px;}
+.btn-ghost-sm{
+  font-size:14px;font-weight:600;color:var(--ink);
+  background:none;border:1.5px solid var(--line);border-radius:9px;
+  padding:8px 18px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;
+}
+.btn-ghost-sm:hover{border-color:#C7C4C0;background:#F5F4F2;}
+.btn-orange-sm{
+  font-size:14px;font-weight:700;color:#fff;
+  background:var(--orange);border:none;border-radius:9px;
+  padding:9px 20px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;
+  box-shadow:0 4px 12px -4px rgba(255,102,0,.45);
+}
+.btn-orange-sm:hover{background:var(--orange-d);box-shadow:0 6px 16px -4px rgba(255,102,0,.55);}
+.hamburger{display:none;background:none;border:none;cursor:pointer;padding:6px;}
+@media(max-width:768px){
+  nav{display:none;}
+  .hamburger{display:flex;flex-direction:column;gap:5px;}
+  .hamburger span{display:block;width:22px;height:2px;background:var(--ink);border-radius:2px;}
+}
+
+/* -- PAGE VIEWS -- */
+.page{display:none;}
+.page.active{display:block;}
+
+/* -- HERO -- */
+.hero{
+  max-width:1140px;margin:0 auto;padding:88px 24px 72px;
+  display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;
+}
+@media(max-width:860px){.hero{grid-template-columns:1fr;padding:56px 24px 48px;gap:40px;}}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+  color:var(--orange);background:var(--orange-l);border:1px solid #FFCCA0;
+  padding:6px 12px;border-radius:999px;margin-bottom:22px;
+}
+.hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:blink 2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.hero h1{
+  font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(36px,5vw,58px);
+  line-height:1.08;letter-spacing:-.03em;margin-bottom:22px;
+}
+.hero h1 em{font-style:normal;color:var(--orange);}
+.hero-sub{font-size:17px;color:var(--ink2);line-height:1.65;margin-bottom:34px;max-width:460px;}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;}
+.btn-hero{
+  font-family:'Inter',sans-serif;font-weight:700;font-size:15.5px;
+  padding:14px 28px;border-radius:11px;cursor:pointer;border:none;
+  transition:all .15s;display:inline-flex;align-items:center;gap:8px;
+}
+.btn-hero-primary{
+  background:var(--orange);color:#fff;
+  box-shadow:0 10px 28px -10px rgba(255,102,0,.55);
+}
+.btn-hero-primary:hover{background:var(--orange-d);box-shadow:0 14px 32px -10px rgba(255,102,0,.65);transform:translateY(-1px);}
+.btn-hero-secondary{background:#fff;color:var(--ink);border:1.5px solid var(--line);}
+.btn-hero-secondary:hover{border-color:#C7C4C0;background:#F5F4F2;}
+
+.hero-stats{display:flex;gap:28px;margin-top:36px;flex-wrap:wrap;}
+.stat{border-left:2px solid var(--line);padding-left:18px;}
+.stat .snum{font-family:'Syne',sans-serif;font-weight:700;font-size:24px;color:var(--ink);}
+.stat .slabel{font-size:12.5px;color:var(--ink3);margin-top:2px;}
+
+/* -- HERO VISUAL -- */
+.hero-visual{position:relative;}
+.mock-card{
+  background:#fff;border-radius:20px;padding:28px;
+  box-shadow:var(--shadow-lg);border:1px solid var(--line);
+}
+.mock-upload{
+  border:2px dashed #DDD9D4;border-radius:12px;padding:28px 20px;
+  text-align:center;background:#FAFAF8;margin-bottom:18px;
+}
+.mock-upload .icon{font-size:28px;margin-bottom:8px;}
+.mock-upload .label{font-size:13px;font-weight:600;color:var(--ink2);}
+.mock-upload .sub{font-size:12px;color:var(--ink3);margin-top:3px;}
+.mock-receipt{background:#FAFAF8;border-radius:10px;padding:16px;margin-bottom:18px;}
+.mock-row{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;color:var(--ink2);}
+.mock-row b{color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:12px;}
+.mock-total{display:flex;justify-content:space-between;border-top:1.5px dashed #DDD9D4;margin-top:8px;padding-top:10px;}
+.mock-total .tl{font-weight:700;font-size:14px;}
+.mock-total .tv{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:20px;color:var(--orange);}
+.mock-btn{background:var(--orange);color:#fff;border:none;border-radius:9px;width:100%;padding:13px;font-weight:700;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;}
+.float-badge{
+  position:absolute;background:#fff;border-radius:12px;padding:10px 14px;
+  box-shadow:var(--shadow-lg);border:1px solid var(--line);
+  font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px;
+  animation:float 3s ease-in-out infinite;
+}
+.float-badge.one{top:-18px;right:-12px;animation-delay:0s;}
+.float-badge.two{bottom:24px;left:-20px;animation-delay:1.5s;}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+@media(max-width:860px){.hero-visual{max-width:380px;margin:0 auto;}.float-badge.two{left:0;}}
+
+/* -- TICKET DIVIDER -- */
+.ticket-divider{
+  background:var(--orange);
+  padding:0;margin:0;
+  position:relative;overflow:hidden;
+}
+.ticket-divider::before{
+  content:'';position:absolute;top:-20px;left:0;right:0;height:40px;
+  background:var(--paper);
+  clip-path:ellipse(55% 100% at 50% 0%);
+}
+.ticket-divider::after{
+  content:'';position:absolute;bottom:-20px;left:0;right:0;height:40px;
+  background:var(--paper);
+  clip-path:ellipse(55% 100% at 50% 100%);
+}
+.ticket-inner{
+  max-width:1140px;margin:0 auto;padding:52px 24px;
+  display:flex;justify-content:space-around;align-items:center;flex-wrap:wrap;gap:20px;
+  position:relative;z-index:1;
+}
+.ticket-item{text-align:center;color:#fff;}
+.ticket-item .ti-num{font-family:'Syne',sans-serif;font-weight:800;font-size:32px;}
+.ticket-item .ti-label{font-size:13px;opacity:.85;margin-top:3px;font-weight:500;}
+
+/* -- SECTIONS -- */
+.section{padding:80px 24px;}
+.section-inner{max-width:1140px;margin:0 auto;}
+.section-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--orange);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;}
+.section-title{font-family:'Syne',sans-serif;font-weight:700;font-size:clamp(26px,3.5vw,38px);letter-spacing:-.02em;margin-bottom:14px;}
+.section-sub{font-size:16px;color:var(--ink2);line-height:1.65;max-width:560px;}
+
+/* -- HOW IT WORKS -- */
+.how-grid{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:0;
+  margin-top:52px;position:relative;
+}
+@media(max-width:860px){.how-grid{grid-template-columns:1fr;gap:0;}}
+.how-step{padding:28px 20px;position:relative;text-align:center;}
+.how-step::after{
+  content:'→';position:absolute;right:-8px;top:28px;
+  color:var(--orange);font-size:20px;font-weight:700;
+}
+.how-step:last-child::after{display:none;}
+@media(max-width:860px){
+  .how-step::after{content:'↓';right:50%;top:auto;bottom:-14px;transform:translateX(50%);}
+  .how-step{padding:20px 28px 34px;}
+}
+.how-icon{
+  width:56px;height:56px;border-radius:14px;
+  background:var(--orange-l);border:1px solid #FFCCA0;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 14px;font-size:24px;
+}
+.how-step h3{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;margin-bottom:6px;}
+.how-step p{font-size:13px;color:var(--ink3);line-height:1.55;}
+
+/* -- SERVICES -- */
+.section-tint{background:var(--orange-l);}
+.services-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px;}
+@media(max-width:860px){.services-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:520px){.services-grid{grid-template-columns:1fr;}}
+.service-card{
+  background:#fff;border:1px solid #FFD9B8;border-radius:16px;padding:24px;
+  transition:all .2s;
+}
+.service-card:hover{border-color:var(--orange);transform:translateY(-2px);box-shadow:var(--shadow);}
+.service-card .sc-icon{font-size:28px;margin-bottom:12px;}
+.service-card h3{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;}
+.service-card p{font-size:13px;color:var(--ink3);line-height:1.55;}
+.service-card .price{
+  font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;
+  color:var(--orange);margin-top:12px;
+}
+
+/* -- PRICING -- */
+.pricing-table{
+  margin-top:46px;background:#fff;border-radius:18px;border:1px solid var(--line);
+  overflow:hidden;box-shadow:var(--shadow);
+}
+.pt-head{
+  display:grid;grid-template-columns:2fr 1fr 1fr;
+  background:var(--ink);color:#fff;padding:16px 28px;
+  font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+}
+.pt-row{
+  display:grid;grid-template-columns:2fr 1fr 1fr;
+  padding:16px 28px;border-bottom:1px solid var(--line);
+  font-size:14.5px;align-items:center;transition:background .12s;
+}
+.pt-row:last-child{border-bottom:none;}
+.pt-row:hover{background:#FAFAF8;}
+.pt-row .name{font-weight:600;}
+.pt-row .price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--orange);}
+.pt-row .note{font-size:12px;color:var(--ink3);}
+@media(max-width:600px){
+  .pt-head,.pt-row{grid-template-columns:1fr 1fr;gap:4px;}
+  .pt-row .note{display:none;}
+  .pt-head span:last-child{display:none;}
+}
+
+/* -- CONTACT -- */
+.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:48px;align-items:start;}
+@media(max-width:800px){.contact-grid{grid-template-columns:1fr;gap:32px;}}
+.contact-info .ci-item{display:flex;gap:14px;margin-bottom:26px;align-items:flex-start;}
+.ci-icon{width:42px;height:42px;border-radius:10px;background:var(--orange-l);border:1px solid #FFCCA0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.ci-title{font-weight:700;font-size:14px;margin-bottom:3px;}
+.ci-val{font-size:13.5px;color:var(--ink2);line-height:1.55;}
+.ci-val a{color:var(--orange);font-weight:600;text-decoration:none;}
+.ci-val a:hover{text-decoration:underline;}
+.hours-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;color:var(--ink2);margin-top:6px;}
+.hours-grid .day{font-weight:600;color:var(--ink);}
+
+.contact-form{background:#fff;border-radius:18px;padding:32px;border:1px solid var(--line);box-shadow:var(--shadow);}
+.contact-form h3{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:22px;}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.field input,.field textarea,.field select{
+  width:100%;border:1.5px solid var(--line);border-radius:10px;
+  padding:12px 14px;font-family:'Inter',sans-serif;font-size:14.5px;
+  color:var(--ink);background:var(--paper);
+  transition:border-color .15s,background .15s;
+}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--orange);background:#fff;}
+.field textarea{min-height:110px;resize:vertical;}
+
+/* -- POLICY PAGE -- */
+.policy-wrap{max-width:800px;margin:0 auto;padding:60px 24px 80px;}
+.policy-wrap h1{font-family:'Syne',sans-serif;font-weight:800;font-size:36px;letter-spacing:-.02em;margin-bottom:8px;}
+.policy-wrap .meta{font-size:13px;color:var(--ink3);margin-bottom:40px;}
+.policy-tabs{display:flex;gap:0;border-bottom:2px solid var(--line);margin-bottom:36px;}
+.ptab{
+  font-size:14px;font-weight:600;color:var(--ink3);background:none;border:none;
+  cursor:pointer;padding:12px 22px;border-bottom:2.5px solid transparent;margin-bottom:-2px;
+  transition:all .15s;font-family:'Inter',sans-serif;
+}
+.ptab.active{color:var(--orange);border-bottom-color:var(--orange);}
+.ptab:hover:not(.active){color:var(--ink);}
+.ptab-content{display:none;}
+.ptab-content.active{display:block;}
+.ptab-content h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;margin:32px 0 12px;}
+.ptab-content h2:first-child{margin-top:0;}
+.ptab-content p{font-size:15px;color:var(--ink2);line-height:1.75;margin-bottom:14px;}
+.ptab-content ul{padding-left:20px;margin:0 0 16px;}
+.ptab-content li{font-size:15px;color:var(--ink2);line-height:1.75;margin-bottom:6px;}
+.ptab-content strong{color:var(--ink);}
+.callout{
+  background:var(--orange-l);border-left:4px solid var(--orange);
+  border-radius:0 10px 10px 0;padding:16px 20px;margin:20px 0;
+}
+.callout p{color:var(--ink);margin:0;}
+
+/* -- FOOTER -- */
+footer{background:var(--ink);color:#fff;padding:64px 0 0;}
+.footer-grid{
+  max-width:1140px;margin:0 auto;padding:0 24px 48px;
+  display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px;
+}
+@media(max-width:900px){.footer-grid{grid-template-columns:1fr 1fr;gap:32px;}}
+@media(max-width:520px){.footer-grid{grid-template-columns:1fr;gap:24px;}}
+.footer-brand{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.footer-brand img{width:36px;height:36px;border-radius:50%;}
+.footer-brand span{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;}
+.footer-col p{font-size:13.5px;color:#A8A29E;line-height:1.7;margin-bottom:18px;}
+.footer-col h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#78716C;margin-bottom:16px;}
+.footer-col ul{list-style:none;}
+.footer-col ul li{margin-bottom:10px;}
+.footer-col ul a{font-size:14px;color:#A8A29E;text-decoration:none;cursor:pointer;transition:color .15s;}
+.footer-col ul a:hover{color:#FF8C40;}
+.fcontact{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:13.5px;color:#A8A29E;line-height:1.5;}
+.fcontact a{color:#FF8C40;text-decoration:none;font-weight:600;}
+.fcontact a:hover{text-decoration:underline;}
+.social-row{display:flex;gap:10px;margin-top:18px;}
+.social-btn{
+  width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;
+  font-size:16px;cursor:pointer;transition:all .15s;text-decoration:none;color:#fff;
+}
+.social-btn:hover{background:var(--orange);border-color:var(--orange);}
+.footer-bottom{
+  border-top:1px solid rgba(255,255,255,.08);
+  max-width:1140px;margin:0 auto;padding:20px 24px;
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
+}
+.footer-bottom span{font-size:13px;color:#78716C;}
+
+/* -- LOGIN MODAL -- */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);
+  z-index:100;display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.show{display:flex;}
+.modal{
+  background:#fff;border-radius:22px;padding:36px;
+  width:100%;max-width:430px;position:relative;
+  box-shadow:0 30px 60px -20px rgba(0,0,0,.4);
+  animation:modalIn .25s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes modalIn{from{transform:scale(.94) translateY(12px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
+.modal-close{
+  position:absolute;top:16px;right:16px;
+  width:30px;height:30px;border-radius:50%;background:#F5F4F2;border:none;
+  font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--ink2);transition:background .15s;
+}
+.modal-close:hover{background:#E7E5E4;}
+.modal-logo{text-align:center;margin-bottom:22px;}
+.modal-logo img{width:46px;height:46px;border-radius:50%;margin-bottom:10px;}
+.modal-logo h2{font-family:'Syne',sans-serif;font-weight:700;font-size:22px;margin-bottom:4px;}
+.modal-logo p{font-size:13.5px;color:var(--ink3);}
+.modal-tabs{display:flex;background:#F5F4F2;border-radius:10px;padding:3px;gap:3px;margin-bottom:24px;}
+.mtab{flex:1;padding:9px;border-radius:8px;border:none;background:none;font-weight:600;font-size:14px;cursor:pointer;color:var(--ink3);font-family:'Inter',sans-serif;transition:all .15s;}
+.mtab.active{background:#fff;color:var(--ink);box-shadow:0 2px 6px rgba(0,0,0,.1);}
+.modal-pane{display:none;}
+.modal-pane.active{display:block;}
+.google-btn{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  border:1.5px solid var(--line);border-radius:10px;padding:12px;
+  background:#fff;font-size:14.5px;font-weight:600;color:var(--ink);
+  cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:18px;
+  transition:all .15s;
+}
+.google-btn:hover{border-color:#C7C4C0;background:#F9F8F6;}
+.google-btn svg{flex-shrink:0;}
+.divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line);}
+.divider span{font-size:12px;color:var(--ink3);white-space:nowrap;font-weight:500;}
+.modal-field{margin-bottom:16px;}
+.modal-field label{display:block;font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;}
+.modal-field input{
+  width:100%;border:1.5px solid var(--line);border-radius:10px;
+  padding:12px 14px;font-size:14.5px;font-family:'Inter',sans-serif;
+  color:var(--ink);background:var(--paper);transition:border-color .15s,background .15s;
+}
+.modal-field input:focus{outline:none;border-color:var(--orange);background:#fff;}
+.modal-field .pass-row{position:relative;}
+.modal-field .pass-row input{padding-right:44px;}
+.modal-field .toggle-pass{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;font-size:16px;color:var(--ink3);
+}
+.submit-btn{
+  width:100%;padding:13px;border-radius:10px;border:none;
+  background:var(--orange);color:#fff;font-weight:700;font-size:15px;
+  font-family:'Inter',sans-serif;cursor:pointer;margin-top:6px;
+  box-shadow:0 8px 20px -8px rgba(255,102,0,.5);
+  transition:all .15s;
+}
+.submit-btn:hover{background:var(--orange-d);box-shadow:0 10px 24px -8px rgba(255,102,0,.6);transform:translateY(-1px);}
+.modal-footer-text{text-align:center;font-size:12.5px;color:var(--ink3);margin-top:16px;}
+.modal-footer-text a{color:var(--orange);font-weight:600;cursor:pointer;text-decoration:none;}
+.pass-strength{height:4px;border-radius:2px;background:var(--line);margin-top:8px;overflow:hidden;}
+.pass-strength-bar{height:100%;border-radius:2px;width:0;transition:width .3s,background .3s;}
+.pass-hint{font-size:11.5px;color:var(--ink3);margin-top:5px;}
+.terms-check{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--ink2);margin-bottom:16px;line-height:1.5;}
+.terms-check input[type=checkbox]{margin-top:2px;accent-color:var(--orange);}
+.terms-check a{color:var(--orange);font-weight:600;cursor:pointer;}
+.modal-success{text-align:center;padding:20px 0;}
+.modal-success .si{font-size:48px;margin-bottom:14px;}
+.modal-success h3{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:6px;}
+.modal-success p{font-size:14px;color:var(--ink2);}
+
+/* -- TOAST -- */
+.toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(16px);
+  background:var(--ink);color:#fff;padding:13px 20px;border-radius:10px;
+  font-size:14px;font-weight:600;display:flex;align-items:center;gap:9px;
+  box-shadow:0 12px 32px -10px rgba(0,0,0,.4);
+  opacity:0;pointer-events:none;z-index:200;white-space:nowrap;
+  transition:all .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast .ti{font-size:16px;}
+
+/* -- MISC BUTTONS -- */
+.btn-full{width:100%;}
+.mt-8{margin-top:8px;}
+.text-center{text-align:center;}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+
+<!-- ================ HEADER ================ -->
+<header>
+  <div class="header-inner">
+    <a class="h-logo" onclick="showPage('home')">
+      <img src="/logo.png" alt="Metalix Print">
+      <span>Metalix Print</span>
+    </a>
+    <nav>
+      <a onclick="showPage('home')" class="active" id="nav-home">Home</a>
+      <a onclick="showPage('home'); scrollToSection('services')" id="nav-services">Services</a>
+      <a onclick="showPage('home'); scrollToSection('pricing')" id="nav-pricing">Pricing</a>
+      <a onclick="showPage('home'); scrollToSection('contact')" id="nav-contact">Contact</a>
+      <a onclick="showPage('policy')" id="nav-policy">Policies</a>
+    </nav>
+    <div class="h-space"></div>
+    <div class="h-actions">
+      <button class="btn-ghost-sm" onclick="openModal('login')">Log in</button>
+      <button class="btn-orange-sm" onclick="openModal('signup')">Sign up</button>
+    </div>
+    <button class="hamburger" onclick="openModal('login')" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<!-- ================ PAGE: HOME ================ -->
+<div class="page active" id="page-home">
+
+  <!-- HERO -->
+  <section>
+    <div class="hero">
+      <div class="hero-content">
+        <div class="hero-eyebrow"><span class="dot"></span> Open now · Gurugram</div>
+        <h1>Print anything.<br><em>Delivered fast.</em></h1>
+        <p class="hero-sub">Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.</p>
+        <div class="hero-actions">
+          <button class="btn-hero btn-hero-primary" onclick="window.location.href='/order'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Start your order
+          </button>
+          <button class="btn-hero btn-hero-secondary" onclick="showPage('home'); scrollToSection('how')">How it works →</button>
+        </div>
+        <div class="hero-stats">
+          <div class="stat"><div class="snum" id="stat-bw-price">₹1.5</div><div class="slabel">per B/W page</div></div>
+          <div class="stat"><div class="snum">3–4 hrs</div><div class="slabel">avg. turnaround</div></div>
+          <div class="stat"><div class="snum">500+</div><div class="slabel">orders completed</div></div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="float-badge one">✓ Order #MX50412 confirmed</div>
+        <div class="mock-card">
+          <div class="mock-upload">
+            <div class="icon">📄</div>
+            <div class="label">project_report.pdf</div>
+            <div class="sub">24 pages · 2.1 MB · analyzed</div>
+          </div>
+          <div class="mock-receipt">
+            <div class="mock-row"><span>Color pages</span><b>8 × ₹6 = ₹48</b></div>
+            <div class="mock-row"><span>B/W pages</span><b>16 × ₹1.5 = ₹24</b></div>
+            <div class="mock-row"><span>Copies × 2</span><b>×2</b></div>
+            <div class="mock-row"><span>GST (5%)</span><b>₹7</b></div>
+            <div class="mock-total">
+              <span class="tl">Total</span>
+              <span class="tv">₹151</span>
+            </div>
+          </div>
+          <button class="mock-btn">Confirm &amp; pay via Razorpay</button>
+        </div>
+        <div class="float-badge two">🛵 Out for delivery · 35 min away</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TICKET DIVIDER STATS -->
+  <div class="ticket-divider">
+    <div class="ticket-inner">
+      <div class="ticket-item"><div class="ti-num" id="ticket-bw">₹1.5</div><div class="ti-label">B/W per page</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-color">₹6</div><div class="ti-label">Color per page</div></div>
+      <div class="ticket-item"><div class="ti-num">3–4 hrs</div><div class="ti-label">Delivery time</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-delivery">₹30</div><div class="ti-label">Flat delivery fee</div></div>
+      <div class="ticket-item"><div class="ti-num">Free</div><div class="ti-label">Shop pickup</div></div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" id="how">
+    <div class="section-inner">
+      <div class="section-eyebrow">How it works</div>
+      <div class="section-title">From file to doorstep in 5 steps</div>
+      <div class="how-grid">
+        <div class="how-step">
+          <div class="how-icon">📤</div>
+          <h3>Upload</h3>
+          <p>Drop your PDF, Word, or PPT — up to 50 MB</p>
+        </div>
+        <div class="how-step">
+          <div class="how-icon">⚙️</div>
+          <h3>Configure</h3>
+          <p>Color mode, paper size, sides, copies, notes</p>
+        </div>
+        <div class="how-step">
+          <div class="how-icon">💳</div>
+          <h3>Pay securely</h3>
+          <p>Instant estimate, pay via Razorpay</p>
+        </div>
+        <div class="how-step">
+          <div class="how-icon">🖨️</div>
+          <h3>We print</h3>
+          <p>Order goes straight to press after payment</p>
+        </div>
+        <div class="how-step">
+          <div class="how-icon">📦</div>
+          <h3>You receive</h3>
+          <p>Pick up in store or get it home-delivered</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section class="section section-tint" id="services">
+    <div class="section-inner">
+      <div class="section-eyebrow">What we print</div>
+      <div class="section-title">Every format, every size</div>
+      <p class="section-sub">From a single resume to bulk college handouts — we handle it all.</p>
+      <div class="services-grid">
+        <div class="service-card">
+          <div class="sc-icon">📄</div>
+          <h3>PDF printing</h3>
+          <p>Upload any PDF and get crisp, accurate prints. We support multi-page, booklets, and presentations.</p>
+          <div class="price" id="svc-pdf">From ₹1.5/page</div>
+        </div>
+        <div class="service-card">
+          <div class="sc-icon">📝</div>
+          <h3>Word & DOC</h3>
+          <p>Assignments, reports, letters — print your .doc or .docx files exactly as formatted.</p>
+          <div class="price" id="svc-doc">From ₹1.5/page</div>
+        </div>
+        <div class="service-card">
+          <div class="sc-icon">📊</div>
+          <h3>PowerPoint</h3>
+          <p>Print slides 1-up, 2-up, or 6-up. Great for presentations and lecture notes.</p>
+          <div class="price" id="svc-ppt">From ₹1.5/page</div>
+        </div>
+        <div class="service-card">
+          <div class="sc-icon">🎨</div>
+          <h3>Color printing</h3>
+          <p>Vivid, accurate color output for brochures, charts, photos, and more.</p>
+          <div class="price" id="svc-color">₹6/page</div>
+        </div>
+        <div class="service-card">
+          <div class="sc-icon">📦</div>
+          <h3>Bulk orders</h3>
+          <p>Need 50+ copies? We'll handle large volumes with the same turnaround promise.</p>
+          <div class="price">Contact us for rates</div>
+        </div>
+        <div class="service-card">
+          <div class="sc-icon">📐</div>
+          <h3>A3 printing</h3>
+          <p>Posters, drawings, and large-format documents on A3 paper — B/W and color.</p>
+          <div class="price" id="svc-a3">From ₹4/page</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="section-inner">
+      <div class="section-eyebrow">Transparent pricing</div>
+      <div class="section-title">No surprises at checkout</div>
+      <p class="section-sub">The estimate on the order page updates live as you pick options. GST included in all totals.</p>
+      <div class="pricing-table">
+        <div class="pt-head"><span>Print type</span><span>Rate</span><span>Notes</span></div>
+        <div class="pt-row"><span class="name">B/W · A4 · Single-sided</span><span class="price" id="pt-a4-bw-single">₹1.5/page</span><span class="note">Cheapest option</span></div>
+        <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹2.5/sheet</span><span class="note">2 pages per sheet</span></div>
+        <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
+        <div class="pt-row"><span class="name">Color · A4 · Double-sided</span><span class="price" id="pt-a4-color-double">₹10/sheet</span><span class="note">2 pages per sheet</span></div>
+        <div class="pt-row"><span class="name">B/W · A3</span><span class="price" id="pt-a3-bw">₹4/page</span><span class="note">Large format</span></div>
+        <div class="pt-row"><span class="name">Color · A3</span><span class="price" id="pt-a3-color">₹14/page</span><span class="note">Large format</span></div>
+        <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹30 flat</span><span class="note">Within city limits</span></div>
+        <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="section section-tint" id="contact">
+    <div class="section-inner">
+      <div class="section-eyebrow">Get in touch</div>
+      <div class="section-title">We're here to help</div>
+      <div class="contact-grid">
+        <div class="contact-info">
+          <div class="ci-item">
+            <div class="ci-icon">📍</div>
+            <div>
+              <div class="ci-title">Visit us</div>
+              <div class="ci-val">Shop 12, MG Road Market<br>Near City Center Mall<br>Gurugram, Haryana 122001</div>
+            </div>
+          </div>
+          <div class="ci-item">
+            <div class="ci-icon">📞</div>
+            <div>
+              <div class="ci-title">Call or WhatsApp</div>
+              <div class="ci-val">
+                <a href="tel:+919876543210">+91 98765 43210</a><br>
+                <a href="https://wa.me/919876543210" target="_blank">Chat on WhatsApp →</a>
+              </div>
+            </div>
+          </div>
+          <div class="ci-item">
+            <div class="ci-icon">✉️</div>
+            <div>
+              <div class="ci-title">Email us</div>
+              <div class="ci-val"><a href="mailto:hello@metalix.in">hello@metalix.in</a></div>
+            </div>
+          </div>
+          <div class="ci-item">
+            <div class="ci-icon">🕐</div>
+            <div>
+              <div class="ci-title">Shop hours</div>
+              <div class="hours-grid">
+                <span class="day">Mon–Fri</span><span>9:00 AM – 9:00 PM</span>
+                <span class="day">Saturday</span><span>9:00 AM – 8:00 PM</span>
+                <span class="day">Sunday</span><span>10:00 AM – 6:00 PM</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="contact-form">
+          <h3>Send us a message</h3>
+          <div class="field">
+            <label>Your name</label>
+            <input type="text" placeholder="Aarav Sharma" id="cName">
+          </div>
+          <div class="field">
+            <label>Email or mobile</label>
+            <input type="text" placeholder="you@example.com or 9876543210" id="cContact">
+          </div>
+          <div class="field">
+            <label>Message</label>
+            <textarea placeholder="Order issue, bulk inquiry, feedback..." id="cMsg"></textarea>
+          </div>
+          <button class="submit-btn" onclick="sendContactForm()">Send message</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /page-home -->
+
+<!-- ================ PAGE: POLICY ================ -->
+<div class="page" id="page-policy">
+  <div class="policy-wrap">
+    <div class="section-eyebrow" style="margin-bottom:10px;">Legal & policies</div>
+    <h1>Our policies</h1>
+    <p class="meta">Last updated: June 2026 · Questions? <a href="mailto:hello@metalix.in" style="color:var(--orange);font-weight:600;">hello@metalix.in</a></p>
+
+    <div class="policy-tabs">
+      <button class="ptab active" onclick="showPolicyTab('refund',this)">Refund & Reprint</button>
+      <button class="ptab" onclick="showPolicyTab('delivery',this)">Delivery</button>
+      <button class="ptab" onclick="showPolicyTab('terms',this)">Terms of Service</button>
+      <button class="ptab" onclick="showPolicyTab('privacy',this)">Privacy</button>
+    </div>
+
+    <div class="ptab-content active" id="ptab-refund">
+      <div class="callout"><p><strong>TL;DR:</strong> Cancel any time before "Printing started" for a full refund. If we make a mistake, we reprint free. If the issue is with your file, we can offer a paid reprint.</p></div>
+      <h2>When can I cancel?</h2>
+      <p>You can cancel your order free of charge from <strong>My Orders</strong> on the app as long as the status is <em>Received</em> or <em>Queued</em>. The moment the status changes to <strong>Printing Started</strong>, your job is on the press and can no longer be cancelled.</p>
+      <h2>If the mistake is ours</h2>
+      <p>We take responsibility for errors that happen on our end — smudged pages, wrong paper size, wrong number of copies, wrong color mode applied after you paid for auto-detect. In these cases:</p>
+      <ul>
+        <li>We'll <strong>reprint the affected pages free of charge</strong>, or</li>
+        <li>Issue a <strong>full or partial refund</strong> to your original payment method within 5–7 business days</li>
+      </ul>
+      <p>Report the issue within <strong>24 hours</strong> of pickup or delivery by calling or WhatsApp-ing us.</p>
+      <h2>If the issue is with your file</h2>
+      <p>We print exactly what you upload, without modifying your files. We cannot offer refunds for:</p>
+      <ul>
+        <li>Low-resolution images that appear blurry once printed</li>
+        <li>Typos or content errors in the original document</li>
+        <li>Wrong file uploaded by mistake</li>
+        <li>Color pages the customer chose to print as B/W (or vice versa)</li>
+      </ul>
+      <p>We're happy to offer a <strong>paid reprint</strong> once you've updated your file.</p>
+      <h2>Refund timeline</h2>
+      <p>Approved refunds are processed to your original payment method. Razorpay typically settles refunds within <strong>5–7 business days</strong>.</p>
+    </div>
+
+    <div class="ptab-content" id="ptab-delivery">
+      <div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹30 flat. Most orders are ready within 3–4 hours of payment.</p></div>
+      <h2>Delivery options</h2>
+      <p>We offer two ways to receive your prints:</p>
+      <ul>
+        <li><strong>Shop pickup</strong> — Free. Collect from our store at your convenience once we notify you.</li>
+        <li><strong>Home delivery</strong> — ₹30 flat fee within the city. We dispatch your order as soon as it's printed.</li>
+      </ul>
+      <h2>Turnaround time</h2>
+      <p>Most standard orders (under 100 pages) are ready within <strong>3–4 hours</strong> of successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
+      <h2>Delivery area</h2>
+      <p>Home delivery is currently available within Gurugram city limits. If your PIN code is outside our zone, we'll contact you to arrange shop pickup and refund the delivery charge.</p>
+      <h2>Delays</h2>
+      <p>If your order is delayed significantly past the estimate, reach out via WhatsApp with your Order ID. We'll either expedite or waive the delivery fee, depending on the situation.</p>
+    </div>
+
+    <div class="ptab-content" id="ptab-terms">
+      <h2>Who can use this service</h2>
+      <p>Metalix Print is available to anyone aged 18 and above. By placing an order, you agree to these terms.</p>
+      <h2>Your content</h2>
+      <p>You confirm that you have the legal right to print and reproduce the content in any file you upload. Metalix Print is not responsible for copyright infringement, defamatory content, or unauthorized reproduction of third-party material.</p>
+      <h2>What we will not print</h2>
+      <ul>
+        <li>Content that infringes copyright without authorization</li>
+        <li>Defamatory, obscene, or hateful material</li>
+        <li>Content that violates any applicable law</li>
+      </ul>
+      <h2>Payment</h2>
+      <p>All payments are processed securely through Razorpay. Metalix Print does not store your card or banking details. By paying, you agree to Razorpay's terms of service.</p>
+      <h2>Limitation of liability</h2>
+      <p>Our liability is limited to the amount paid for the specific order in question. We are not liable for indirect losses, loss of business, or consequential damages.</p>
+    </div>
+
+    <div class="ptab-content" id="ptab-privacy">
+      <div class="callout"><p><strong>Short version:</strong> Your files are used only to print your order and deleted after 7 days. We don't sell your data.</p></div>
+      <h2>What we collect</h2>
+      <ul>
+        <li>Name, mobile number, and optional email — to process and communicate about your order</li>
+        <li>Delivery address — only if you choose home delivery</li>
+        <li>Uploaded files — solely to fulfil your print job</li>
+        <li>Payment transaction data — processed by Razorpay; we only receive a transaction ID</li>
+      </ul>
+      <h2>How we use it</h2>
+      <p>We use your information only to fulfil your order, contact you about it, and improve our service. We do not share your data with third parties except as needed to complete delivery (our delivery partner).</p>
+      <h2>File retention</h2>
+      <p>Uploaded documents are automatically and permanently deleted from our systems <strong>7 days after your order is completed</strong>.</p>
+      <h2>Your rights</h2>
+      <p>You can request deletion of your personal data or a copy of what we hold by emailing <a href="mailto:hello@metalix.in" style="color:var(--orange);">hello@metalix.in</a>.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================ FOOTER ================ -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <img src="/logo.png" alt="Metalix Print">
+        <span>Metalix Print</span>
+      </div>
+      <p>Fast, reliable, affordable printing — online ordering with home delivery or shop pickup. Gurugram's neighbourhood print shop, now with a better way to order.</p>
+      <div class="social-row">
+        <a class="social-btn" href="https://wa.me/919876543210" target="_blank" title="WhatsApp">💬</a>
+        <a class="social-btn" href="mailto:hello@metalix.in" title="Email">✉️</a>
+        <a class="social-btn" href="tel:+919876543210" title="Call">📞</a>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h4>Quick links</h4>
+      <ul>
+        <li><a onclick="window.location.href='/order'">Place an order →</a></li>
+        <li><a onclick="showPage('home'); scrollToSection('services')">Our services</a></li>
+        <li><a onclick="showPage('home'); scrollToSection('pricing')">Pricing</a></li>
+        <li><a onclick="showPage('home'); scrollToSection('how')">How it works</a></li>
+        <li><a onclick="openModal('login')">Track my order</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Policies</h4>
+      <ul>
+        <li><a onclick="showPage('policy'); showPolicyTab('refund')">Refund & Reprint policy</a></li>
+        <li><a onclick="showPage('policy'); showPolicyTab('delivery')">Delivery policy</a></li>
+        <li><a onclick="showPage('policy'); showPolicyTab('terms')">Terms of service</a></li>
+        <li><a onclick="showPage('policy'); showPolicyTab('privacy')">Privacy policy</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Contact</h4>
+      <div class="fcontact">📍 <span>Shop 12, MG Road Market, Gurugram, Haryana 122001</span></div>
+      <div class="fcontact">📞 <a href="tel:+919876543210">+91 98765 43210</a></div>
+      <div class="fcontact">💬 <a href="https://wa.me/919876543210" target="_blank">WhatsApp us</a></div>
+      <div class="fcontact">✉️ <a href="mailto:hello@metalix.in">hello@metalix.in</a></div>
+      <div class="fcontact" style="margin-top:8px;">🕐 <span>Mon–Sat 9AM–9PM · Sun 10AM–6PM</span></div>
+    </div>
+  </div>
+  <div class="footer-bottom" style="max-width:100%;border-top:1px solid rgba(255,255,255,.08);padding:20px 24px;">
+    <div style="max-width:1140px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <span>© 2026 Metalix Print. All rights reserved.</span>
+      <span>Made with 🖨️ in Gurugram</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ================ LOGIN / SIGNUP MODAL ================ -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div class="modal-logo">
+      <img src="/logo.png" alt="Metalix Print">
+      <h2 id="modalTitle">Welcome back</h2>
+      <p id="modalSub">Log in to track and manage your orders</p>
+    </div>
+
+    <div class="modal-tabs" id="authTabs">
+      <button class="mtab active" onclick="switchTab('login',this)">Log in</button>
+      <button class="mtab" onclick="switchTab('signup',this)">Sign up</button>
+    </div>
+
+    <!-- LOG IN PANE -->
+    <div class="modal-pane active" id="pane-login">
+      <button class="google-btn" onclick="mockGoogle()">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.1l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1L6 33.1C9.4 39.7 16.1 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C37.1 39.1 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+        Continue with Google
+      </button>
+      <div class="divider"><span>or log in with email</span></div>
+      <div class="modal-field">
+        <label>Email</label>
+        <input type="email" placeholder="you@example.com" id="loginEmail">
+      </div>
+      <div class="modal-field">
+        <label>Password</label>
+        <div class="pass-row">
+          <input type="password" placeholder="Your password" id="loginPass">
+          <button class="toggle-pass" onclick="togglePass('loginPass',this)" type="button">👁</button>
+        </div>
+      </div>
+      <div style="text-align:right;margin:-8px 0 16px;"><a style="font-size:12.5px;color:var(--orange);font-weight:600;cursor:pointer;" onclick="showToast('Password reset email sent (demo)')">Forgot password?</a></div>
+      <button class="submit-btn" onclick="mockLogin()">Log in</button>
+      <div class="modal-footer-text">Don't have an account? <a onclick="switchTab('signup', document.querySelectorAll('.mtab')[1])">Sign up</a></div>
+    </div>
+
+    <!-- SIGN UP PANE -->
+    <div class="modal-pane" id="pane-signup">
+      <button class="google-btn" onclick="mockGoogle()">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.1l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1L6 33.1C9.4 39.7 16.1 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C37.1 39.1 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+        Sign up with Google
+      </button>
+      <div class="divider"><span>or sign up with email</span></div>
+      <div class="modal-field">
+        <label>Full name</label>
+        <input type="text" placeholder="Aarav Sharma" id="signupName">
+      </div>
+      <div class="modal-field">
+        <label>Email</label>
+        <input type="email" placeholder="you@example.com" id="signupEmail">
+      </div>
+      <div class="modal-field">
+        <label>Mobile number</label>
+        <input type="tel" placeholder="98765 43210" id="signupMobile" maxlength="10">
+      </div>
+      <div class="modal-field">
+        <label>Password</label>
+        <div class="pass-row">
+          <input type="password" placeholder="Create a strong password" id="signupPass" oninput="checkStrength(this)">
+          <button class="toggle-pass" onclick="togglePass('signupPass',this)" type="button">👁</button>
+        </div>
+        <div class="pass-strength"><div class="pass-strength-bar" id="strengthBar"></div></div>
+        <div class="pass-hint" id="strengthHint"></div>
+      </div>
+      <div class="terms-check">
+        <input type="checkbox" id="termsCheck">
+        <label for="termsCheck">I agree to the <a onclick="closeModal();showPage('policy');showPolicyTab('terms')">Terms of Service</a> and <a onclick="closeModal();showPage('policy');showPolicyTab('privacy')">Privacy Policy</a></label>
+      </div>
+      <button class="submit-btn" onclick="mockSignup()">Create account</button>
+      <div class="modal-footer-text">Already have an account? <a onclick="switchTab('login', document.querySelectorAll('.mtab')[0])">Log in</a></div>
+    </div>
+
+    <!-- SUCCESS STATE -->
+    <div class="modal-pane" id="pane-success">
+      <div class="modal-success">
+        <div class="si">🎉</div>
+        <h3 id="successTitle">You're in!</h3>
+        <p id="successMsg">Welcome to Metalix Print. Your account is ready.</p>
+        <button class="submit-btn mt-8" onclick="closeModal()">Start ordering</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><span class="ti" id="toastIcon">✓</span><span id="toastMsg">Done</span></div>
+
+<script>
+/* -- LIVE PRICING -- */
+function fmtPrice(n){
+  const num = Number(n);
+  return Number.isInteger(num) ? String(num) : String(Math.round(num * 100) / 100);
+}
+fetch('/api/pricing').then(r => r.json()).then(p => {
+  const rates = p.rates || {};
+  const a4 = rates.a4 || {};
+  const a3 = rates.a3 || {};
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+  if (a4.bw) {
+    set('stat-bw-price', `₹${fmtPrice(a4.bw.single)}`);
+    set('ticket-bw', `₹${fmtPrice(a4.bw.single)}`);
+    set('svc-pdf', `From ₹${fmtPrice(a4.bw.single)}/page`);
+    set('svc-doc', `From ₹${fmtPrice(a4.bw.single)}/page`);
+    set('svc-ppt', `From ₹${fmtPrice(a4.bw.single)}/page`);
+    set('pt-a4-bw-single', `₹${fmtPrice(a4.bw.single)}/page`);
+    set('pt-a4-bw-double', `₹${fmtPrice(a4.bw.double)}/sheet`);
+  }
+  if (a4.color) {
+    set('ticket-color', `₹${fmtPrice(a4.color.single)}`);
+    set('svc-color', `₹${fmtPrice(a4.color.single)}/page`);
+    set('pt-a4-color-single', `₹${fmtPrice(a4.color.single)}/page`);
+    set('pt-a4-color-double', `₹${fmtPrice(a4.color.double)}/sheet`);
+  }
+  if (a3.bw) {
+    set('svc-a3', `From ₹${fmtPrice(a3.bw.single)}/page`);
+    set('pt-a3-bw', `₹${fmtPrice(a3.bw.single)}/page`);
+  }
+  if (a3.color) {
+    set('pt-a3-color', `₹${fmtPrice(a3.color.single)}/page`);
+  }
+  if (p.deliveryCharge != null) {
+    set('ticket-delivery', `₹${fmtPrice(p.deliveryCharge)}`);
+    set('pt-delivery', `+₹${fmtPrice(p.deliveryCharge)} flat`);
+  }
+}).catch(err => console.error('Failed to load live pricing', err));
+
+/* -- PAGE ROUTING -- */
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+  document.querySelectorAll('nav a').forEach(a=>a.classList.remove('active'));
+  const navEl = document.getElementById('nav-'+id);
+  if(navEl) navEl.classList.add('active');
+}
+
+function scrollToSection(id){
+  setTimeout(()=>{
+    const el = document.getElementById(id);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  }, 80);
+}
+
+/* -- POLICY TABS -- */
+function showPolicyTab(tab, btn){
+  document.querySelectorAll('.ptab-content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('active'));
+  const content = document.getElementById('ptab-'+tab);
+  if(content) content.classList.add('active');
+  if(btn) btn.classList.add('active');
+  else{
+    document.querySelectorAll('.ptab').forEach(b=>{
+      if(b.getAttribute('onclick').includes("'"+tab+"'")) b.classList.add('active');
+    });
+  }
+}
+
+/* -- MODAL -- */
+function openModal(tab){
+  document.getElementById('authModal').classList.add('show');
+  document.body.style.overflow='hidden';
+  switchTab(tab, document.querySelector(`.mtab:${tab==='signup'?'last-child':'first-child'}`));
+  document.getElementById('pane-success').classList.remove('active');
+  if(tab==='login'){
+    document.getElementById('pane-login').classList.add('active');
+    document.getElementById('pane-signup').classList.remove('active');
+    document.getElementById('modalTitle').textContent='Welcome back';
+    document.getElementById('modalSub').textContent='Log in to track and manage your orders';
+  } else {
+    document.getElementById('pane-signup').classList.add('active');
+    document.getElementById('pane-login').classList.remove('active');
+    document.getElementById('modalTitle').textContent='Create your account';
+    document.getElementById('modalSub').textContent='Free account — track orders, cancel before printing';
+  }
+}
+function closeModal(){
+  document.getElementById('authModal').classList.remove('show');
+  document.body.style.overflow='';
+}
+document.getElementById('authModal').addEventListener('click', function(e){
+  if(e.target===this) closeModal();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+function switchTab(tab, btn){
+  document.querySelectorAll('.mtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.modal-pane').forEach(p=>p.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('pane-'+tab).classList.add('active');
+  if(tab==='login'){
+    document.getElementById('modalTitle').textContent='Welcome back';
+    document.getElementById('modalSub').textContent='Log in to track and manage your orders';
+  } else if(tab==='signup'){
+    document.getElementById('modalTitle').textContent='Create your account';
+    document.getElementById('modalSub').textContent='Free account — track orders, cancel before printing';
+  }
+}
+
+/* -- AUTH MOCK -- */
+function mockGoogle(){
+  showSuccess('Signed in with Google', 'You\'re all set. Your orders will appear in My Orders.');
+}
+function mockLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  if(!email || !pass){ showToast('Please fill in all fields','⚠️'); return; }
+  showSuccess('Logged in!', 'Welcome back to Metalix Print. Your orders are waiting.');
+}
+function mockSignup(){
+  const name = document.getElementById('signupName').value.trim();
+  const email = document.getElementById('signupEmail').value.trim();
+  const mobile = document.getElementById('signupMobile').value.trim();
+  const pass = document.getElementById('signupPass').value;
+  const terms = document.getElementById('termsCheck').checked;
+  if(!name||!email||!mobile||!pass){ showToast('Please fill in all fields','⚠️'); return; }
+  if(!/^\d{10}$/.test(mobile)){ showToast('Enter a valid 10-digit mobile number','⚠️'); return; }
+  if(!terms){ showToast('Please accept the terms to continue','⚠️'); return; }
+  showSuccess('Account created!', `Welcome, ${name.split(' ')[0]}! You can now track all your print orders.`);
+}
+function showSuccess(title, msg){
+  document.querySelectorAll('.modal-pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('successTitle').textContent=title;
+  document.getElementById('successMsg').textContent=msg;
+  document.getElementById('pane-success').classList.add('active');
+}
+
+/* -- PASSWORD -- */
+function togglePass(id, btn){
+  const inp = document.getElementById(id);
+  inp.type = inp.type==='password' ? 'text' : 'password';
+  btn.textContent = inp.type==='password' ? '👁' : '🙈';
+}
+function checkStrength(inp){
+  const v = inp.value;
+  const bar = document.getElementById('strengthBar');
+  const hint = document.getElementById('strengthHint');
+  let score=0;
+  if(v.length>=8) score++;
+  if(/[A-Z]/.test(v)) score++;
+  if(/[0-9]/.test(v)) score++;
+  if(/[^A-Za-z0-9]/.test(v)) score++;
+  const levels=[
+    {w:'0%',bg:'transparent',t:''},
+    {w:'30%',bg:'#DC2626',t:'Weak'},
+    {w:'55%',bg:'#F59E0B',t:'Fair'},
+    {w:'80%',bg:'#16A34A',t:'Good'},
+    {w:'100%',bg:'#16A34A',t:'Strong ✓'},
+  ];
+  const l=levels[score]||levels[0];
+  bar.style.width=l.w; bar.style.background=l.bg;
+  hint.textContent=l.t; hint.style.color=l.bg;
+}
+
+/* -- CONTACT FORM -- */
+function sendContactForm(){
+  const name = document.getElementById('cName').value.trim();
+  const contact = document.getElementById('cContact').value.trim();
+  const msg = document.getElementById('cMsg').value.trim();
+  if(!name||!contact||!msg){ showToast('Please fill in all fields','⚠️'); return; }
+  document.getElementById('cName').value='';
+  document.getElementById('cContact').value='';
+  document.getElementById('cMsg').value='';
+  showToast('Message sent! We\'ll get back to you shortly.','✓');
+}
+
+/* -- TOAST -- */
+const toastEl = document.getElementById('toast');
+function showToast(msg, icon='✓'){
+  document.getElementById('toastMsg').textContent=msg;
+  document.getElementById('toastIcon').textContent=icon;
+  toastEl.classList.add('show');
+  setTimeout(()=>toastEl.classList.remove('show'), 3400);
+}
+</script>
+</body>
+</html>

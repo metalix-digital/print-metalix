@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Metalix Admin</title>
+<link rel="icon" type="image/png" href="/logo.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#FAFAF8;color:#1C1917;-webkit-font-smoothing:antialiased;}
+:root{
+  --orange:#FF6600; --orange-d:#E05500; --ink:#1C1917; --ink2:#44403C; --ink3:#78716C;
+  --line:#E7E5E4; --paper:#FAFAF8; --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+}
+
+/* login */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:36px;width:100%;max-width:380px;box-shadow:var(--shadow);}
+.login-card h1{font-family:'Syne',sans-serif;font-size:22px;margin-bottom:6px;}
+.login-card p{font-size:13.5px;color:var(--ink3);margin-bottom:22px;}
+.login-card input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14.5px;margin-bottom:14px;}
+.login-card input:focus{outline:none;border-color:var(--orange);}
+.login-card button{width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;}
+.login-card button:hover{background:var(--orange-d);}
+.login-error{color:#DC2626;font-size:13px;margin:-4px 0 12px;}
+
+/* dashboard */
+.hidden{display:none !important;}
+.dash-header{display:flex;justify-content:space-between;align-items:center;padding:16px 28px;background:#fff;border-bottom:1px solid var(--line);}
+.dash-header h1{font-family:'Syne',sans-serif;font-size:18px;}
+.logout-btn{background:none;border:1.5px solid var(--line);border-radius:8px;padding:8px 16px;font-size:13.5px;cursor:pointer;font-family:'Inter',sans-serif;}
+.logout-btn:hover{border-color:#C7C4C0;background:#F5F4F2;}
+.tabs{display:flex;gap:4px;padding:14px 28px 0;background:#fff;border-bottom:1px solid var(--line);}
+.tab-btn{background:none;border:none;padding:10px 18px;font-size:14px;font-weight:600;color:var(--ink3);cursor:pointer;border-bottom:2.5px solid transparent;font-family:'Inter',sans-serif;}
+.tab-btn.active{color:var(--orange);border-bottom-color:var(--orange);}
+.content{padding:28px;max-width:1140px;margin:0 auto;}
+.panel{display:none;}
+.panel.active{display:block;}
+
+.filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.filters input, .filters select{border:1.5px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13.5px;font-family:'Inter',sans-serif;}
+.filters input{flex:1;max-width:320px;}
+
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);}
+th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);background:var(--paper);padding:10px 14px;border-bottom:1px solid var(--line);}
+td{padding:10px 14px;font-size:13.5px;border-bottom:1px solid #F0EFED;vertical-align:top;}
+tr.order-row{cursor:pointer;}
+tr.order-row:hover{background:var(--paper);}
+.subtle{font-size:11.5px;color:var(--ink3);}
+.empty,.loading{padding:20px;text-align:center;color:var(--ink3);font-size:13.5px;}
+.detail-row td{background:var(--paper);}
+.detail{font-size:13px;line-height:1.7;color:var(--ink2);}
+select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;font-family:'Inter',sans-serif;}
+
+.pricing-form{background:#fff;border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
+.pricing-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
+.pricing-form h2:first-child{margin-top:0;}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink2);}
+.field input{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;}
+.save-btn{margin-top:22px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+.save-btn:hover{background:var(--orange-d);}
+.save-btn:disabled{opacity:.6;cursor:default;}
+.save-message{margin-top:12px;font-size:13px;color:#16A34A;}
+.save-message.error{color:#DC2626;}
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="loginWrap">
+  <form class="login-card" id="loginForm">
+    <h1>Metalix Admin</h1>
+    <p>Enter the admin password to continue</p>
+    <input type="password" id="loginPassword" placeholder="Password" autofocus />
+    <div class="login-error hidden" id="loginError">Incorrect password</div>
+    <button type="submit">Log in</button>
+  </form>
+</div>
+
+<div class="hidden" id="dashWrap">
+  <div class="dash-header">
+    <h1>Metalix Admin</h1>
+    <button class="logout-btn" id="logoutBtn">Log out</button>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="orders">Orders</button>
+    <button class="tab-btn" data-tab="customers">Customers</button>
+    <button class="tab-btn" data-tab="pricing">Pricing</button>
+  </nav>
+  <div class="content">
+
+    <div class="panel active" id="panel-orders">
+      <div class="filters">
+        <input type="text" id="orderSearch" placeholder="Search by name, mobile, or order ID" />
+        <select id="orderStatusFilter">
+          <option value="">All statuses</option>
+          <option>Received</option>
+          <option>Payment Successful</option>
+          <option>Queued For Printing</option>
+          <option>Printing</option>
+          <option>Completed</option>
+          <option>Manual Intervention Required</option>
+          <option>Failed</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th></tr></thead>
+        <tbody id="ordersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel" id="panel-customers">
+      <table>
+        <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead>
+        <tbody id="customersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel" id="panel-pricing">
+      <div class="pricing-form" id="pricingForm">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const TOKEN_KEY = 'metalix_admin_token';
+const ORDER_STATUSES = ['Received','Payment Successful','Queued For Printing','Printing','Completed','Manual Intervention Required','Failed'];
+
+function getToken(){ return localStorage.getItem(TOKEN_KEY); }
+function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
+function clearToken(){ localStorage.removeItem(TOKEN_KEY); }
+
+async function adminFetch(path, options){
+  options = options || {};
+  const headers = Object.assign({}, options.headers || {}, { Authorization: 'Bearer ' + getToken() });
+  const res = await fetch(path, Object.assign({}, options, { headers }));
+  if (res.status === 401){
+    clearToken();
+    showLogin();
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+function showLogin(){
+  document.getElementById('loginWrap').classList.remove('hidden');
+  document.getElementById('dashWrap').classList.add('hidden');
+}
+function showDash(){
+  document.getElementById('loginWrap').classList.add('hidden');
+  document.getElementById('dashWrap').classList.remove('hidden');
+  loadOrders();
+  loadCustomers();
+  loadPricing();
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  if (!res.ok){
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const body = await res.json();
+  setToken(body.token);
+  showDash();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  clearToken();
+  showLogin();
+});
+
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* -- ORDERS -- */
+let orderSearchTimer = null;
+document.getElementById('orderSearch').addEventListener('input', () => {
+  clearTimeout(orderSearchTimer);
+  orderSearchTimer = setTimeout(loadOrders, 300);
+});
+document.getElementById('orderStatusFilter').addEventListener('change', loadOrders);
+
+async function loadOrders(){
+  const body = document.getElementById('ordersBody');
+  const search = document.getElementById('orderSearch').value.trim();
+  const status = document.getElementById('orderStatusFilter').value;
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (status) params.set('status', status);
+  try {
+    const res = await adminFetch('/api/admin/orders?' + params.toString());
+    const data = await res.json();
+    renderOrders(data.orders || []);
+  } catch (err) {
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="6" class="empty">Failed to load orders</td></tr>';
+  }
+}
+
+function statusSelectHtml(orderId, current){
+  return '<select class="status-select" data-order="' + orderId + '">' +
+    ORDER_STATUSES.map((s) => '<option' + (s === current ? ' selected' : '') + '>' + s + '</option>').join('') +
+    '</select>';
+}
+
+function renderOrders(orders){
+  const body = document.getElementById('ordersBody');
+  if (!orders.length){
+    body.innerHTML = '<tr><td colspan="6" class="empty">No orders found</td></tr>';
+    return;
+  }
+  body.innerHTML = orders.map((o) => (
+    '<tr class="order-row" data-toggle="' + o.id + '">' +
+      '<td>' + o.id + '</td>' +
+      '<td>' + o.customer_name + '<div class="subtle">' + o.customer_mobile + '</div></td>' +
+      '<td>₹' + o.total_amount + '</td>' +
+      '<td>' + o.payment_status + '</td>' +
+      '<td>' + statusSelectHtml(o.id, o.order_status) + '</td>' +
+      '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
+    '</tr>' +
+    '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
+      '<div><strong>File:</strong> ' + o.file_name + '</div>' +
+      '<div><strong>Paper:</strong> ' + o.paper_size + ' · ' + o.print_mode + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
+      '<div><strong>Delivery:</strong> ' + o.delivery_method +
+        (o.delivery_method === 'delivery' ? ' — ' + o.delivery_address + ', ' + o.delivery_city + ', ' + o.delivery_state + ' ' + o.delivery_pincode : '') +
+      '</div>' +
+      (o.customer_email ? '<div><strong>Email:</strong> ' + o.customer_email + '</div>' : '') +
+    '</div></td></tr>'
+  )).join('');
+
+  body.querySelectorAll('tr.order-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('select')) return;
+      const id = row.dataset.toggle;
+      const detail = body.querySelector('tr[data-detail="' + id + '"]');
+      if (detail) detail.classList.toggle('hidden');
+    });
+  });
+  body.querySelectorAll('select.status-select').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', async () => {
+      await adminFetch('/api/admin/orders/' + sel.dataset.order, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_status: sel.value })
+      });
+    });
+  });
+}
+
+/* -- CUSTOMERS -- */
+async function loadCustomers(){
+  const body = document.getElementById('customersBody');
+  try {
+    const res = await adminFetch('/api/admin/customers');
+    const data = await res.json();
+    const customers = data.customers || [];
+    if (!customers.length){
+      body.innerHTML = '<tr><td colspan="6" class="empty">No customers yet</td></tr>';
+      return;
+    }
+    body.innerHTML = customers.map((c) => (
+      '<tr>' +
+        '<td>' + c.customer_name + '</td>' +
+        '<td>' + c.customer_mobile + '</td>' +
+        '<td>' + (c.customer_email || '—') + '</td>' +
+        '<td>' + c.order_count + '</td>' +
+        '<td>₹' + c.total_spent + '</td>' +
+        '<td>' + new Date(c.last_order_at).toLocaleDateString() + '</td>' +
+      '</tr>'
+    )).join('');
+  } catch (err) {
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="6" class="empty">Failed to load customers</td></tr>';
+  }
+}
+
+/* -- PRICING -- */
+function rateFieldHtml(label, key, value){
+  return '<label class="field"><span>' + label + '</span>' +
+    '<input type="number" step="0.5" min="0" data-key="' + key + '" value="' + value + '" /></label>';
+}
+
+async function loadPricing(){
+  const form = document.getElementById('pricingForm');
+  const res = await fetch('/api/pricing');
+  const p = await res.json();
+  form.innerHTML =
+    '<h2>A4</h2><div class="field-grid">' +
+      rateFieldHtml('B/W · single (₹/page)', 'rates.a4.bw.single', p.rates.a4.bw.single) +
+      rateFieldHtml('B/W · double (₹/sheet)', 'rates.a4.bw.double', p.rates.a4.bw.double) +
+      rateFieldHtml('Color · single (₹/page)', 'rates.a4.color.single', p.rates.a4.color.single) +
+      rateFieldHtml('Color · double (₹/sheet)', 'rates.a4.color.double', p.rates.a4.color.double) +
+    '</div>' +
+    '<h2>A3</h2><div class="field-grid">' +
+      rateFieldHtml('B/W · single (₹/page)', 'rates.a3.bw.single', p.rates.a3.bw.single) +
+      rateFieldHtml('B/W · double (₹/sheet)', 'rates.a3.bw.double', p.rates.a3.bw.double) +
+      rateFieldHtml('Color · single (₹/page)', 'rates.a3.color.single', p.rates.a3.color.single) +
+      rateFieldHtml('Color · double (₹/sheet)', 'rates.a3.color.double', p.rates.a3.color.double) +
+    '</div>' +
+    '<h2>Other</h2><div class="field-grid">' +
+      rateFieldHtml('Delivery charge (₹ flat)', 'deliveryCharge', p.deliveryCharge) +
+      rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
+    '</div>' +
+    '<button class="save-btn" id="savePricingBtn">Save pricing</button>' +
+    '<div id="pricingMessage"></div>';
+
+  document.getElementById('savePricingBtn').addEventListener('click', savePricing);
+}
+
+async function savePricing(){
+  const btn = document.getElementById('savePricingBtn');
+  const msg = document.getElementById('pricingMessage');
+  const pricing = {
+    rates: {
+      a4: { bw: {}, color: {} },
+      a3: { bw: {}, color: {} }
+    },
+    deliveryCharge: 0,
+    gstPercent: 0
+  };
+  document.querySelectorAll('#pricingForm input[data-key]').forEach((input) => {
+    const path = input.dataset.key.split('.');
+    let node = pricing;
+    for (let i = 0; i < path.length - 1; i++) node = node[path[i]];
+    node[path[path.length - 1]] = Number(input.value);
+  });
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  msg.textContent = '';
+  msg.className = 'save-message';
+  try {
+    const res = await adminFetch('/api/admin/pricing', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pricing)
+    });
+    if (!res.ok) throw new Error('save_failed');
+    msg.textContent = 'Saved — the home page now reflects these prices.';
+  } catch (err) {
+    if (err.message !== 'unauthorized'){
+      msg.textContent = 'Failed to save pricing.';
+      msg.className = 'save-message error';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save pricing';
+  }
+}
+
+if (getToken()) showDash(); else showLogin();
+</script>
+</body>
+</html>

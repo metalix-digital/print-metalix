@@ -3,7 +3,14 @@
 // runs without GCP credentials fall straight back to process.env, so nothing
 // changes for development.
 async function loadSecretsIntoEnv() {
-  if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) return
+  const needed = [
+    ['RAZORPAY_KEY_ID', 'razorpay-key-id'],
+    ['RAZORPAY_KEY_SECRET', 'razorpay-key-secret'],
+    ['ADMIN_PASSWORD', 'admin-password'],
+    ['ADMIN_JWT_SECRET', 'admin-jwt-secret']
+  ].filter(([envVar]) => !process.env[envVar])
+
+  if (!needed.length) return
 
   let SecretManagerServiceClient
   try {
@@ -23,13 +30,9 @@ async function loadSecretsIntoEnv() {
       return version.payload.data.toString('utf8')
     }
 
-    const [keyId, keySecret] = await Promise.all([
-      fetchSecret('razorpay-key-id'),
-      fetchSecret('razorpay-key-secret')
-    ])
-    process.env.RAZORPAY_KEY_ID = keyId
-    process.env.RAZORPAY_KEY_SECRET = keySecret
-    console.log('[secrets] loaded Razorpay keys from Secret Manager')
+    const values = await Promise.all(needed.map(([, secretName]) => fetchSecret(secretName)))
+    needed.forEach(([envVar], i) => { process.env[envVar] = values[i] })
+    console.log(`[secrets] loaded from Secret Manager: ${needed.map(([envVar]) => envVar).join(', ')}`)
   } catch (err) {
     console.error('[secrets] could not load from Secret Manager, falling back to env:', err.message)
   }
