@@ -5,3 +5,4 @@ server/uploads/
 *.db-wal
 *.db-shm
 .DS_Store
+node_modules/
