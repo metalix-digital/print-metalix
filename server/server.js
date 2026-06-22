@@ -10,7 +10,9 @@ app.use(express.json())
 // Read at request time, not at module load — loadSecretsIntoEnv() (see bottom of
 // this file) populates these from Secret Manager asynchronously before the
 // server starts listening, so by the time any request arrives they're set.
-function getAdminJwtSecret() {
+// Shared by both admin tokens and customer tokens — the role claim is what
+// distinguishes them (see requireAdmin / requireCustomer below).
+function getJwtSecret() {
   return process.env.ADMIN_JWT_SECRET || 'dev-only-insecure-secret'
 }
 
@@ -19,20 +21,51 @@ function requireAdmin(req, res, next) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
   if (!token) return res.status(401).json({ error: 'unauthorized' })
   try {
-    jwt.verify(token, getAdminJwtSecret())
+    const decoded = jwt.verify(token, getJwtSecret())
+    if (decoded.role !== 'admin') return res.status(401).json({ error: 'unauthorized' })
     next()
   } catch (err) {
     return res.status(401).json({ error: 'unauthorized' })
   }
 }
 
+function requireCustomer(req, res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const decoded = jwt.verify(token, getJwtSecret())
+    if (decoded.role !== 'customer') return res.status(401).json({ error: 'unauthorized' })
+    req.userId = decoded.sub
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+}
+
+// Decode a customer token without rejecting the request if absent/invalid —
+// used where login is optional (e.g. order creation works for guests too).
+function getOptionalCustomerId(req) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token) return null
+  try {
+    const decoded = jwt.verify(token, getJwtSecret())
+    return decoded.role === 'customer' ? decoded.sub : null
+  } catch (err) {
+    return null
+  }
+}
+
 const multer = require('multer')
+const bcrypt = require('bcryptjs')
 const db = require('./db')
 const printQueue = require('./printQueue')
 const notify = require('./notify')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
+const { cleanupExpiredFiles } = require('./fileRetention')
 
 const uploadsDir = path.join(__dirname, 'uploads')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
@@ -137,8 +170,93 @@ app.post('/api/admin/login', express.json(), (req, res) => {
   if (password !== adminPassword) {
     return res.status(401).json({ error: 'invalid_password' })
   }
-  const token = jwt.sign({ role: 'admin' }, getAdminJwtSecret(), { expiresIn: '12h' })
+  const token = jwt.sign({ role: 'admin' }, getJwtSecret(), { expiresIn: '12h' })
   return res.json({ token })
+})
+
+function publicUser(user) {
+  return { id: user.id, name: user.name, email: user.email, mobile: user.mobile }
+}
+
+app.post('/api/auth/signup', express.json(), async (req, res) => {
+  const { name, email, mobile, password } = req.body || {}
+  if (!name || !email || !mobile || !password) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Name, email, mobile, and password are all required.' })
+  }
+  if (db.findUserByIdentifier(email) || db.findUserByIdentifier(mobile)) {
+    return res.status(409).json({ error: 'already_exists', message: 'An account with this email or mobile already exists.' })
+  }
+  const password_hash = await bcrypt.hash(password, 10)
+  const user = db.createUser({ id: crypto.randomUUID(), name, email, mobile, password_hash })
+  const token = jwt.sign({ role: 'customer', sub: user.id }, getJwtSecret(), { expiresIn: '30d' })
+  return res.json({ token, user: publicUser(user) })
+})
+
+app.post('/api/auth/login', express.json(), async (req, res) => {
+  const { identifier, password } = req.body || {}
+  if (!identifier || !password) {
+    return res.status(400).json({ error: 'missing_fields' })
+  }
+  const user = db.findUserByIdentifier(identifier)
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect email/mobile or password.' })
+  }
+  const token = jwt.sign({ role: 'customer', sub: user.id }, getJwtSecret(), { expiresIn: '30d' })
+  return res.json({ token, user: publicUser(user) })
+})
+
+app.get('/api/me', requireCustomer, (req, res) => {
+  const user = db.getUserById(req.userId)
+  if (!user) return res.status(404).json({ error: 'not_found' })
+  return res.json({ user: publicUser(user) })
+})
+
+// Public — the OAuth Client ID is not secret; the frontend needs it to render the Google button.
+app.get('/api/auth/config', (req, res) => {
+  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || '' })
+})
+
+const { OAuth2Client } = require('google-auth-library')
+
+app.post('/api/auth/google', express.json(), async (req, res) => {
+  const { idToken } = req.body || {}
+  if (!idToken) return res.status(400).json({ error: 'missing_id_token' })
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  if (!clientId) return res.status(500).json({ error: 'google_not_configured' })
+
+  let payload
+  try {
+    const client = new OAuth2Client(clientId)
+    const ticket = await client.verifyIdToken({ idToken, audience: clientId })
+    payload = ticket.getPayload()
+  } catch (err) {
+    return res.status(401).json({ error: 'invalid_google_token' })
+  }
+  if (!payload || !payload.email) {
+    return res.status(401).json({ error: 'invalid_google_token' })
+  }
+
+  let user = db.findUserByGoogleId(payload.sub)
+  if (!user) {
+    user = db.findUserByEmail(payload.email)
+    if (user) {
+      // Same email already has a password-based account — link Google as another way in.
+      user = db.linkGoogleId(user.id, payload.sub)
+    } else {
+      const password_hash = await bcrypt.hash(crypto.randomUUID(), 10)
+      user = db.createUser({
+        id: crypto.randomUUID(),
+        name: payload.name || payload.email.split('@')[0],
+        email: payload.email,
+        mobile: null,
+        password_hash,
+        google_id: payload.sub
+      })
+    }
+  }
+
+  const token = jwt.sign({ role: 'customer', sub: user.id }, getJwtSecret(), { expiresIn: '30d' })
+  return res.json({ token, user: publicUser(user) })
 })
 
 app.get('/api/admin/orders', requireAdmin, (req, res) => {
@@ -166,6 +284,29 @@ app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
 
 app.get('/api/admin/customers', requireAdmin, (req, res) => {
   return res.json({ customers: db.listCustomers() })
+})
+
+app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+
+  const safeFileId = path.basename(req.params.fileId)
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  let fileName = null
+  if (files.some((f) => f.fileId === safeFileId)) {
+    fileName = files.find((f) => f.fileId === safeFileId).fileName
+  } else if (order.file_path === safeFileId) {
+    fileName = order.file_name
+  } else {
+    return res.status(404).json({ error: 'file_not_found' })
+  }
+
+  const filePath = path.join(uploadsDir, safeFileId)
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'file_not_found', message: 'This file has been auto-deleted (files are removed 7 days after order completion).' })
+  }
+  return res.download(filePath, fileName || safeFileId)
 })
 
 app.put('/api/admin/pricing', requireAdmin, express.json(), (req, res) => {
@@ -264,6 +405,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
 
   const order = db.createOrder({
     id: orderId,
+    customer_id: getOptionalCustomerId(req),
     customer_name: customerName,
     customer_mobile: customerMobile,
     customer_email: customerEmail || null,
@@ -418,4 +560,6 @@ loadSecretsIntoEnv().then(() => {
     console.warn('Warning: ADMIN_PASSWORD/ADMIN_JWT_SECRET not set, using insecure development defaults.')
   }
   app.listen(PORT, () => console.log(`Running on ${PORT}`))
+  cleanupExpiredFiles()
+  setInterval(cleanupExpiredFiles, 60 * 60 * 1000)
 })

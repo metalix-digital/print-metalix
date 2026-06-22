@@ -66,7 +66,9 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 .settings-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
 .settings-form h2:first-child{margin-top:0;}
 .file-list{margin:0;padding-left:0;list-style:none;}
-.file-list li{padding:2px 0;}
+.file-list li{padding:4px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.dl-btn{background:none;border:1.5px solid var(--orange);color:var(--orange);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;flex-shrink:0;}
+.dl-btn:hover{background:var(--orange);color:#fff;}
 .save-btn{margin-top:22px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
 .save-btn:hover{background:var(--orange-d);}
 .save-btn:disabled{opacity:.6;cursor:default;}
@@ -259,15 +261,47 @@ function statusSelectHtml(orderId, current){
     '</select>';
 }
 
+function fileRowHtml(orderId, fileId, fileName, pageCount, deleted){
+  const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
+  const action = deleted
+    ? '<span class="subtle">File auto-deleted after 7 days</span>'
+    : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
+  return '<li><span>' + fileName + meta + '</span> ' + action + '</li>';
+}
+
 function filesDetailHtml(o){
   let files = null;
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
   if (!files || !files.length) {
-    return '<div><strong>File:</strong> ' + o.file_name + '</div>';
+    return '<div><strong>File:</strong></div><ul class="file-list">' +
+      fileRowHtml(o.id, o.file_path, o.file_name, null, !!o.files_deleted_at) +
+      '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => '<li>' + f.fileName + ' — ' + f.pageCount + ' page' + (f.pageCount === 1 ? '' : 's') + '</li>').join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, !!o.files_deleted_at)).join('') +
     '</ul>';
+}
+
+async function downloadOrderFile(orderId, fileId, fileName){
+  try {
+    const res = await adminFetch('/api/admin/orders/' + orderId + '/files/' + fileId + '/download');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || 'File not available for download.');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'file';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Download failed.');
+  }
 }
 
 function renderOrders(orders){
@@ -301,6 +335,12 @@ function renderOrders(orders){
       const id = row.dataset.toggle;
       const detail = body.querySelector('tr[data-detail="' + id + '"]');
       if (detail) detail.classList.toggle('hidden');
+    });
+  });
+  body.querySelectorAll('.dl-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadOrderFile(btn.dataset.order, btn.dataset.file, btn.dataset.name);
     });
   });
   body.querySelectorAll('select.status-select').forEach((sel) => {

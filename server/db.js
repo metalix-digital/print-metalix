@@ -55,6 +55,18 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT,
+    mobile TEXT,
+    password_hash TEXT NOT NULL,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile) WHERE mobile IS NOT NULL;
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -67,6 +79,11 @@ function ensureColumn(table, column, definition) {
 }
 ensureColumn('orders', 'paper_type', "TEXT DEFAULT 'normal'")
 ensureColumn('orders', 'files_json', 'TEXT')
+ensureColumn('orders', 'customer_id', 'TEXT')
+ensureColumn('orders', 'completed_at', 'INTEGER')
+ensureColumn('orders', 'files_deleted_at', 'INTEGER')
+ensureColumn('users', 'google_id', 'TEXT')
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 
 const DEFAULT_PRICING = {
   rates: {
@@ -160,7 +177,7 @@ function createOrder(order) {
   const now = order.created_at
   db.prepare(`
     INSERT INTO orders (
-      id, customer_name, customer_mobile, customer_email,
+      id, customer_id, customer_name, customer_mobile, customer_email,
       file_name, file_path, file_type, page_count, files_json,
       orientation, print_mode, print_side, copies, paper_size, paper_type,
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
@@ -168,7 +185,7 @@ function createOrder(order) {
       razorpay_order_id, payment_status, order_status,
       created_at, updated_at
     ) VALUES (
-      @id, @customer_name, @customer_mobile, @customer_email,
+      @id, @customer_id, @customer_name, @customer_mobile, @customer_email,
       @file_name, @file_path, @file_type, @page_count, @files_json,
       @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type,
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
@@ -176,7 +193,7 @@ function createOrder(order) {
       @razorpay_order_id, @payment_status, @order_status,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', customer_id: null, ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 
@@ -187,10 +204,25 @@ function getOrder(id) {
 function updateOrder(id, updates) {
   const fields = Object.keys(updates)
   if (!fields.length) return getOrder(id)
-  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  if (updates.order_status === 'Completed') {
+    const current = getOrder(id)
+    if (current && !current.completed_at) updates = { ...updates, completed_at: Date.now() }
+  }
+  const finalFields = Object.keys(updates)
+  const setClause = finalFields.map((f) => `${f} = @${f}`).join(', ')
   db.prepare(`UPDATE orders SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
     .run({ ...updates, id, updated_at: Date.now() })
   return getOrder(id)
+}
+
+function listOrdersForFileCleanup() {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+  return db.prepare(`
+    SELECT * FROM orders
+    WHERE completed_at IS NOT NULL AND completed_at <= ?
+      AND files_deleted_at IS NULL
+      AND (files_json IS NOT NULL OR file_path IS NOT NULL)
+  `).all(cutoff)
 }
 
 function listOrders({ status, search, limit, offset } = {}) {
@@ -240,6 +272,36 @@ function updatePrintJob(id, updates) {
   return db.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id)
 }
 
+function createUser({ id, name, email, mobile, password_hash, google_id }) {
+  const now = Date.now()
+  db.prepare(`
+    INSERT INTO users (id, name, email, mobile, password_hash, google_id, created_at, updated_at)
+    VALUES (@id, @name, @email, @mobile, @password_hash, @google_id, @now, @now)
+  `).run({ id, name, email: email || null, mobile: mobile || null, password_hash, google_id: google_id || null, now })
+  return getUserById(id)
+}
+
+function findUserByIdentifier(identifier) {
+  return db.prepare('SELECT * FROM users WHERE email = ? OR mobile = ?').get(identifier, identifier) || null
+}
+
+function findUserByGoogleId(googleId) {
+  return db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId) || null
+}
+
+function findUserByEmail(email) {
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email) || null
+}
+
+function linkGoogleId(userId, googleId) {
+  db.prepare('UPDATE users SET google_id = ?, updated_at = ? WHERE id = ?').run(googleId, Date.now(), userId)
+  return getUserById(userId)
+}
+
+function getUserById(id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null
+}
+
 module.exports = {
   db,
   getPricing,
@@ -248,9 +310,16 @@ module.exports = {
   getOrder,
   updateOrder,
   listOrders,
+  listOrdersForFileCleanup,
   listCustomers,
   createPrintJob,
   updatePrintJob,
   getSiteSettings,
-  setSiteSettings
+  setSiteSettings,
+  createUser,
+  findUserByIdentifier,
+  findUserByGoogleId,
+  findUserByEmail,
+  linkGoogleId,
+  getUserById
 }

@@ -97,6 +97,11 @@
   .hint-chip{ font-size:11.5px; font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); background:var(--paper-dim); border:1px solid var(--line); padding:5px 10px; border-radius:7px; }
 
   .opt-group{margin-top:26px;}
+  .ordering-as{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-top:10px; }
+  .ordering-as .oa-text{ font-size:13.5px; color:var(--ink-soft); display:flex; flex-direction:column; gap:2px; }
+  .ordering-as .oa-text b{ color:var(--ink); font-size:14px; }
+  .ordering-as .oa-change{ background:none; border:1px solid var(--line-strong); color:var(--ink); border-radius:7px; padding:6px 12px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; flex-shrink:0; }
+  .ordering-as .oa-change:hover{ background:#fff; }
   .opt-label{ font-size:12px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; display:block; }
   .field{margin-top:12px;}
   .field label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; display:block; }
@@ -234,9 +239,13 @@
     <div class="left">
       <h2>Place your order</h2>
 
-      <div class="opt-group" style="margin-top:0;">
+      <div class="opt-group" style="margin-top:0;" id="detailsGroup">
         <span class="opt-label">Your details</span>
-        <div class="field-row">
+        <div class="ordering-as" id="orderingAs" style="display:none;">
+          <div class="oa-text"><b id="oaName">—</b><span id="oaMobile"></span></div>
+          <button class="oa-change" type="button" id="oaChangeBtn">Change</button>
+        </div>
+        <div class="field-row" id="detailsFields">
           <div class="field" id="fieldName">
             <label>Full name *</label>
             <input type="text" id="customerName" placeholder="Your name" autocomplete="name" />
@@ -248,7 +257,7 @@
             <div class="field-error">Enter a valid 10-digit mobile number</div>
           </div>
         </div>
-        <div class="field">
+        <div class="field" id="fieldEmail">
           <label>Email (optional)</label>
           <input type="email" id="customerEmail" placeholder="you@example.com" autocomplete="email" />
         </div>
@@ -483,6 +492,41 @@
 (function(){
   const logoImg = document.querySelector('.logo img');
   if(logoImg) logoImg.src = './metalix-logo.svg';
+})();
+
+const CUSTOMER_TOKEN_KEY = 'metalix_customer_token';
+function getCustomerToken(){ return localStorage.getItem(CUSTOMER_TOKEN_KEY); }
+
+const orderingAs = document.getElementById('orderingAs');
+const detailsFields = document.getElementById('detailsFields');
+const fieldEmail = document.getElementById('fieldEmail');
+const oaName = document.getElementById('oaName');
+const oaMobile = document.getElementById('oaMobile');
+const oaChangeBtn = document.getElementById('oaChangeBtn');
+
+function showOrderingAs(user){
+  document.getElementById('customerName').value = user.name || '';
+  document.getElementById('customerMobile').value = user.mobile || '';
+  document.getElementById('customerEmail').value = user.email || '';
+  oaName.textContent = user.name || '';
+  oaMobile.textContent = user.mobile ? (' · ' + user.mobile) : '';
+  orderingAs.style.display = 'flex';
+  detailsFields.style.display = 'none';
+  fieldEmail.style.display = 'none';
+}
+oaChangeBtn.addEventListener('click', () => {
+  orderingAs.style.display = 'none';
+  detailsFields.style.display = 'grid';
+  fieldEmail.style.display = 'block';
+});
+
+(function checkCustomerSession(){
+  const token = getCustomerToken();
+  if(!token) return;
+  fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => { if(!r.ok) throw new Error('invalid'); return r.json(); })
+    .then(data => showOrderingAs(data.user))
+    .catch(() => { localStorage.removeItem(CUSTOMER_TOKEN_KEY); });
 })();
 
 const tray = document.getElementById('tray');
@@ -885,9 +929,12 @@ document.getElementById('modalProceed').addEventListener('click', async ()=>{
   const proceedBtn = document.getElementById('modalProceed');
   proceedBtn.disabled = true;
   try{
+    const customerToken = getCustomerToken();
+    const orderHeaders = { 'Content-Type': 'application/json' };
+    if(customerToken) orderHeaders.Authorization = 'Bearer ' + customerToken;
     const res = await fetch('/api/orders', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: orderHeaders,
       body: JSON.stringify(buildOrderPayload())
     });
     const data = await res.json();

@@ -64,6 +64,9 @@ nav a.active{color:var(--orange);}
   box-shadow:0 4px 12px -4px rgba(255,102,0,.45);
 }
 .btn-orange-sm:hover{background:var(--orange-d);box-shadow:0 6px 16px -4px rgba(255,102,0,.55);}
+.hidden{display:none!important;}
+.h-actions{display:flex;align-items:center;gap:10px;}
+.hi-text{font-size:14px;font-weight:600;color:var(--ink2);}
 .hamburger{display:none;background:none;border:none;cursor:pointer;padding:6px;}
 .mobile-menu{display:none;}
 @media(max-width:768px){
@@ -382,15 +385,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 .mtab.active{background:#fff;color:var(--ink);box-shadow:0 2px 6px rgba(0,0,0,.1);}
 .modal-pane{display:none;}
 .modal-pane.active{display:block;}
-.google-btn{
-  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
-  border:1.5px solid var(--line);border-radius:10px;padding:12px;
-  background:#fff;font-size:14.5px;font-weight:600;color:var(--ink);
-  cursor:pointer;font-family:'Inter',sans-serif;margin-bottom:18px;
-  transition:all .15s;
-}
-.google-btn:hover{border-color:#C7C4C0;background:#F9F8F6;}
-.google-btn svg{flex-shrink:0;}
+.google-btn-wrap{display:flex;justify-content:center;margin-bottom:18px;min-height:40px;}
 .divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line);}
 .divider span{font-size:12px;color:var(--ink3);white-space:nowrap;font-weight:500;}
@@ -466,9 +461,13 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <a onclick="showPage('policy')" id="nav-policy">Policies</a>
     </nav>
     <div class="h-space"></div>
-    <div class="h-actions">
+    <div class="h-actions" id="loggedOutActions">
       <button class="btn-ghost-sm" onclick="openModal('login')">Log in</button>
       <button class="btn-orange-sm" onclick="openModal('signup')">Sign up</button>
+    </div>
+    <div class="h-actions hidden" id="loggedInActions">
+      <span class="hi-text" id="hiText">Hi, there</span>
+      <button class="btn-ghost-sm" onclick="customerLogout()">Log out</button>
     </div>
     <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu" id="hamburgerBtn">
       <span></span><span></span><span></span>
@@ -481,9 +480,12 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <a onclick="mmNavigate('home','pricing')" id="mnav-pricing">Pricing</a>
       <a onclick="mmNavigate('home','contact')" id="mnav-contact">Contact</a>
       <a onclick="mmNavigate('policy')" id="mnav-policy">Policies</a>
-      <div class="mm-actions">
+      <div class="mm-actions" id="mmLoggedOutActions">
         <button class="btn-ghost-sm" onclick="closeMobileMenu();openModal('login')">Log in</button>
         <button class="btn-orange-sm" onclick="closeMobileMenu();openModal('signup')">Sign up</button>
+      </div>
+      <div class="mm-actions hidden" id="mmLoggedInActions">
+        <button class="btn-ghost-sm" onclick="closeMobileMenu();customerLogout()">Log out</button>
       </div>
     </div>
   </div>
@@ -874,14 +876,11 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 
     <!-- LOG IN PANE -->
     <div class="modal-pane active" id="pane-login">
-      <button class="google-btn" onclick="mockGoogle()">
-        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.1l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1L6 33.1C9.4 39.7 16.1 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C37.1 39.1 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
-        Continue with Google
-      </button>
+      <div class="google-btn-wrap" id="googleBtnLogin"></div>
       <div class="divider"><span>or log in with email</span></div>
       <div class="modal-field">
-        <label>Email</label>
-        <input type="email" placeholder="you@example.com" id="loginEmail">
+        <label>Email or mobile number</label>
+        <input type="text" placeholder="you@example.com or 98765 43210" id="loginIdentifier">
       </div>
       <div class="modal-field">
         <label>Password</label>
@@ -890,17 +889,13 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
           <button class="toggle-pass" onclick="togglePass('loginPass',this)" type="button">👁</button>
         </div>
       </div>
-      <div style="text-align:right;margin:-8px 0 16px;"><a style="font-size:12.5px;color:var(--orange);font-weight:600;cursor:pointer;" onclick="showToast('Password reset email sent (demo)')">Forgot password?</a></div>
-      <button class="submit-btn" onclick="mockLogin()">Log in</button>
+      <button class="submit-btn" id="loginSubmitBtn" onclick="realLogin()">Log in</button>
       <div class="modal-footer-text">Don't have an account? <a onclick="switchTab('signup', document.querySelectorAll('.mtab')[1])">Sign up</a></div>
     </div>
 
     <!-- SIGN UP PANE -->
     <div class="modal-pane" id="pane-signup">
-      <button class="google-btn" onclick="mockGoogle()">
-        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.1l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1L6 33.1C9.4 39.7 16.1 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C37.1 39.1 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
-        Sign up with Google
-      </button>
+      <div class="google-btn-wrap" id="googleBtnSignup"></div>
       <div class="divider"><span>or sign up with email</span></div>
       <div class="modal-field">
         <label>Full name</label>
@@ -927,7 +922,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <input type="checkbox" id="termsCheck">
         <label for="termsCheck">I agree to the <a onclick="closeModal();showPage('policy');showPolicyTab('terms')">Terms of Service</a> and <a onclick="closeModal();showPage('policy');showPolicyTab('privacy')">Privacy Policy</a></label>
       </div>
-      <button class="submit-btn" onclick="mockSignup()">Create account</button>
+      <button class="submit-btn" id="signupSubmitBtn" onclick="realSignup()">Create account</button>
       <div class="modal-footer-text">Already have an account? <a onclick="switchTab('login', document.querySelectorAll('.mtab')[0])">Log in</a></div>
     </div>
 
@@ -1136,17 +1131,72 @@ function switchTab(tab, btn){
   }
 }
 
-/* -- AUTH MOCK -- */
-function mockGoogle(){
-  showSuccess('Signed in with Google', 'You\'re all set. Your orders will appear in My Orders.');
+/* -- AUTH (real) -- */
+const CUSTOMER_TOKEN_KEY = 'metalix_customer_token';
+function getCustomerToken(){ return localStorage.getItem(CUSTOMER_TOKEN_KEY); }
+function setCustomerToken(t){ localStorage.setItem(CUSTOMER_TOKEN_KEY, t); }
+function clearCustomerToken(){ localStorage.removeItem(CUSTOMER_TOKEN_KEY); }
+
+/* -- GOOGLE SIGN-IN -- */
+let googleReady = false;
+function initGoogleSignIn(){
+  fetch('/api/auth/config').then(r => r.json()).then(cfg => {
+    if (!cfg.googleClientId) return;
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: handleGoogleCredential });
+      google.accounts.id.renderButton(document.getElementById('googleBtnLogin'), { theme: 'outline', size: 'large', width: 280 });
+      google.accounts.id.renderButton(document.getElementById('googleBtnSignup'), { theme: 'outline', size: 'large', text: 'signup_with', width: 280 });
+      googleReady = true;
+    };
+    document.head.appendChild(script);
+  }).catch(() => {});
 }
-function mockLogin(){
-  const email = document.getElementById('loginEmail').value.trim();
+initGoogleSignIn();
+
+async function handleGoogleCredential(response){
+  try {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: response.credential })
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.message || 'Google sign-in failed', '⚠️'); return; }
+    setCustomerToken(data.token);
+    refreshAuthHeader();
+    showSuccess('Signed in with Google!', `Welcome, ${data.user.name.split(' ')[0]}.`);
+  } catch (err) {
+    showToast('Something went wrong. Please try again.', '⚠️');
+  }
+}
+
+async function realLogin(){
+  const identifier = document.getElementById('loginIdentifier').value.trim();
   const pass = document.getElementById('loginPass').value;
-  if(!email || !pass){ showToast('Please fill in all fields','⚠️'); return; }
-  showSuccess('Logged in!', 'Welcome back to Metalix Print. Your orders are waiting.');
+  if(!identifier || !pass){ showToast('Please fill in all fields','⚠️'); return; }
+  const btn = document.getElementById('loginSubmitBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password: pass })
+    });
+    const data = await res.json();
+    if(!res.ok){ showToast(data.message || 'Login failed', '⚠️'); return; }
+    setCustomerToken(data.token);
+    refreshAuthHeader();
+    showSuccess('Logged in!', `Welcome back, ${data.user.name.split(' ')[0]}.`);
+  } catch (err) {
+    showToast('Something went wrong. Please try again.', '⚠️');
+  } finally {
+    btn.disabled = false;
+  }
 }
-function mockSignup(){
+
+async function realSignup(){
   const name = document.getElementById('signupName').value.trim();
   const email = document.getElementById('signupEmail').value.trim();
   const mobile = document.getElementById('signupMobile').value.trim();
@@ -1155,8 +1205,54 @@ function mockSignup(){
   if(!name||!email||!mobile||!pass){ showToast('Please fill in all fields','⚠️'); return; }
   if(!/^\d{10}$/.test(mobile)){ showToast('Enter a valid 10-digit mobile number','⚠️'); return; }
   if(!terms){ showToast('Please accept the terms to continue','⚠️'); return; }
-  showSuccess('Account created!', `Welcome, ${name.split(' ')[0]}! You can now track all your print orders.`);
+  const btn = document.getElementById('signupSubmitBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, mobile, password: pass })
+    });
+    const data = await res.json();
+    if(!res.ok){ showToast(data.message || 'Signup failed', '⚠️'); return; }
+    setCustomerToken(data.token);
+    refreshAuthHeader();
+    showSuccess('Account created!', `Welcome, ${name.split(' ')[0]}! Your details will auto-fill at checkout next time.`);
+  } catch (err) {
+    showToast('Something went wrong. Please try again.', '⚠️');
+  } finally {
+    btn.disabled = false;
+  }
 }
+
+function customerLogout(){
+  clearCustomerToken();
+  refreshAuthHeader();
+  showToast('Logged out');
+}
+
+function refreshAuthHeader(){
+  const token = getCustomerToken();
+  if(!token){
+    document.getElementById('loggedOutActions').classList.remove('hidden');
+    document.getElementById('loggedInActions').classList.add('hidden');
+    document.getElementById('mmLoggedOutActions').classList.remove('hidden');
+    document.getElementById('mmLoggedInActions').classList.add('hidden');
+    return;
+  }
+  fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => { if(!r.ok) throw new Error('invalid'); return r.json(); })
+    .then(data => {
+      const firstName = data.user.name.split(' ')[0];
+      document.getElementById('hiText').textContent = 'Hi, ' + firstName;
+      document.getElementById('loggedOutActions').classList.add('hidden');
+      document.getElementById('loggedInActions').classList.remove('hidden');
+      document.getElementById('mmLoggedOutActions').classList.add('hidden');
+      document.getElementById('mmLoggedInActions').classList.remove('hidden');
+    })
+    .catch(() => { clearCustomerToken(); });
+}
+refreshAuthHeader();
+
 function showSuccess(title, msg){
   document.querySelectorAll('.modal-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('successTitle').textContent=title;

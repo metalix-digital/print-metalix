@@ -7,7 +7,9 @@ async function loadSecretsIntoEnv() {
     ['RAZORPAY_KEY_ID', 'razorpay-key-id'],
     ['RAZORPAY_KEY_SECRET', 'razorpay-key-secret'],
     ['ADMIN_PASSWORD', 'admin-password'],
-    ['ADMIN_JWT_SECRET', 'admin-jwt-secret']
+    ['ADMIN_JWT_SECRET', 'admin-jwt-secret'],
+    ['GOOGLE_CLIENT_ID', 'google-client-id'],
+    ['GOOGLE_CLIENT_SECRET', 'google-client-secret']
   ].filter(([envVar]) => !process.env[envVar])
 
   if (!needed.length) return
