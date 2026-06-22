@@ -95,9 +95,11 @@
   .btn:disabled{opacity:.45; cursor:not-allowed; box-shadow:none;}
   input[type=file]{display:none;}
   .hint-strip{ margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .file-privacy-note{ margin-top:10px; font-size:11.5px; color:var(--ink-soft); }
   .hint-chip{ font-size:11.5px; font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); background:var(--paper-dim); border:1px solid var(--line); padding:5px 10px; border-radius:7px; }
 
   .opt-group{margin-top:26px;}
+  .dim-hint{ font-size:11.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:8px; }
   .ordering-as{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-top:10px; }
   .ordering-as .oa-text{ font-size:13.5px; color:var(--ink-soft); display:flex; flex-direction:column; gap:2px; }
   .ordering-as .oa-text b{ color:var(--ink); font-size:14px; }
@@ -212,29 +214,6 @@
     </div>
   </header>
 
-  <section class="hero">
-    <h1 class="hero-title">Print documents online with <span>Metalix Print</span></h1>
-    <p class="hero-sub">Upload a PDF, Word, or PowerPoint file, configure how you want it printed, and pay online — we take it from there.</p>
-  </section>
-
-  <section class="services">
-    <div class="service-card"><div class="service-icon">📄</div><div class="service-title">PDF Printing</div><div class="service-desc">Upload any PDF and we'll detect pages and color automatically.</div></div>
-    <div class="service-card"><div class="service-icon">📝</div><div class="service-title">Word Printing</div><div class="service-desc">.doc and .docx documents, converted and printed accurately.</div></div>
-    <div class="service-card"><div class="service-icon">📊</div><div class="service-title">PowerPoint Printing</div><div class="service-desc">.ppt and .pptx slide decks, one page per slide.</div></div>
-    <div class="service-card"><div class="service-icon">🎨</div><div class="service-title">Color Printing</div><div class="service-desc">Full-color pages for presentations, charts, and photos.</div></div>
-    <div class="service-card"><div class="service-icon">⚫</div><div class="service-title">Black &amp; White Printing</div><div class="service-desc">The cheapest option for text-heavy documents.</div></div>
-    <div class="service-card"><div class="service-icon">📦</div><div class="service-title">Bulk Printing</div><div class="service-desc">Up to 999 copies per order, single or double sided.</div></div>
-  </section>
-
-  <h2 class="section-title">How it works</h2>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-title">Upload document</div><div class="step-desc">PDF, Word or PowerPoint — drag &amp; drop or browse</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-title">Configure print settings</div><div class="step-desc">Orientation, color, sides, copies, paper size</div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-title">Pay online</div><div class="step-desc">Secure checkout via Razorpay</div></div>
-    <div class="step"><div class="step-num">4</div><div class="step-title">Printing begins</div><div class="step-desc">Your order is queued for printing automatically</div></div>
-    <div class="step"><div class="step-num">5</div><div class="step-title">Pickup or delivery</div><div class="step-desc">Collect in-store or get it delivered to your door</div></div>
-  </div>
-
   <div class="card" id="appCard">
     <!-- LEFT: UPLOAD & CONFIGURE -->
     <div class="left">
@@ -299,6 +278,7 @@
           <span class="hint-chip">PDF · DOC · DOCX · PPT · PPTX</span>
           <span class="hint-chip">Up to 100 MB total</span>
         </div>
+        <div class="file-privacy-note">🔒 Your files are deleted automatically 7 days after your order is completed.</div>
       </div>
 
       <div class="opt-group">
@@ -307,6 +287,7 @@
           <label><input type="radio" name="orientation" value="portrait" checked><span class="pill">Portrait</span></label>
           <label><input type="radio" name="orientation" value="landscape"><span class="pill">Landscape</span></label>
         </div>
+        <div class="dim-hint" id="orientationDims">8.3 × 11.7 in</div>
       </div>
 
       <div class="opt-group">
@@ -315,17 +296,17 @@
           <label class="mode-card active" id="modeAutoCard">
             <input type="radio" name="mode" value="auto" checked>
             <div class="mtitle"><span class="swatch" style="background:linear-gradient(90deg,#0EA5E9,#E11D74);"></span>Auto</div>
-            <div class="mdesc">Color pages stay color, rest print B/W</div>
+            <div class="mdesc" id="modeAutoDesc">Color pages stay color, rest print B/W</div>
           </label>
           <label class="mode-card" id="modeColorCard">
             <input type="radio" name="mode" value="color">
             <div class="mtitle"><span class="swatch" style="background:var(--magenta);"></span>Color</div>
-            <div class="mdesc">Every page prints in full color</div>
+            <div class="mdesc" id="modeColorDesc">Every page prints in full color</div>
           </label>
           <label class="mode-card" id="modeBwCard">
             <input type="radio" name="mode" value="bw">
             <div class="mtitle"><span class="swatch" style="background:#444;"></span>Black &amp; White</div>
-            <div class="mdesc">Cheapest — all pages in grayscale</div>
+            <div class="mdesc" id="modeBwDesc">Cheapest — all pages in grayscale</div>
           </label>
         </div>
       </div>
@@ -623,7 +604,34 @@ function calcEstimate(){
   return { colorPages, bwPages, printCost, deliveryCharge, gstAmount, totalAmount };
 }
 
+const PAPER_DIMENSIONS = {
+  a4: { w: 8.3, h: 11.7 },
+  a3: { w: 11.7, h: 16.5 }
+};
+function updateOrientationDims(){
+  const dims = PAPER_DIMENSIONS[state.paperSize] || PAPER_DIMENSIONS.a4;
+  const el = document.getElementById('orientationDims');
+  if(!el) return;
+  el.textContent = state.orientation === 'landscape'
+    ? `${dims.h} × ${dims.w} in`
+    : `${dims.w} × ${dims.h} in`;
+}
+
+function updateModePriceHints(){
+  if(!pricingConfig) return;
+  const sizeRates = pricingConfig.rates[state.paperSize];
+  const effectiveType = state.paperSize === 'a4' ? state.paperType : 'normal';
+  const rates = sizeRates[effectiveType] || sizeRates.normal;
+  const colorRate = rates.color[state.side];
+  const bwRate = rates.bw[state.side];
+  document.getElementById('modeAutoDesc').textContent = `Color pages stay color, rest print B/W — from ₹${bwRate}/page`;
+  document.getElementById('modeColorDesc').textContent = `Every page prints in full color — ₹${colorRate}/page`;
+  document.getElementById('modeBwDesc').textContent = `Cheapest — all pages in grayscale — ₹${bwRate}/page`;
+}
+
 function recalc(){
+  updateModePriceHints();
+  updateOrientationDims();
   const est = calcEstimate();
   const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
   const totalColor = state.files.reduce((sum, f) => sum + (f.colorCount || 0), 0);
