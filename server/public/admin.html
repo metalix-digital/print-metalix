@@ -262,17 +262,20 @@ function statusSelectHtml(orderId, current){
 }
 
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
+const PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, paperType){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
   const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
   const orientationText = orientation ? ' · ' + (orientation === 'landscape' ? 'Landscape' : 'Portrait') : '';
+  const sideText = printSide ? ' · ' + (printSide === 'double' ? 'Double-sided' : 'Single-sided') : '';
+  const paperTypeText = paperType ? ' · ' + (PAPER_TYPE_LABELS[paperType] || paperType) : '';
   const copiesText = copies != null ? ' · ' + copies + ' cop' + (copies === 1 ? 'y' : 'ies') : '';
   const passwordText = password ? '<div class="subtle">🔒 Password: <strong>' + password.replace(/</g, '&lt;') + '</strong></div>' : '';
   const action = deleted
     ? '<span class="subtle">File auto-deleted after 7 days</span>'
     : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
-  return '<li><span>' + fileName + meta + modeText + orientationText + copiesText + passwordText + '</span> ' + action + '</li>';
+  return '<li><span>' + fileName + meta + modeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> ' + action + '</li>';
 }
 
 function filesDetailHtml(o){
@@ -284,7 +287,7 @@ function filesDetailHtml(o){
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.paperType)).join('') +
     '</ul>';
 }
 
@@ -327,7 +330,7 @@ function renderOrders(orders){
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
       filesDetailHtml(o) +
-      '<div><strong>Paper:</strong> ' + o.paper_size + (o.paper_type ? ' (' + o.paper_type + ')' : '') + ' · ' + (o.print_mode === 'mixed' ? 'Mixed' : (MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
+      '<div><strong>Paper:</strong> ' + o.paper_size + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : (PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : (MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : o.print_side + '-sided') + ' · ' + o.copies + ' copies (see per-file detail above for mixed orders)</div>' +
       '<div><strong>Delivery:</strong> ' + o.delivery_method +
         (o.delivery_method === 'delivery' ? ' — ' + o.delivery_address + ', ' + o.delivery_city + ', ' + o.delivery_state + ' ' + o.delivery_pincode : '') +
       '</div>' +

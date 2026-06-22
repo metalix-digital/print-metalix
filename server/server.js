@@ -390,7 +390,6 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const {
     customerName, customerMobile, customerEmail,
     files,
-    printSide, paperType,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode
   } = req.body || {}
 
@@ -403,6 +402,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
 
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
+  const VALID_SIDES = ['single', 'double']
+  const VALID_PAPER_TYPES = ['normal', 'bond', 'premium']
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
@@ -413,6 +414,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
     }
     const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
     const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
+    const fileSide = VALID_SIDES.includes(f.printSide) ? f.printSide : 'single'
+    const filePaperType = VALID_PAPER_TYPES.includes(f.paperType) ? f.paperType : 'normal'
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {
@@ -424,6 +427,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
       fileSize: Number(f.fileSize) || 0,
       printMode: fileMode,
       orientation: fileOrientation,
+      printSide: fileSide,
+      paperType: filePaperType,
       copies: fileCopies,
       password: filePassword
     }
@@ -431,7 +436,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
       { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
       fileMode
     )
-    pricingFiles.push({ colorPages, bwPages, copies: fileCopies })
+    pricingFiles.push({ colorPages, bwPages, copies: fileCopies, printSide: fileSide, paperType: filePaperType })
     totalFileSize += fileData.fileSize
     safeFiles.push(fileData)
   }
@@ -447,13 +452,15 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
   const fileOrientations = new Set(safeFiles.map((f) => f.orientation))
   const summaryOrientation = fileOrientations.size === 1 ? safeFiles[0].orientation : 'mixed'
+  const fileSides = new Set(safeFiles.map((f) => f.printSide))
+  const summarySide = fileSides.size === 1 ? safeFiles[0].printSide : 'mixed'
+  const filePaperTypes = new Set(safeFiles.map((f) => f.paperType))
+  const summaryPaperType = filePaperTypes.size === 1 ? safeFiles[0].paperType : 'mixed'
   const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
 
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
     files: pricingFiles,
-    printSide: printSide || 'single',
-    paperType: paperType || 'normal',
     deliveryMethod: deliveryMethod || 'pickup'
   })
 
@@ -497,10 +504,10 @@ app.post('/api/orders', express.json(), async (req, res) => {
     files_json: JSON.stringify(safeFiles),
     orientation: summaryOrientation,
     print_mode: summaryMode,
-    print_side: printSide || 'single',
+    print_side: summarySide,
     copies: totalCopies,
     paper_size: 'a4', // A3 support removed — every order is A4 regardless of client input
-    paper_type: paperType || 'normal',
+    paper_type: summaryPaperType,
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,
     delivery_city: deliveryCity || null,
