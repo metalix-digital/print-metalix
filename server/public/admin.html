@@ -263,13 +263,16 @@ function statusSelectHtml(orderId, current){
 
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
   const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
+  const orientationText = orientation ? ' · ' + (orientation === 'landscape' ? 'Landscape' : 'Portrait') : '';
+  const copiesText = copies != null ? ' · ' + copies + ' cop' + (copies === 1 ? 'y' : 'ies') : '';
+  const passwordText = password ? '<div class="subtle">🔒 Password: <strong>' + password.replace(/</g, '&lt;') + '</strong></div>' : '';
   const action = deleted
     ? '<span class="subtle">File auto-deleted after 7 days</span>'
     : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
-  return '<li><span>' + fileName + meta + modeText + '</span> ' + action + '</li>';
+  return '<li><span>' + fileName + meta + modeText + orientationText + copiesText + passwordText + '</span> ' + action + '</li>';
 }
 
 function filesDetailHtml(o){
@@ -281,7 +284,7 @@ function filesDetailHtml(o){
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password)).join('') +
     '</ul>';
 }
 

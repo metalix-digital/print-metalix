@@ -1382,6 +1382,14 @@ function refreshAuthHeader(){
 }
 refreshAuthHeader();
 
+(function checkPageParamInUrl(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('page') === 'orders'){
+    showPage('orders');
+    history.replaceState(null, '', window.location.pathname);
+  }
+})();
+
 function showSuccess(title, msg){
   document.querySelectorAll('.modal-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('successTitle').textContent=title;

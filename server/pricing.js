@@ -1,19 +1,30 @@
-// Pure rate math — color/B&W page counts are resolved per-file by the
-// caller (client estimate and server authoritative calc both do this the
-// same way) so a single order can mix per-file print modes correctly.
-function calculate(config, { colorPages, bwPages, printSide, paperType, copies, deliveryMethod }) {
+// Pure rate math — color/B&W page counts and copy count are resolved
+// per-file by the caller (client estimate and server authoritative calc
+// both do this the same way) so a single order can mix per-file print
+// modes and copy counts correctly.
+function calculate(config, { files, printSide, paperType, deliveryMethod }) {
   const side = printSide === 'double' ? 'double' : 'single'
   const type = config.rates.a4[paperType] ? paperType : 'normal'
   const rates = config.rates.a4[type]
 
-  const perCopy = (colorPages || 0) * rates.color[side] + (bwPages || 0) * rates.bw[side]
-  const printCost = Math.round(perCopy * Math.max(1, copies || 1))
+  let printCost = 0
+  let colorPages = 0
+  let bwPages = 0
+  ;(files || []).forEach((f) => {
+    const copies = Math.max(1, f.copies || 1)
+    const c = f.colorPages || 0
+    const b = f.bwPages || 0
+    colorPages += c * copies
+    bwPages += b * copies
+    printCost += (c * rates.color[side] + b * rates.bw[side]) * copies
+  })
+  printCost = Math.round(printCost)
   const deliveryCharge = deliveryMethod === 'delivery' ? config.deliveryCharge : 0
   const subtotal = printCost + deliveryCharge
   const gstAmount = Math.round((subtotal * (config.gstPercent || 0)) / 100)
   const totalAmount = subtotal + gstAmount
 
-  return { colorPages: colorPages || 0, bwPages: bwPages || 0, printCost, deliveryCharge, gstAmount, totalAmount }
+  return { colorPages, bwPages, printCost, deliveryCharge, gstAmount, totalAmount }
 }
 
 // Resolves a single file's effective color/bw page split given its

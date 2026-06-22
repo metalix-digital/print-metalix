@@ -390,7 +390,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const {
     customerName, customerMobile, customerEmail,
     files,
-    orientation, printMode, printSide, paperSize, paperType, copies,
+    printSide, paperType,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode
   } = req.body || {}
 
@@ -402,16 +402,19 @@ app.post('/api/orders', express.json(), async (req, res) => {
   }
 
   const VALID_MODES = ['auto', 'color', 'bw']
+  const VALID_ORIENTATIONS = ['portrait', 'landscape']
   let totalFileSize = 0
-  let totalColorPages = 0
-  let totalBwPages = 0
   const safeFiles = []
+  const pricingFiles = []
   for (const f of files) {
     const safeFileId = path.basename(String(f.fileId || ''))
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
       return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
     }
     const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
+    const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
+    const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
+    const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {
       fileId: safeFileId,
       fileName: f.fileName || safeFileId,
@@ -419,14 +422,16 @@ app.post('/api/orders', express.json(), async (req, res) => {
       pageCount: Number(f.pageCount) || 0,
       colorPageCount: Number(f.colorPageCount) || 0,
       fileSize: Number(f.fileSize) || 0,
-      printMode: fileMode
+      printMode: fileMode,
+      orientation: fileOrientation,
+      copies: fileCopies,
+      password: filePassword
     }
     const { colorPages, bwPages } = pricing.resolveFileColorPages(
       { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
       fileMode
     )
-    totalColorPages += colorPages
-    totalBwPages += bwPages
+    pricingFiles.push({ colorPages, bwPages, copies: fileCopies })
     totalFileSize += fileData.fileSize
     safeFiles.push(fileData)
   }
@@ -440,14 +445,15 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
   const fileModes = new Set(safeFiles.map((f) => f.printMode))
   const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
+  const fileOrientations = new Set(safeFiles.map((f) => f.orientation))
+  const summaryOrientation = fileOrientations.size === 1 ? safeFiles[0].orientation : 'mixed'
+  const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
 
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
-    colorPages: totalColorPages,
-    bwPages: totalBwPages,
+    files: pricingFiles,
     printSide: printSide || 'single',
     paperType: paperType || 'normal',
-    copies: Number(copies) || 1,
     deliveryMethod: deliveryMethod || 'pickup'
   })
 
@@ -489,10 +495,10 @@ app.post('/api/orders', express.json(), async (req, res) => {
     file_type: safeFiles[0].fileType,
     page_count: totalPageCount,
     files_json: JSON.stringify(safeFiles),
-    orientation: orientation || 'portrait',
+    orientation: summaryOrientation,
     print_mode: summaryMode,
     print_side: printSide || 'single',
-    copies: Number(copies) || 1,
+    copies: totalCopies,
     paper_size: 'a4', // A3 support removed — every order is A4 regardless of client input
     paper_type: paperType || 'normal',
     delivery_method: deliveryMethod || 'pickup',

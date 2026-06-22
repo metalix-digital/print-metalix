@@ -70,14 +70,28 @@
   .tray-title{font-weight:600; font-size:15.5px; color:var(--ink);}
   .tray-sub{font-size:12.5px; color:var(--ink-soft); max-width:280px; line-height:1.5;}
   .tray-error{ color:var(--red); font-size:12.5px; font-weight:600; }
-  .file-list{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:8px; }
-  .file-pill{ display:flex; align-items:center; gap:10px; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:10px 14px; width:100%; text-align:left; }
-  .file-pill .fdot{ width:34px;height:34px;border-radius:8px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600; text-transform:uppercase;}
-  .file-pill .fname{font-size:13px;font-weight:600;color:var(--ink); overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .file-pill .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace;}
-  .file-pill .fmode{ flex-shrink:0; border:1px solid var(--line); border-radius:7px; padding:5px 6px; font-size:11.5px; font-family:'Inter',sans-serif; color:var(--ink); background:#fff; }
-  .file-pill .fremove{ margin-left:0; flex-shrink:0; width:24px; height:24px; border-radius:50%; border:none; background:#fff; color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
-  .file-pill .fremove:hover{ background:var(--red); color:#fff; }
+  .file-list{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
+  .file-card{ background:var(--paper-dim); border:1px solid var(--line); border-radius:12px; padding:10px 12px; width:100%; text-align:left; }
+  .file-card-top{ display:flex; align-items:center; gap:10px; }
+  .file-card .fdot{ width:34px;height:34px;border-radius:8px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600; text-transform:uppercase;}
+  .file-card .fname{font-size:13px;font-weight:600;color:var(--ink); overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .file-card .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace;}
+  .file-card .fmode{ flex-shrink:0; border:1px solid var(--line); border-radius:7px; padding:5px 6px; font-size:11.5px; font-family:'Inter',sans-serif; color:var(--ink); background:#fff; }
+  .file-card .fremove{ margin-left:0; flex-shrink:0; width:24px; height:24px; border-radius:50%; border:none; background:#fff; color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .file-card .fremove:hover{ background:var(--red); color:#fff; }
+  .file-card-settings{ display:flex; align-items:center; gap:8px; margin-top:9px; flex-wrap:wrap; }
+  .fcopies{ display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line); border-radius:7px; padding:3px 4px; }
+  .fcopies button{ width:20px; height:20px; border-radius:5px; border:none; background:var(--paper-dim); color:var(--ink); font-size:13px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .fcopies button:hover{ background:var(--line); }
+  .fcopies .fcopies-val{ font-family:'IBM Plex Mono',monospace; font-size:12px; min-width:16px; text-align:center; }
+  .forient{ display:inline-flex; background:#fff; border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+  .forient label{ position:relative; cursor:pointer; }
+  .forient input{ position:absolute; opacity:0; }
+  .forient .fopill{ display:block; padding:5px 8px; font-size:11.5px; font-weight:600; color:var(--ink-soft); }
+  .forient input:checked + .fopill{ background:var(--ink); color:#fff; }
+  .fpassword{ margin-top:8px; width:100%; padding:7px 10px; border:1px solid var(--line); border-radius:7px; font-size:12px; font-family:'Inter',sans-serif; color:var(--ink); background:#fff; }
+  .fpassword:focus{ outline:none; border-color:var(--orange); }
+  .fpassword::placeholder{ color:var(--ink-soft); }
   .file-total{ font-size:11.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; text-align:center; width:100%; }
   .add-more-btn{ font-size:12.5px; font-weight:600; color:var(--orange-deep); background:none; border:1px dashed var(--line-strong); border-radius:9px; padding:8px 14px; cursor:pointer; width:100%; }
   .add-more-btn:hover{ border-color:var(--orange); background:#FFF7F0; }
@@ -212,6 +226,10 @@
       <div class="badge"><span class="pulse"></span> Shop open</div>
       <div class="badge">⚡ Ready in 3–4 hrs</div>
     </div>
+    <div class="header-actions hidden" id="headerActions" style="display:none; align-items:center; gap:8px;">
+      <a class="btn btn-ghost" href="/?page=orders" style="text-decoration:none; padding:9px 14px; font-size:13px;">My Orders</a>
+      <button class="btn btn-ghost" type="button" id="headerLogoutBtn" style="padding:9px 14px; font-size:13px;">Log out</button>
+    </div>
   </header>
 
   <div class="card" id="appCard">
@@ -282,7 +300,7 @@
       </div>
 
       <div class="opt-group">
-        <span class="opt-label">Orientation</span>
+        <span class="opt-label">Orientation <span style="text-transform:none;font-weight:500;">— applies to all files (override per file below)</span></span>
         <div class="seg">
           <label><input type="radio" name="orientation" value="portrait" checked><span class="pill">Portrait</span></label>
           <label><input type="radio" name="orientation" value="landscape"><span class="pill">Landscape</span></label>
@@ -291,7 +309,7 @@
       </div>
 
       <div class="opt-group">
-        <span class="opt-label">Print mode</span>
+        <span class="opt-label">Print mode <span style="text-transform:none;font-weight:500;">— applies to all files (override per file below)</span></span>
         <div class="mode-row">
           <label class="mode-card active" id="modeAutoCard">
             <input type="radio" name="mode" value="auto" checked>
@@ -329,7 +347,7 @@
       </div>
 
       <div class="opt-group">
-        <span class="opt-label">Copies</span>
+        <span class="opt-label">Copies <span style="text-transform:none;font-weight:500;">— applies to all files (override per file below)</span></span>
         <div class="copies-input">
           <button class="btn btn-ghost" type="button" id="copiesMinus" style="padding:8px 14px;">−</button>
           <input type="number" id="copiesInput" min="1" max="999" value="1" />
@@ -477,6 +495,9 @@ const oaName = document.getElementById('oaName');
 const oaMobile = document.getElementById('oaMobile');
 const oaChangeBtn = document.getElementById('oaChangeBtn');
 
+const headerActions = document.getElementById('headerActions');
+const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+
 function showOrderingAs(user){
   document.getElementById('customerName').value = user.name || '';
   document.getElementById('customerMobile').value = user.mobile || '';
@@ -486,11 +507,16 @@ function showOrderingAs(user){
   orderingAs.style.display = 'flex';
   detailsFields.style.display = 'none';
   fieldEmail.style.display = 'none';
+  headerActions.style.display = 'flex';
 }
 oaChangeBtn.addEventListener('click', () => {
   orderingAs.style.display = 'none';
   detailsFields.style.display = 'grid';
   fieldEmail.style.display = 'block';
+});
+headerLogoutBtn.addEventListener('click', () => {
+  localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  window.location.reload();
 });
 
 (function checkCustomerSession(){
@@ -577,17 +603,18 @@ function calcEstimate(){
   if(!pricingConfig || !state.files.length){
     return { colorPages: 0, bwPages: 0, printCost: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
   }
-  let colorPages = 0, bwPages = 0;
-  state.files.forEach((f) => {
-    const split = resolveFileColorPages(f);
-    colorPages += split.colorPages;
-    bwPages += split.bwPages;
-  });
   const sizeRates = pricingConfig.rates[state.paperSize];
   const effectiveType = state.paperSize === 'a4' ? state.paperType : 'normal';
   const rates = (sizeRates[effectiveType] || sizeRates.normal);
-  const perCopy = colorPages * rates.color[state.side] + bwPages * rates.bw[state.side];
-  const printCost = Math.round(perCopy * Math.max(1, state.copies));
+  let colorPages = 0, bwPages = 0, printCost = 0;
+  state.files.forEach((f) => {
+    const split = resolveFileColorPages(f);
+    const copies = Math.max(1, f.copies || 1);
+    colorPages += split.colorPages * copies;
+    bwPages += split.bwPages * copies;
+    printCost += (split.colorPages * rates.color[state.side] + split.bwPages * rates.bw[state.side]) * copies;
+  });
+  printCost = Math.round(printCost);
   const deliveryCharge = state.deliveryMethod === 'delivery' ? pricingConfig.deliveryCharge : 0;
   const subtotal = printCost + deliveryCharge;
   const gstAmount = Math.round(subtotal * (pricingConfig.gstPercent || 0) / 100);
@@ -616,6 +643,18 @@ function updateModePriceHints(){
   document.getElementById('modeBwDesc').textContent = `Cheapest — all pages in grayscale — ₹${bwRate}/page`;
 }
 
+function orientationSummaryLabel(){
+  if(!state.files.length) return state.orientation === 'landscape' ? 'Landscape' : 'Portrait';
+  const set = new Set(state.files.map((f) => f.orientation || 'portrait'));
+  if(set.size > 1) return 'Mixed';
+  return [...set][0] === 'landscape' ? 'Landscape' : 'Portrait';
+}
+function copiesSummaryLabel(){
+  if(!state.files.length) return String(state.copies);
+  const set = new Set(state.files.map((f) => f.copies || 1));
+  return set.size > 1 ? 'Mixed' : String([...set][0]);
+}
+
 function recalc(){
   updateModePriceHints();
   updateOrientationDims();
@@ -630,7 +669,7 @@ function recalc(){
   rPaperType.textContent = PAPER_TYPE_LABELS[state.paperType] || 'Normal';
   rPaperTypeRow.style.display = state.paperSize === 'a4' ? 'flex' : 'none';
   rSide.textContent = state.side === 'single' ? 'Single' : 'Double';
-  rCopies.textContent = state.copies;
+  rCopies.textContent = copiesSummaryLabel();
   rPrintCost.textContent = '₹' + est.printCost;
   rDelivery.textContent = '₹' + est.deliveryCharge;
   rGst.textContent = '₹' + est.gstAmount;
@@ -645,13 +684,19 @@ function setMode(mode){
   document.getElementById('modeColorCard').classList.toggle('active', mode==='color');
   document.getElementById('modeBwCard').classList.toggle('active', mode==='bw');
   // Bulk-apply to every currently uploaded file — per-file overrides (the
-  // per-pill selector) can still be set individually afterward.
+  // per-file controls) can still be set individually afterward.
   state.files.forEach((f) => { f.printMode = mode; });
   renderFileList();
   recalc();
 }
 document.querySelectorAll('input[name=mode]').forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
-document.querySelectorAll('input[name=orientation]').forEach(r=> r.addEventListener('change', e=>{ state.orientation = e.target.value; recalc(); }));
+document.querySelectorAll('input[name=orientation]').forEach(r=> r.addEventListener('change', e=>{
+  state.orientation = e.target.value;
+  // Bulk-apply to every currently uploaded file — per-file overrides below still work afterward.
+  state.files.forEach((f) => { f.orientation = state.orientation; });
+  renderFileList();
+  recalc();
+}));
 document.querySelectorAll('input[name=side]').forEach(r=> r.addEventListener('change', e=>{ state.side = e.target.value; recalc(); }));
 document.querySelectorAll('input[name=papertype]').forEach(r=> r.addEventListener('change', e=>{ state.paperType = e.target.value; recalc(); }));
 paperTypeGroup.style.display = 'block';
@@ -661,6 +706,9 @@ function setCopies(n){
   n = Math.max(1, Math.min(999, Math.round(n) || 1));
   state.copies = n;
   copiesInput.value = n;
+  // Bulk-apply to every currently uploaded file — per-file overrides below still work afterward.
+  state.files.forEach((f) => { f.copies = n; });
+  renderFileList();
   recalc();
 }
 copiesInput.addEventListener('input', ()=> setCopies(Number(copiesInput.value)));
@@ -687,6 +735,10 @@ function fileDot(fileType){
   return (fileType || '').toUpperCase();
 }
 
+function escapeAttr(s){
+  return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
 function renderFileList(){
   if(!state.files.length){
     fileList.innerHTML = '';
@@ -694,18 +746,32 @@ function renderFileList(){
     return;
   }
   fileList.innerHTML = state.files.map((f, i) => `
-    <div class="file-pill">
-      <div class="fdot">${fileDot(f.fileType)}</div>
-      <div style="min-width:0;flex:1;">
-        <div class="fname">${f.fileName}</div>
-        <div class="fmeta">${f.pageCount} page${f.pageCount===1?'':'s'} · ${(f.fileSize/1024/1024).toFixed(2)} MB</div>
+    <div class="file-card">
+      <div class="file-card-top">
+        <div class="fdot">${fileDot(f.fileType)}</div>
+        <div style="min-width:0;flex:1;">
+          <div class="fname">${f.fileName}</div>
+          <div class="fmeta">${f.pageCount} page${f.pageCount===1?'':'s'} · ${(f.fileSize/1024/1024).toFixed(2)} MB</div>
+        </div>
+        <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
       </div>
-      <select class="fmode" data-index="${i}" aria-label="Print mode for this file">
-        <option value="auto" ${f.printMode==='auto'?'selected':''}>Auto</option>
-        <option value="color" ${f.printMode==='color'?'selected':''}>Color</option>
-        <option value="bw" ${f.printMode==='bw'?'selected':''}>B&amp;W</option>
-      </select>
-      <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
+      <div class="file-card-settings">
+        <select class="fmode" data-index="${i}" aria-label="Print mode for this file">
+          <option value="auto" ${f.printMode==='auto'?'selected':''}>Auto</option>
+          <option value="color" ${f.printMode==='color'?'selected':''}>Color</option>
+          <option value="bw" ${f.printMode==='bw'?'selected':''}>B&amp;W</option>
+        </select>
+        <div class="fcopies" data-index="${i}">
+          <button type="button" class="fcopy-minus" data-index="${i}" aria-label="Fewer copies">−</button>
+          <span class="fcopies-val">${f.copies || 1}</span>
+          <button type="button" class="fcopy-plus" data-index="${i}" aria-label="More copies">+</button>
+        </div>
+        <div class="forient">
+          <label><input type="radio" name="forient-${i}" value="portrait" data-index="${i}" ${ (f.orientation||'portrait')==='portrait' ? 'checked' : '' }><span class="fopill">P</span></label>
+          <label><input type="radio" name="forient-${i}" value="landscape" data-index="${i}" ${ f.orientation==='landscape' ? 'checked' : '' }><span class="fopill">L</span></label>
+        </div>
+      </div>
+      <input class="fpassword" type="text" data-index="${i}" maxlength="200" placeholder="🔒 Document password (if locked)" value="${escapeAttr(f.password)}" />
     </div>
   `).join('');
   const totalMb = (totalUploadedBytes()/1024/1024).toFixed(1);
@@ -721,6 +787,37 @@ function renderFileList(){
     sel.addEventListener('change', (e) => {
       state.files[Number(sel.dataset.index)].printMode = e.target.value;
       recalc();
+    });
+  });
+  fileList.querySelectorAll('.fcopy-minus').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = state.files[Number(btn.dataset.index)];
+      f.copies = Math.max(1, (f.copies || 1) - 1);
+      renderFileList();
+      recalc();
+    });
+  });
+  fileList.querySelectorAll('.fcopy-plus').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = state.files[Number(btn.dataset.index)];
+      f.copies = Math.min(999, (f.copies || 1) + 1);
+      renderFileList();
+      recalc();
+    });
+  });
+  fileList.querySelectorAll('.forient input').forEach((radio) => {
+    radio.addEventListener('click', (e) => e.stopPropagation());
+    radio.addEventListener('change', (e) => {
+      state.files[Number(radio.dataset.index)].orientation = e.target.value;
+      recalc();
+    });
+  });
+  fileList.querySelectorAll('.fpassword').forEach((input) => {
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('input', (e) => {
+      state.files[Number(input.dataset.index)].password = e.target.value;
     });
   });
 }
@@ -795,6 +892,9 @@ async function uploadFiles(fileArray){
     try{
       const json = await uploadOneFile(validFiles[i]);
       json.printMode = state.mode;
+      json.copies = state.copies;
+      json.orientation = state.orientation;
+      json.password = '';
       state.files.push(json);
     }catch(err){
       trayError.textContent = err.message || 'Upload failed';
@@ -876,13 +976,13 @@ confirmBtn.addEventListener('click', ()=>{
     ? `${state.files[0].fileName} +${state.files.length - 1} more`
     : state.files[0].fileName;
   document.getElementById('mPages').textContent = totalPages;
-  document.getElementById('mOrientation').textContent = state.orientation === 'portrait' ? 'Portrait' : 'Landscape';
+  document.getElementById('mOrientation').textContent = orientationSummaryLabel();
   document.getElementById('mMode').textContent = modeSummaryLabel();
   document.getElementById('mSide').textContent = state.side === 'single' ? 'Single side' : 'Double side';
   document.getElementById('mPaper').textContent = state.paperSize.toUpperCase();
   document.getElementById('mPaperType').textContent = PAPER_TYPE_LABELS[state.paperType] || 'Normal';
   document.getElementById('mPaperTypeRow').style.display = state.paperSize === 'a4' ? 'flex' : 'none';
-  document.getElementById('mCopies').textContent = state.copies;
+  document.getElementById('mCopies').textContent = copiesSummaryLabel();
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
   document.getElementById('mTotal').textContent = '₹' + est.totalAmount;
   confirmModal.classList.add('show');
@@ -909,14 +1009,13 @@ function buildOrderPayload(){
       pageCount: f.pageCount,
       colorPageCount: f.colorCount,
       fileSize: f.fileSize,
-      printMode: f.printMode || 'auto'
+      printMode: f.printMode || 'auto',
+      orientation: f.orientation || 'portrait',
+      copies: f.copies || 1,
+      password: f.password || ''
     })),
-    orientation: state.orientation,
-    printMode: modeSummaryLabel() === 'Mixed' ? 'mixed' : state.mode,
     printSide: state.side,
-    paperSize: state.paperSize,
     paperType: state.paperSize === 'a4' ? state.paperType : 'normal',
-    copies: state.copies,
     deliveryMethod: state.deliveryMethod,
     deliveryAddress: state.deliveryMethod === 'delivery' ? document.getElementById('addrLine').value.trim() : undefined,
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,
