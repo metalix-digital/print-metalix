@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^6.2.0",
+    "@google-cloud/storage": "^7.21.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "canvas": "^2.11.2",
