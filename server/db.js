@@ -57,13 +57,44 @@ db.exec(`
   );
 `)
 
+// Add columns introduced after the initial schema without breaking existing
+// SQLite files (ALTER TABLE ADD COLUMN errors if the column already exists).
+function ensureColumn(table, column, definition) {
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)
+  if (!existing.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  }
+}
+ensureColumn('orders', 'paper_type', "TEXT DEFAULT 'normal'")
+ensureColumn('orders', 'files_json', 'TEXT')
+
 const DEFAULT_PRICING = {
   rates: {
-    a4: { bw: { single: 1.5, double: 2.5 }, color: { single: 6, double: 10 } },
-    a3: { bw: { single: 4, double: 7 }, color: { single: 14, double: 24 } }
+    a4: {
+      normal: { bw: { single: 1.5, double: 2.5 }, color: { single: 6, double: 10 } },
+      bond: { bw: { single: 2.5, double: 4 }, color: { single: 8, double: 14 } },
+      premium: { bw: { single: 4, double: 7 }, color: { single: 12, double: 20 } }
+    },
+    a3: {
+      normal: { bw: { single: 4, double: 7 }, color: { single: 14, double: 24 } }
+    }
   },
   deliveryCharge: 30,
   gstPercent: 5
+}
+
+// Pre-paper-type pricing had a flat rates.<size>.bw/color shape. Wrap it under
+// a 'normal' paper type and seed bond/premium as clones so the admin can tune
+// them from there, instead of breaking already-deployed settings rows.
+function migratePricing(pricing) {
+  if (!pricing.rates.a4.normal && pricing.rates.a4.bw) {
+    const normal = { bw: pricing.rates.a4.bw, color: pricing.rates.a4.color }
+    pricing.rates.a4 = { normal, bond: JSON.parse(JSON.stringify(normal)), premium: JSON.parse(JSON.stringify(normal)) }
+  }
+  if (!pricing.rates.a3.normal && pricing.rates.a3.bw) {
+    pricing.rates.a3 = { normal: { bw: pricing.rates.a3.bw, color: pricing.rates.a3.color } }
+  }
+  return pricing
 }
 
 const seedPricing = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
@@ -71,7 +102,14 @@ seedPricing.run('pricing', JSON.stringify(DEFAULT_PRICING))
 
 function getPricing() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('pricing')
-  return row ? JSON.parse(row.value) : DEFAULT_PRICING
+  if (!row) return DEFAULT_PRICING
+  const pricing = JSON.parse(row.value)
+  if (!pricing.rates.a4.normal) {
+    const migrated = migratePricing(pricing)
+    setPricing(migrated)
+    return migrated
+  }
+  return pricing
 }
 
 function setPricing(pricing) {
@@ -79,27 +117,66 @@ function setPricing(pricing) {
     .run('pricing', JSON.stringify(pricing))
 }
 
+const DEFAULT_SITE_SETTINGS = {
+  businessName: 'Metalix Print',
+  phone: '+91 98765 43210',
+  whatsapp: '+91 98765 43210',
+  email: 'hello@metalix.in',
+  headOfficeAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
+  pickupAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
+  legal: {
+    privacyPolicy: '',
+    refundPolicy: '',
+    termsConditions: '',
+    shippingPolicy: ''
+  },
+  social: {
+    facebook: '',
+    instagram: '',
+    linkedin: '',
+    youtube: ''
+  },
+  seo: {
+    metaTitle: 'Metalix Print — Upload · Print · Deliver',
+    metaDescription: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
+    keywords: 'print shop, online printing, document printing, Gurugram'
+  }
+}
+
+const seedSiteSettings = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
+seedSiteSettings.run('site', JSON.stringify(DEFAULT_SITE_SETTINGS))
+
+function getSiteSettings() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('site')
+  return row ? JSON.parse(row.value) : DEFAULT_SITE_SETTINGS
+}
+
+function setSiteSettings(settings) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run('site', JSON.stringify(settings))
+}
+
 function createOrder(order) {
   const now = order.created_at
   db.prepare(`
     INSERT INTO orders (
       id, customer_name, customer_mobile, customer_email,
-      file_name, file_path, file_type, page_count,
-      orientation, print_mode, print_side, copies, paper_size,
+      file_name, file_path, file_type, page_count, files_json,
+      orientation, print_mode, print_side, copies, paper_size, paper_type,
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
       print_cost, delivery_charge, gst_amount, total_amount,
       razorpay_order_id, payment_status, order_status,
       created_at, updated_at
     ) VALUES (
       @id, @customer_name, @customer_mobile, @customer_email,
-      @file_name, @file_path, @file_type, @page_count,
-      @orientation, @print_mode, @print_side, @copies, @paper_size,
+      @file_name, @file_path, @file_type, @page_count, @files_json,
+      @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type,
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
       @print_cost, @delivery_charge, @gst_amount, @total_amount,
       @razorpay_order_id, @payment_status, @order_status,
       @created_at, @updated_at
     )
-  `).run({ ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 
@@ -173,5 +250,7 @@ module.exports = {
   listOrders,
   listCustomers,
   createPrintJob,
-  updatePrintJob
+  updatePrintJob,
+  getSiteSettings,
+  setSiteSettings
 }

@@ -118,6 +118,19 @@ app.get('/api/pricing', (req, res) => {
   res.json(db.getPricing())
 })
 
+app.get('/api/settings', (req, res) => {
+  res.json(db.getSiteSettings())
+})
+
+app.put('/api/admin/settings', requireAdmin, express.json(), (req, res) => {
+  const settings = req.body
+  if (!settings || !settings.legal || !settings.social || !settings.seo) {
+    return res.status(400).json({ error: 'invalid_settings' })
+  }
+  db.setSiteSettings(settings)
+  return res.json(db.getSiteSettings())
+})
+
 app.post('/api/admin/login', express.json(), (req, res) => {
   const { password } = req.body || {}
   const adminPassword = process.env.ADMIN_PASSWORD || 'metalix-admin'
@@ -165,23 +178,46 @@ app.put('/api/admin/pricing', requireAdmin, express.json(), (req, res) => {
 // Create an order: validates the previously-uploaded file still exists,
 // computes the authoritative price server-side, and creates a Razorpay order
 // (or a simulated one if no live keys are configured).
+const MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
+
 app.post('/api/orders', express.json(), async (req, res) => {
   const {
     customerName, customerMobile, customerEmail,
-    fileId, fileName, fileType, pageCount, colorPageCount,
-    orientation, printMode, printSide, paperSize, copies,
+    files,
+    orientation, printMode, printSide, paperSize, paperType, copies,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode
   } = req.body || {}
 
   if (!customerName || !customerMobile) {
     return res.status(400).json({ error: 'missing_customer_info' })
   }
-  if (!fileId || !pageCount) {
+  if (!Array.isArray(files) || !files.length) {
     return res.status(400).json({ error: 'missing_file_info' })
   }
-  const safeFileId = path.basename(String(fileId))
-  if (!fs.existsSync(path.join(uploadsDir, safeFileId))) {
-    return res.status(400).json({ error: 'file_not_found', message: 'Uploaded file expired or was not found. Please re-upload.' })
+
+  let totalPageCount = 0
+  let totalColorPageCount = 0
+  let totalFileSize = 0
+  const safeFiles = []
+  for (const f of files) {
+    const safeFileId = path.basename(String(f.fileId || ''))
+    if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
+      return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
+    }
+    totalPageCount += Number(f.pageCount) || 0
+    totalColorPageCount += Number(f.colorPageCount) || 0
+    totalFileSize += Number(f.fileSize) || 0
+    safeFiles.push({
+      fileId: safeFileId,
+      fileName: f.fileName || safeFileId,
+      fileType: f.fileType || null,
+      pageCount: Number(f.pageCount) || 0,
+      colorPageCount: Number(f.colorPageCount) || 0,
+      fileSize: Number(f.fileSize) || 0
+    })
+  }
+  if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
+    return res.status(400).json({ error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' })
   }
   if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !deliveryPincode)) {
     return res.status(400).json({ error: 'missing_delivery_address' })
@@ -189,11 +225,12 @@ app.post('/api/orders', express.json(), async (req, res) => {
 
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
-    pageCount: Number(pageCount) || 0,
-    colorPageCount: Number(colorPageCount) || 0,
+    pageCount: totalPageCount,
+    colorPageCount: totalColorPageCount,
     printMode: printMode || 'auto',
     printSide: printSide || 'single',
     paperSize: paperSize || 'a4',
+    paperType: paperType || 'normal',
     copies: Number(copies) || 1,
     deliveryMethod: deliveryMethod || 'pickup'
   })
@@ -221,20 +258,26 @@ app.post('/api/orders', express.json(), async (req, res) => {
     razorpayOrder = { id: `SIM_${orderId}`, amount: calc.totalAmount * 100, currency: 'INR' }
   }
 
+  const fileNameSummary = safeFiles.length > 1
+    ? `${safeFiles[0].fileName} +${safeFiles.length - 1} more`
+    : safeFiles[0].fileName
+
   const order = db.createOrder({
     id: orderId,
     customer_name: customerName,
     customer_mobile: customerMobile,
     customer_email: customerEmail || null,
-    file_name: fileName || safeFileId,
-    file_path: safeFileId,
-    file_type: fileType || null,
-    page_count: Number(pageCount) || 0,
+    file_name: fileNameSummary,
+    file_path: safeFiles[0].fileId,
+    file_type: safeFiles[0].fileType,
+    page_count: totalPageCount,
+    files_json: JSON.stringify(safeFiles),
     orientation: orientation || 'portrait',
     print_mode: printMode || 'auto',
     print_side: printSide || 'single',
     copies: Number(copies) || 1,
     paper_size: paperSize || 'a4',
+    paper_type: paperType || 'normal',
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,
     delivery_city: deliveryCity || null,

@@ -12,7 +12,9 @@
   :root{ --paper:#FAF9F6; --paper-dim:#F0EEE7; --ink:#1A2238; --ink-soft:#4A5170; --orange:#FF6600; --orange-deep:#E0570A; --cyan:#0EA5E9; --magenta:#E11D74; --green:#16A34A; --red:#DC2626; --line:#DAD6C9; --line-strong:#C7C2B0; --shadow: 0 1px 2px rgba(26,34,56,.04), 0 12px 32px -16px rgba(26,34,56,.18); --radius: 14px; }
   *{box-sizing:border-box;} html,body{margin:0;padding:0;} body{ background: radial-gradient(900px 500px at 12% -10%, rgba(255,102,0,.1), transparent 60%), radial-gradient(900px 500px at 100% 0%, rgba(225,29,116,.06), transparent 55%), radial-gradient(700px 400px at 50% 100%, rgba(14,165,233,.04), transparent 60%), var(--paper); color:var(--ink); font-family:'Inter', system-ui, sans-serif; min-height:100vh; padding:56px 20px 80px; -webkit-font-smoothing:antialiased; }
   .wrap{max-width:1080px; margin:0 auto; animation: fade-up .55s cubic-bezier(.2,.8,.3,1) both;} @keyframes fade-up{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
-  header{display:flex; align-items:center; gap:18px; margin-bottom:40px;}
+  header{display:flex; align-items:center; gap:18px; margin-bottom:40px; flex-wrap:wrap;}
+  @media (max-width:640px){ body{padding:32px 14px 56px;} }
+  @media (max-width:560px){ header{gap:12px; margin-bottom:28px;} .logo{width:48px;height:48px;border-radius:13px;} .brandname{font-size:26px;} .tagline{font-size:13px;} .badge-row{margin-left:0; width:100%; order:3;} }
   .logo{width:60px;height:60px;border-radius:16px; background:#fff; display:flex;align-items:center;justify-content:center; box-shadow: var(--shadow); position:relative; flex-shrink:0; padding:8px; border:1px solid var(--line); transition: transform .25s ease, box-shadow .25s ease;}
   .logo:hover{transform:translateY(-2px) rotate(-2deg); box-shadow:0 6px 18px -6px rgba(255,102,0,.35);}
   .logo img{width:100%; height:100%; object-fit:contain; border-radius:50%;}
@@ -56,6 +58,7 @@
   .card{ background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow: var(--shadow); padding:44px; display:grid; grid-template-columns: 1.15fr 1fr; gap:48px; transition: box-shadow .3s ease; }
   .card:hover{ box-shadow: 0 1px 2px rgba(26,34,56,.04), 0 24px 48px -20px rgba(26,34,56,.22); }
   @media (max-width:880px){ .card{grid-template-columns:1fr; padding:28px;} }
+  @media (max-width:640px){ .card{padding:20px; border-radius:18px;} }
   .left h2, .right h2{ font-family:'Space Grotesk',sans-serif; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 16px; display:flex; align-items:center; gap:8px;}
   .left h2::before{content:'01';font-family:'IBM Plex Mono',monospace;color:var(--orange);font-weight:600;}
   .right h2::before{content:'02';font-family:'IBM Plex Mono',monospace;color:var(--orange-deep);font-weight:600;}
@@ -67,14 +70,21 @@
   .tray-title{font-weight:600; font-size:15.5px; color:var(--ink);}
   .tray-sub{font-size:12.5px; color:var(--ink-soft); max-width:280px; line-height:1.5;}
   .tray-error{ color:var(--red); font-size:12.5px; font-weight:600; }
-  .file-pill{ display:flex; align-items:center; gap:10px; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:10px 14px; width:100%; max-width:340px; text-align:left; }
+  .file-list{ width:100%; max-width:380px; display:flex; flex-direction:column; gap:8px; }
+  .file-pill{ display:flex; align-items:center; gap:10px; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:10px 14px; width:100%; text-align:left; }
   .file-pill .fdot{ width:34px;height:34px;border-radius:8px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600; text-transform:uppercase;}
   .file-pill .fname{font-size:13px;font-weight:600;color:var(--ink); overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .file-pill .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace;}
+  .file-pill .fremove{ margin-left:auto; flex-shrink:0; width:24px; height:24px; border-radius:50%; border:none; background:#fff; color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .file-pill .fremove:hover{ background:var(--red); color:#fff; }
+  .file-total{ font-size:11.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; text-align:center; width:100%; }
+  .add-more-btn{ font-size:12.5px; font-weight:600; color:var(--orange-deep); background:none; border:1px dashed var(--line-strong); border-radius:9px; padding:8px 14px; cursor:pointer; width:100%; }
+  .add-more-btn:hover{ border-color:var(--orange); background:#FFF7F0; }
   .upload-progress{ width:100%; max-width:340px; height:6px; background:var(--paper-dim); border-radius:6px; overflow:hidden; }
   .upload-progress-inner{ height:100%; width:0%; background:linear-gradient(90deg,var(--orange),var(--magenta)); transition:width .15s ease; border-radius:6px; }
 
   .btn-row{display:flex; gap:10px; margin-top:18px;}
+  @media (max-width:480px){ .btn-row .btn{flex:1;} }
   .btn{ font-family:'Inter',sans-serif; font-weight:600; font-size:14.5px; border-radius:10px; padding:12px 20px; cursor:pointer; border:none; transition: transform .12s ease, box-shadow .12s ease, background .15s ease; }
   .btn:active{transform:scale(.97);}
   .btn-primary{ background:linear-gradient(135deg, var(--orange), var(--orange-deep) 85%); color:#fff; box-shadow:0 8px 20px -8px rgba(255,102,0,.5);}
@@ -98,15 +108,17 @@
   .field.invalid input{ border-color:var(--red); }
   .field.invalid .field-error{ display:block; }
 
-  .seg{ display:inline-flex; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:3px; gap:2px; }
+  .seg{ display:inline-flex; flex-wrap:wrap; background:var(--paper-dim); border:1px solid var(--line); border-radius:10px; padding:3px; gap:2px; max-width:100%; }
   .seg label{ position:relative; cursor:pointer; }
   .seg input{position:absolute; opacity:0;}
   .seg .pill{ display:block; padding:9px 16px; border-radius:8px; font-size:13.5px; font-weight:600; color:var(--ink-soft); transition: all .18s ease; white-space:nowrap; }
   .seg input:checked + .pill{ background:#fff; color:var(--ink); box-shadow:0 2px 6px rgba(26,34,56,.1); }
   .seg input:focus-visible + .pill{outline:2px solid var(--orange); outline-offset:1px;}
+  @media (max-width:480px){ .seg{display:flex; width:100%;} .seg label{flex:1 1 auto;} .seg .pill{padding:9px 10px; font-size:12.5px; text-align:center;} }
 
   .mode-row{display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;}
   .mode-card{ flex:1; min-width:120px; position:relative; cursor:pointer; border:1.5px solid var(--line); border-radius:11px; padding:13px 14px; transition: all .18s ease; }
+  @media (max-width:420px){ .mode-card{min-width:100%;} }
   .mode-card input{position:absolute; opacity:0;}
   .mode-card .mtitle{font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:7px;}
   .mode-card .mdesc{font-size:11.5px; color:var(--ink-soft); margin-top:3px; line-height:1.4;}
@@ -156,7 +168,8 @@
   /* Confirmation modal */
   .modal-overlay{ position:fixed; inset:0; background:rgba(26,34,56,.5); backdrop-filter:blur(2px); display:none; align-items:center; justify-content:center; z-index:100; padding:20px; }
   .modal-overlay.show{ display:flex; }
-  .modal{ background:#fff; border-radius:20px; padding:32px; max-width:420px; width:100%; box-shadow:0 30px 60px -20px rgba(26,34,56,.4); animation: pop-in .25s cubic-bezier(.2,.8,.3,1.2) both; }
+  .modal{ background:#fff; border-radius:20px; padding:32px; max-width:420px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 30px 60px -20px rgba(26,34,56,.4); animation: pop-in .25s cubic-bezier(.2,.8,.3,1.2) both; }
+  @media (max-width:480px){ .modal{padding:22px;} }
   @keyframes pop-in{ from{opacity:0; transform:scale(.95) translateY(8px);} to{opacity:1; transform:scale(1) translateY(0);} }
   .modal h3{ font-family:'Space Grotesk',sans-serif; margin:0 0 18px; font-size:18px; }
   .modal .mline{ display:flex; justify-content:space-between; font-size:13.5px; padding:6px 0; color:var(--ink-soft); border-bottom:1px solid var(--paper-dim); }
@@ -248,37 +261,33 @@
             <div class="tray-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <div class="tray-title">Drop your document here</div>
-            <div class="tray-sub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT or PPTX, up to 50 MB</div>
+            <div class="tray-title">Drop your documents here</div>
+            <div class="tray-sub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT or PPTX, multiple files up to 100 MB total</div>
             <div class="tray-error" id="trayError"></div>
           </div>
 
           <div id="trayUploading" style="display:none; width:100%; align-items:center; flex-direction:column; gap:12px;">
-            <div class="tray-title">Uploading &amp; analyzing…</div>
+            <div class="tray-title" id="trayUploadingTitle">Uploading &amp; analyzing…</div>
             <div class="upload-progress"><div class="upload-progress-inner" id="uploadProgressInner"></div></div>
           </div>
 
-          <div id="trayFile" style="display:none; width:100%; align-items:center; flex-direction:column; gap:14px;">
-            <div class="file-pill">
-              <div class="fdot" id="fdot">PDF</div>
-              <div style="min-width:0;">
-                <div class="fname" id="fname">document.pdf</div>
-                <div class="fmeta" id="fmeta">—</div>
-              </div>
-            </div>
+          <div id="trayFile" style="display:none; width:100%; align-items:center; flex-direction:column; gap:12px;">
+            <div class="file-list" id="fileList"></div>
+            <div class="file-total" id="fileTotal"></div>
+            <button class="add-more-btn" id="addMoreBtn" type="button">+ Add more files</button>
           </div>
         </div>
 
-        <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
 
         <div class="btn-row">
-          <button class="btn btn-primary" id="chooseBtn" type="button">Choose file</button>
-          <button class="btn btn-ghost" id="removeBtn" type="button" disabled>Remove</button>
+          <button class="btn btn-primary" id="chooseBtn" type="button">Choose files</button>
+          <button class="btn btn-ghost" id="removeBtn" type="button" disabled>Remove all</button>
         </div>
 
         <div class="hint-strip">
           <span class="hint-chip">PDF · DOC · DOCX · PPT · PPTX</span>
-          <span class="hint-chip">Up to 50 MB</span>
+          <span class="hint-chip">Up to 100 MB total</span>
         </div>
       </div>
 
@@ -300,12 +309,12 @@
           </label>
           <label class="mode-card" id="modeColorCard">
             <input type="radio" name="mode" value="color">
-            <div class="mtitle"><span class="swatch" style="background:var(--magenta);"></span>Force color</div>
+            <div class="mtitle"><span class="swatch" style="background:var(--magenta);"></span>Color</div>
             <div class="mdesc">Every page prints in full color</div>
           </label>
           <label class="mode-card" id="modeBwCard">
             <input type="radio" name="mode" value="bw">
-            <div class="mtitle"><span class="swatch" style="background:#444;"></span>Force B/W</div>
+            <div class="mtitle"><span class="swatch" style="background:#444;"></span>Black &amp; White</div>
             <div class="mdesc">Cheapest — all pages in grayscale</div>
           </label>
         </div>
@@ -325,6 +334,15 @@
             <label><input type="radio" name="papersize" value="a4" checked><span class="pill">A4</span></label>
             <label><input type="radio" name="papersize" value="a3"><span class="pill">A3</span></label>
           </div>
+        </div>
+      </div>
+
+      <div class="opt-group" id="paperTypeGroup">
+        <span class="opt-label">Paper type</span>
+        <div class="seg">
+          <label><input type="radio" name="papertype" value="normal" checked><span class="pill">Normal (70–75 GSM)</span></label>
+          <label><input type="radio" name="papertype" value="bond"><span class="pill">Bond (100 GSM)</span></label>
+          <label><input type="radio" name="papertype" value="premium"><span class="pill">Premium digital color</span></label>
         </div>
       </div>
 
@@ -389,6 +407,7 @@
         <div class="rline accent"><span>Color pages (final)</span><b class="num-tick" id="rColorFinal">0</b></div>
         <div class="rline good"><span>B/W pages (final)</span><b class="num-tick" id="rBwFinal">0</b></div>
         <div class="rline"><span>Paper size</span><b id="rPaper">A4</b></div>
+        <div class="rline" id="rPaperTypeRow"><span>Paper type</span><b id="rPaperType">Normal</b></div>
         <div class="rline"><span>Printing side</span><b id="rSide">Single</b></div>
         <div class="rline"><span>Copies</span><b class="num-tick" id="rCopies">1</b></div>
 
@@ -448,6 +467,7 @@
     <div class="mline"><span>Print mode</span><b id="mMode">—</b></div>
     <div class="mline"><span>Printing side</span><b id="mSide">—</b></div>
     <div class="mline"><span>Paper size</span><b id="mPaper">—</b></div>
+    <div class="mline" id="mPaperTypeRow"><span>Paper type</span><b id="mPaperType">—</b></div>
     <div class="mline"><span>Copies</span><b id="mCopies">—</b></div>
     <div class="mline"><span>Delivery</span><b id="mDelivery">—</b></div>
     <div class="mline"><span>Final amount</span><b id="mTotal">—</b></div>
@@ -468,22 +488,26 @@
 const tray = document.getElementById('tray');
 const trayEmpty = document.getElementById('trayEmpty');
 const trayUploading = document.getElementById('trayUploading');
+const trayUploadingTitle = document.getElementById('trayUploadingTitle');
 const trayFile = document.getElementById('trayFile');
 const trayError = document.getElementById('trayError');
 const uploadProgressInner = document.getElementById('uploadProgressInner');
 const fileInput = document.getElementById('fileInput');
 const chooseBtn = document.getElementById('chooseBtn');
+const addMoreBtn = document.getElementById('addMoreBtn');
 const removeBtn = document.getElementById('removeBtn');
 const confirmBtn = document.getElementById('confirmBtn');
-const fname = document.getElementById('fname');
-const fmeta = document.getElementById('fmeta');
-const fdot = document.getElementById('fdot');
+const fileList = document.getElementById('fileList');
+const fileTotal = document.getElementById('fileTotal');
+const paperTypeGroup = document.getElementById('paperTypeGroup');
 
 const rPages = document.getElementById('rPages');
 const rDetected = document.getElementById('rDetected');
 const rColorFinal = document.getElementById('rColorFinal');
 const rBwFinal = document.getElementById('rBwFinal');
 const rPaper = document.getElementById('rPaper');
+const rPaperType = document.getElementById('rPaperType');
+const rPaperTypeRow = document.getElementById('rPaperTypeRow');
 const rSide = document.getElementById('rSide');
 const rCopies = document.getElementById('rCopies');
 const rPrintCost = document.getElementById('rPrintCost');
@@ -492,18 +516,25 @@ const rGst = document.getElementById('rGst');
 const rTotal = document.getElementById('rTotal');
 
 const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
+const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+const PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
 let pricingConfig = null;
 
 let state = {
-  file: null, // {fileId, fileName, fileSize, fileType, pageCount, colorCount}
+  files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount}, ...]
   uploading: false,
   orientation: 'portrait',
   mode: 'auto',
   side: 'single',
   paperSize: 'a4',
+  paperType: 'normal',
   copies: 1,
   deliveryMethod: 'pickup'
 };
+
+function totalUploadedBytes(){
+  return state.files.reduce((sum, f) => sum + (f.fileSize || 0), 0);
+}
 
 function flash(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 260); }
 
@@ -513,12 +544,14 @@ function fetchPricing(){
 fetchPricing();
 
 function calcEstimate(){
-  if(!pricingConfig || !state.file){
+  if(!pricingConfig || !state.files.length){
     return { colorPages: 0, bwPages: 0, printCost: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
   }
-  const pageCount = state.file.pageCount || 0;
-  const colorPageCount = state.file.colorCount || 0;
-  const rates = pricingConfig.rates[state.paperSize];
+  const pageCount = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
+  const colorPageCount = state.files.reduce((sum, f) => sum + (f.colorCount || 0), 0);
+  const sizeRates = pricingConfig.rates[state.paperSize];
+  const effectiveType = state.paperSize === 'a4' ? state.paperType : 'normal';
+  const rates = (sizeRates[effectiveType] || sizeRates.normal);
   let colorPages;
   if(state.mode === 'color') colorPages = pageCount;
   else if(state.mode === 'bw') colorPages = 0;
@@ -535,11 +568,15 @@ function calcEstimate(){
 
 function recalc(){
   const est = calcEstimate();
-  rPages.textContent = state.file ? state.file.pageCount : '—';
-  rDetected.textContent = state.file ? state.file.colorCount : 0;
+  const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
+  const totalColor = state.files.reduce((sum, f) => sum + (f.colorCount || 0), 0);
+  rPages.textContent = state.files.length ? totalPages : '—';
+  rDetected.textContent = totalColor;
   rColorFinal.textContent = est.colorPages;
   rBwFinal.textContent = est.bwPages;
   rPaper.textContent = state.paperSize.toUpperCase();
+  rPaperType.textContent = PAPER_TYPE_LABELS[state.paperType] || 'Normal';
+  rPaperTypeRow.style.display = state.paperSize === 'a4' ? 'flex' : 'none';
   rSide.textContent = state.side === 'single' ? 'Single' : 'Double';
   rCopies.textContent = state.copies;
   rPrintCost.textContent = '₹' + est.printCost;
@@ -547,7 +584,7 @@ function recalc(){
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
   [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rDelivery, rGst, rTotal].forEach(flash);
-  confirmBtn.disabled = !state.file || state.uploading;
+  confirmBtn.disabled = !state.files.length || state.uploading;
 }
 
 function setMode(mode){
@@ -560,7 +597,13 @@ function setMode(mode){
 document.querySelectorAll('input[name=mode]').forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
 document.querySelectorAll('input[name=orientation]').forEach(r=> r.addEventListener('change', e=>{ state.orientation = e.target.value; recalc(); }));
 document.querySelectorAll('input[name=side]').forEach(r=> r.addEventListener('change', e=>{ state.side = e.target.value; recalc(); }));
-document.querySelectorAll('input[name=papersize]').forEach(r=> r.addEventListener('change', e=>{ state.paperSize = e.target.value; recalc(); }));
+document.querySelectorAll('input[name=papersize]').forEach(r=> r.addEventListener('change', e=>{
+  state.paperSize = e.target.value;
+  paperTypeGroup.style.display = state.paperSize === 'a4' ? 'block' : 'none';
+  recalc();
+}));
+document.querySelectorAll('input[name=papertype]').forEach(r=> r.addEventListener('change', e=>{ state.paperType = e.target.value; recalc(); }));
+paperTypeGroup.style.display = state.paperSize === 'a4' ? 'block' : 'none';
 
 const copiesInput = document.getElementById('copiesInput');
 function setCopies(n){
@@ -589,69 +632,126 @@ function fileExt(name){
   return m ? m[0].toLowerCase() : '';
 }
 
-function uploadFile(file){
-  const ext = fileExt(file.name);
-  if(!ALLOWED_EXT.includes(ext)){
-    trayError.textContent = 'Only PDF, DOC, DOCX, PPT and PPTX files are allowed';
+function fileDot(fileType){
+  return (fileType || '').toUpperCase();
+}
+
+function renderFileList(){
+  if(!state.files.length){
+    fileList.innerHTML = '';
+    fileTotal.textContent = '';
     return;
   }
+  fileList.innerHTML = state.files.map((f, i) => `
+    <div class="file-pill">
+      <div class="fdot">${fileDot(f.fileType)}</div>
+      <div style="min-width:0;">
+        <div class="fname">${f.fileName}</div>
+        <div class="fmeta">${f.pageCount} page${f.pageCount===1?'':'s'} · ${(f.fileSize/1024/1024).toFixed(2)} MB</div>
+      </div>
+      <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
+    </div>
+  `).join('');
+  const totalMb = (totalUploadedBytes()/1024/1024).toFixed(1);
+  fileTotal.textContent = `${state.files.length} file${state.files.length===1?'':'s'} · ${totalMb} MB of 100 MB used`;
+  fileList.querySelectorAll('.fremove').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFile(Number(btn.dataset.index));
+    });
+  });
+}
+
+function removeFile(index){
+  state.files.splice(index, 1);
+  if(!state.files.length){
+    resetTray();
+    return;
+  }
+  renderFileList();
+  removeBtn.disabled = false;
+  recalc();
+}
+
+function uploadOneFile(file){
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = function(evt){
+      if(evt.lengthComputable){
+        uploadProgressInner.style.width = Math.round((evt.loaded/evt.total)*100) + '%';
+      }
+    };
+    xhr.onload = function(){
+      if(xhr.status >= 200 && xhr.status < 300){
+        try{ resolve(JSON.parse(xhr.responseText)); }
+        catch(err){ reject(new Error('Could not read server response')); }
+      }else{
+        try{
+          const json = JSON.parse(xhr.responseText);
+          reject(new Error(json.message || json.error || 'Upload failed'));
+        }catch(e){ reject(new Error('Upload failed')); }
+      }
+    };
+    xhr.onerror = function(){ reject(new Error('Network error — please try again')); };
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.send(fd);
+  });
+}
+
+async function uploadFiles(fileArray){
+  const validFiles = [];
+  let runningTotal = totalUploadedBytes();
+  for(const file of fileArray){
+    const ext = fileExt(file.name);
+    if(!ALLOWED_EXT.includes(ext)){
+      trayError.textContent = `"${file.name}" — only PDF, DOC, DOCX, PPT and PPTX files are allowed`;
+      continue;
+    }
+    if(runningTotal + file.size > MAX_TOTAL_BYTES){
+      trayError.textContent = `Skipped "${file.name}" — total upload size would exceed 100 MB`;
+      continue;
+    }
+    runningTotal += file.size;
+    validFiles.push(file);
+  }
+  if(!validFiles.length) return;
+
   trayError.textContent = '';
   state.uploading = true;
   trayEmpty.style.display = 'none';
   trayFile.style.display = 'none';
   trayUploading.style.display = 'flex';
   tray.classList.add('has-file');
-  uploadProgressInner.style.width = '0%';
   recalc();
 
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/upload');
-  xhr.upload.onprogress = function(evt){
-    if(evt.lengthComputable){
-      uploadProgressInner.style.width = Math.round((evt.loaded/evt.total)*100) + '%';
+  for(let i = 0; i < validFiles.length; i++){
+    trayUploadingTitle.textContent = `Uploading & analyzing… (${i+1} of ${validFiles.length})`;
+    uploadProgressInner.style.width = '0%';
+    try{
+      const json = await uploadOneFile(validFiles[i]);
+      state.files.push(json);
+    }catch(err){
+      trayError.textContent = err.message || 'Upload failed';
     }
-  };
-  xhr.onload = function(){
-    state.uploading = false;
-    trayUploading.style.display = 'none';
-    if(xhr.status >= 200 && xhr.status < 300){
-      try{
-        const json = JSON.parse(xhr.responseText);
-        state.file = json;
-        fname.textContent = json.fileName;
-        fdot.textContent = json.fileType.toUpperCase();
-        fmeta.textContent = `${json.pageCount} page${json.pageCount===1?'':'s'} · ${(json.fileSize/1024/1024).toFixed(2)} MB`;
-        trayFile.style.display = 'flex';
-        removeBtn.disabled = false;
-        recalc();
-      }catch(err){
-        trayEmpty.style.display = 'flex';
-        tray.classList.remove('has-file');
-        trayError.textContent = 'Could not read server response';
-      }
-    }else{
-      trayEmpty.style.display = 'flex';
-      tray.classList.remove('has-file');
-      try{
-        const json = JSON.parse(xhr.responseText);
-        trayError.textContent = json.message || json.error || 'Upload failed';
-      }catch(e){ trayError.textContent = 'Upload failed'; }
-    }
-  };
-  xhr.onerror = function(){
-    state.uploading = false;
-    trayUploading.style.display = 'none';
+  }
+
+  state.uploading = false;
+  trayUploading.style.display = 'none';
+  if(state.files.length){
+    trayFile.style.display = 'flex';
+    removeBtn.disabled = false;
+    renderFileList();
+  }else{
     trayEmpty.style.display = 'flex';
     tray.classList.remove('has-file');
-    trayError.textContent = 'Network error — please try again';
-  };
-  const fd = new FormData();
-  fd.append('file', file);
-  xhr.send(fd);
+  }
+  recalc();
 }
 
 function resetTray(){
-  state.file = null;
+  state.files = [];
   trayEmpty.style.display = 'flex';
   trayUploading.style.display = 'none';
   trayFile.style.display = 'none';
@@ -659,16 +759,18 @@ function resetTray(){
   tray.classList.remove('has-file');
   removeBtn.disabled = true;
   fileInput.value = '';
+  renderFileList();
   recalc();
 }
 
 chooseBtn.addEventListener('click', ()=> fileInput.click());
-tray.addEventListener('click', ()=>{ if(!state.file && !state.uploading) fileInput.click(); });
+addMoreBtn.addEventListener('click', (e)=>{ e.stopPropagation(); fileInput.click(); });
+tray.addEventListener('click', ()=>{ if(!state.files.length && !state.uploading) fileInput.click(); });
 removeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); resetTray(); });
-fileInput.addEventListener('change', ()=>{ if(fileInput.files && fileInput.files[0]) uploadFile(fileInput.files[0]); });
-['dragenter','dragover'].forEach(evt=> tray.addEventListener(evt, e=>{ e.preventDefault(); e.stopPropagation(); if(!state.file && !state.uploading) tray.classList.add('dragover'); }));
+fileInput.addEventListener('change', ()=>{ if(fileInput.files && fileInput.files.length) uploadFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+['dragenter','dragover'].forEach(evt=> tray.addEventListener(evt, e=>{ e.preventDefault(); e.stopPropagation(); if(!state.uploading) tray.classList.add('dragover'); }));
 ['dragleave','drop'].forEach(evt=> tray.addEventListener(evt, e=>{ e.preventDefault(); e.stopPropagation(); tray.classList.remove('dragover'); }));
-tray.addEventListener('drop', e=>{ if(state.file || state.uploading) return; const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) uploadFile(f); });
+tray.addEventListener('drop', e=>{ if(state.uploading) return; const fs = e.dataTransfer.files; if(fs && fs.length) uploadFiles(Array.from(fs)); });
 
 const toast = document.getElementById('toast');
 const toastMsg = document.getElementById('toastMsg');
@@ -686,7 +788,7 @@ function validateForConfirm(){
   setFieldError('fieldName', !name); if(!name) ok = false;
   const mobileValid = /^[0-9]{10}$/.test(mobile);
   setFieldError('fieldMobile', !mobileValid); if(!mobileValid) ok = false;
-  if(!state.file){ showToast('Please upload a document first', true); ok = false; }
+  if(!state.files.length){ showToast('Please upload at least one document', true); ok = false; }
   if(state.deliveryMethod === 'delivery'){
     const addr = document.getElementById('addrLine').value.trim();
     const city = document.getElementById('addrCity').value.trim();
@@ -705,12 +807,17 @@ const confirmModal = document.getElementById('confirmModal');
 confirmBtn.addEventListener('click', ()=>{
   if(!validateForConfirm()) return;
   const est = calcEstimate();
-  document.getElementById('mFile').textContent = state.file.fileName;
-  document.getElementById('mPages').textContent = state.file.pageCount;
+  const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
+  document.getElementById('mFile').textContent = state.files.length > 1
+    ? `${state.files[0].fileName} +${state.files.length - 1} more`
+    : state.files[0].fileName;
+  document.getElementById('mPages').textContent = totalPages;
   document.getElementById('mOrientation').textContent = state.orientation === 'portrait' ? 'Portrait' : 'Landscape';
-  document.getElementById('mMode').textContent = state.mode === 'auto' ? 'Auto' : state.mode === 'color' ? 'Force color' : 'Force B/W';
+  document.getElementById('mMode').textContent = state.mode === 'auto' ? 'Auto' : state.mode === 'color' ? 'Color' : 'Black & White';
   document.getElementById('mSide').textContent = state.side === 'single' ? 'Single side' : 'Double side';
   document.getElementById('mPaper').textContent = state.paperSize.toUpperCase();
+  document.getElementById('mPaperType').textContent = PAPER_TYPE_LABELS[state.paperType] || 'Normal';
+  document.getElementById('mPaperTypeRow').style.display = state.paperSize === 'a4' ? 'flex' : 'none';
   document.getElementById('mCopies').textContent = state.copies;
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
   document.getElementById('mTotal').textContent = '₹' + est.totalAmount;
@@ -723,15 +830,19 @@ function buildOrderPayload(){
     customerName: document.getElementById('customerName').value.trim(),
     customerMobile: document.getElementById('customerMobile').value.trim(),
     customerEmail: document.getElementById('customerEmail').value.trim() || undefined,
-    fileId: state.file.fileId,
-    fileName: state.file.fileName,
-    fileType: state.file.fileType,
-    pageCount: state.file.pageCount,
-    colorPageCount: state.file.colorCount,
+    files: state.files.map((f) => ({
+      fileId: f.fileId,
+      fileName: f.fileName,
+      fileType: f.fileType,
+      pageCount: f.pageCount,
+      colorPageCount: f.colorCount,
+      fileSize: f.fileSize
+    })),
     orientation: state.orientation,
     printMode: state.mode,
     printSide: state.side,
     paperSize: state.paperSize,
+    paperType: state.paperSize === 'a4' ? state.paperType : 'normal',
     copies: state.copies,
     deliveryMethod: state.deliveryMethod,
     deliveryAddress: state.deliveryMethod === 'delivery' ? document.getElementById('addrLine').value.trim() : undefined,

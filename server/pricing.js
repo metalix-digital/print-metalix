@@ -1,7 +1,8 @@
-function calculate(config, { pageCount, colorPageCount, printMode, printSide, paperSize, copies, deliveryMethod }) {
+function calculate(config, { pageCount, colorPageCount, printMode, printSide, paperSize, paperType, copies, deliveryMethod }) {
   const size = paperSize === 'a3' ? 'a3' : 'a4'
   const side = printSide === 'double' ? 'double' : 'single'
-  const rates = config.rates[size]
+  const type = config.rates[size][paperType] ? paperType : 'normal'
+  const rates = config.rates[size][type]
 
   let colorPages
   if (printMode === 'color') colorPages = pageCount

@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Metalix Print — Upload · Print · Deliver</title>
+<title id="page-title">Metalix Print — Upload · Print · Deliver</title>
+<meta name="description" id="meta-description" content="Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.">
+<meta name="keywords" id="meta-keywords" content="print shop, online printing, document printing, Gurugram">
 <link rel="icon" type="image/svg+xml" href="/logo.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -63,10 +65,30 @@ nav a.active{color:var(--orange);}
 }
 .btn-orange-sm:hover{background:var(--orange-d);box-shadow:0 6px 16px -4px rgba(255,102,0,.55);}
 .hamburger{display:none;background:none;border:none;cursor:pointer;padding:6px;}
+.mobile-menu{display:none;}
 @media(max-width:768px){
   nav{display:none;}
+  .h-actions{display:none;}
   .hamburger{display:flex;flex-direction:column;gap:5px;}
-  .hamburger span{display:block;width:22px;height:2px;background:var(--ink);border-radius:2px;}
+  .hamburger span{display:block;width:22px;height:2px;background:var(--ink);border-radius:2px;transition:transform .2s,opacity .2s;}
+  .mobile-menu{
+    display:block;max-height:0;overflow:hidden;
+    background:#fff;border-bottom:1px solid var(--line);
+    transition:max-height .25s ease;
+  }
+  .mobile-menu.open{max-height:420px;}
+  .mobile-menu-inner{padding:8px 24px 18px;display:flex;flex-direction:column;gap:2px;}
+  .mobile-menu a{
+    font-size:15px;font-weight:600;color:var(--ink2);text-decoration:none;
+    padding:12px 4px;border-bottom:1px solid #F0EFED;cursor:pointer;
+  }
+  .mobile-menu a.active{color:var(--orange);}
+  .mobile-menu .mm-actions{display:flex;gap:10px;margin-top:14px;}
+  .mobile-menu .mm-actions button{flex:1;}
+}
+@media(max-width:420px){
+  .header-inner{padding:0 16px;}
+  .h-logo span{font-size:16px;}
 }
 
 /* -- PAGE VIEWS -- */
@@ -338,9 +360,11 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 .modal{
   background:#fff;border-radius:22px;padding:36px;
   width:100%;max-width:430px;position:relative;
+  max-height:90vh;overflow-y:auto;
   box-shadow:0 30px 60px -20px rgba(0,0,0,.4);
   animation:modalIn .25s cubic-bezier(.2,.8,.3,1);
 }
+@media(max-width:480px){.modal{padding:24px;border-radius:18px;}}
 @keyframes modalIn{from{transform:scale(.94) translateY(12px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
 .modal-close{
   position:absolute;top:16px;right:16px;
@@ -446,9 +470,22 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <button class="btn-ghost-sm" onclick="openModal('login')">Log in</button>
       <button class="btn-orange-sm" onclick="openModal('signup')">Sign up</button>
     </div>
-    <button class="hamburger" onclick="openModal('login')" aria-label="Menu">
+    <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu" id="hamburgerBtn">
       <span></span><span></span><span></span>
     </button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <div class="mobile-menu-inner">
+      <a onclick="mmNavigate('home')" id="mnav-home">Home</a>
+      <a onclick="mmNavigate('home','services')" id="mnav-services">Services</a>
+      <a onclick="mmNavigate('home','pricing')" id="mnav-pricing">Pricing</a>
+      <a onclick="mmNavigate('home','contact')" id="mnav-contact">Contact</a>
+      <a onclick="mmNavigate('policy')" id="mnav-policy">Policies</a>
+      <div class="mm-actions">
+        <button class="btn-ghost-sm" onclick="closeMobileMenu();openModal('login')">Log in</button>
+        <button class="btn-orange-sm" onclick="closeMobileMenu();openModal('signup')">Sign up</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -624,7 +661,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
             <div class="ci-icon">📍</div>
             <div>
               <div class="ci-title">Visit us</div>
-              <div class="ci-val">Shop 12, MG Road Market<br>Near City Center Mall<br>Gurugram, Haryana 122001</div>
+              <div class="ci-val" id="ci-address">Shop 12, MG Road Market<br>Near City Center Mall<br>Gurugram, Haryana 122001</div>
             </div>
           </div>
           <div class="ci-item">
@@ -632,8 +669,8 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
             <div>
               <div class="ci-title">Call or WhatsApp</div>
               <div class="ci-val">
-                <a href="tel:+919876543210">+91 98765 43210</a><br>
-                <a href="https://wa.me/919876543210" target="_blank">Chat on WhatsApp →</a>
+                <a href="tel:+919876543210" id="ci-phone-link">+91 98765 43210</a><br>
+                <a href="https://wa.me/919876543210" target="_blank" id="ci-whatsapp-link">Chat on WhatsApp →</a>
               </div>
             </div>
           </div>
@@ -641,7 +678,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
             <div class="ci-icon">✉️</div>
             <div>
               <div class="ci-title">Email us</div>
-              <div class="ci-val"><a href="mailto:hello@metalix.in">hello@metalix.in</a></div>
+              <div class="ci-val"><a href="mailto:hello@metalix.in" id="ci-email-link">hello@metalix.in</a></div>
             </div>
           </div>
           <div class="ci-item">
@@ -778,10 +815,10 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <span>Metalix Print</span>
       </div>
       <p>Fast, reliable, affordable printing — online ordering with home delivery or shop pickup. Gurugram's neighbourhood print shop, now with a better way to order.</p>
-      <div class="social-row">
-        <a class="social-btn" href="https://wa.me/919876543210" target="_blank" title="WhatsApp">💬</a>
-        <a class="social-btn" href="mailto:hello@metalix.in" title="Email">✉️</a>
-        <a class="social-btn" href="tel:+919876543210" title="Call">📞</a>
+      <div class="social-row" id="footer-social-row">
+        <a class="social-btn" href="https://wa.me/919876543210" target="_blank" title="WhatsApp" id="footer-whatsapp-link">💬</a>
+        <a class="social-btn" href="mailto:hello@metalix.in" title="Email" id="footer-email-link">✉️</a>
+        <a class="social-btn" href="tel:+919876543210" title="Call" id="footer-call-link">📞</a>
       </div>
     </div>
     <div class="footer-col">
@@ -805,10 +842,10 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
     </div>
     <div class="footer-col">
       <h4>Contact</h4>
-      <div class="fcontact">📍 <span>Shop 12, MG Road Market, Gurugram, Haryana 122001</span></div>
-      <div class="fcontact">📞 <a href="tel:+919876543210">+91 98765 43210</a></div>
-      <div class="fcontact">💬 <a href="https://wa.me/919876543210" target="_blank">WhatsApp us</a></div>
-      <div class="fcontact">✉️ <a href="mailto:hello@metalix.in">hello@metalix.in</a></div>
+      <div class="fcontact">📍 <span id="footer-address">Shop 12, MG Road Market, Gurugram, Haryana 122001</span></div>
+      <div class="fcontact">📞 <a href="tel:+919876543210" id="footer-phone-link">+91 98765 43210</a></div>
+      <div class="fcontact">💬 <a href="https://wa.me/919876543210" target="_blank" id="footer-whatsapp-link2">WhatsApp us</a></div>
+      <div class="fcontact">✉️ <a href="mailto:hello@metalix.in" id="footer-email-link2">hello@metalix.in</a></div>
       <div class="fcontact" style="margin-top:8px;">🕐 <span>Mon–Sat 9AM–9PM · Sun 10AM–6PM</span></div>
     </div>
   </div>
@@ -918,8 +955,8 @@ function fmtPrice(n){
 }
 fetch('/api/pricing').then(r => r.json()).then(p => {
   const rates = p.rates || {};
-  const a4 = rates.a4 || {};
-  const a3 = rates.a3 || {};
+  const a4 = (rates.a4 || {}).normal || {};
+  const a3 = (rates.a3 || {}).normal || {};
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
 
   if (a4.bw) {
@@ -950,6 +987,67 @@ fetch('/api/pricing').then(r => r.json()).then(p => {
   }
 }).catch(err => console.error('Failed to load live pricing', err));
 
+fetch('/api/settings').then(r => r.json()).then(s => {
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  const setHref = (id, href) => { const el = document.getElementById(id); if (el) el.href = href; };
+  const setMeta = (id, content) => { const el = document.getElementById(id); if (el) el.content = content; };
+
+  if (s.seo && s.seo.metaTitle) { document.title = s.seo.metaTitle; const el = document.getElementById('page-title'); if (el) el.textContent = s.seo.metaTitle; }
+  if (s.seo && s.seo.metaDescription) setMeta('meta-description', s.seo.metaDescription);
+  if (s.seo && s.seo.keywords) setMeta('meta-keywords', s.seo.keywords);
+
+  if (s.headOfficeAddress) {
+    set('ci-address', s.headOfficeAddress);
+    set('footer-address', s.headOfficeAddress);
+  }
+  if (s.phone) {
+    const telHref = 'tel:' + s.phone.replace(/[^0-9+]/g, '');
+    set('ci-phone-link', s.phone);
+    setHref('ci-phone-link', telHref);
+    set('footer-phone-link', s.phone);
+    setHref('footer-phone-link', telHref);
+    setHref('footer-call-link', telHref);
+  }
+  if (s.whatsapp) {
+    const waHref = 'https://wa.me/' + s.whatsapp.replace(/[^0-9]/g, '');
+    setHref('ci-whatsapp-link', waHref);
+    setHref('footer-whatsapp-link', waHref);
+    setHref('footer-whatsapp-link2', waHref);
+  }
+  if (s.email) {
+    const mailHref = 'mailto:' + s.email;
+    set('ci-email-link', s.email);
+    setHref('ci-email-link', mailHref);
+    set('footer-email-link2', s.email);
+    setHref('footer-email-link2', mailHref);
+    setHref('footer-email-link', mailHref);
+  }
+
+  if (s.social) {
+    const row = document.getElementById('footer-social-row');
+    const icons = { facebook: '📘', instagram: '📷', linkedin: '💼', youtube: '▶️' };
+    Object.keys(icons).forEach((key) => {
+      if (s.social[key] && row) {
+        const a = document.createElement('a');
+        a.className = 'social-btn';
+        a.href = s.social[key];
+        a.target = '_blank';
+        a.title = key.charAt(0).toUpperCase() + key.slice(1);
+        a.textContent = icons[key];
+        row.appendChild(a);
+      }
+    });
+  }
+
+  if (s.legal) {
+    const setLegal = (tab, text) => { const el = document.getElementById('ptab-' + tab); if (el && text) el.innerHTML = text; };
+    setLegal('refund', s.legal.refundPolicy);
+    setLegal('delivery', s.legal.shippingPolicy);
+    setLegal('terms', s.legal.termsConditions);
+    setLegal('privacy', s.legal.privacyPolicy);
+  }
+}).catch(err => console.error('Failed to load site settings', err));
+
 /* -- PAGE ROUTING -- */
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -958,6 +1056,9 @@ function showPage(id){
   document.querySelectorAll('nav a').forEach(a=>a.classList.remove('active'));
   const navEl = document.getElementById('nav-'+id);
   if(navEl) navEl.classList.add('active');
+  document.querySelectorAll('.mobile-menu a').forEach(a=>a.classList.remove('active'));
+  const mnavEl = document.getElementById('mnav-'+id);
+  if(mnavEl) mnavEl.classList.add('active');
 }
 
 function scrollToSection(id){
@@ -965,6 +1066,19 @@ function scrollToSection(id){
     const el = document.getElementById(id);
     if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
   }, 80);
+}
+
+/* -- MOBILE MENU -- */
+function toggleMobileMenu(){
+  document.getElementById('mobileMenu').classList.toggle('open');
+}
+function closeMobileMenu(){
+  document.getElementById('mobileMenu').classList.remove('open');
+}
+function mmNavigate(page, section){
+  closeMobileMenu();
+  showPage(page);
+  if(section) scrollToSection(section);
 }
 
 /* -- POLICY TABS -- */

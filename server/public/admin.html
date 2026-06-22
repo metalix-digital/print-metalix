@@ -59,12 +59,37 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 .pricing-form h2:first-child{margin-top:0;}
 .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink2);}
-.field input{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;}
+.field input,.field textarea{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;}
+.field textarea{min-height:90px;resize:vertical;}
+.field-grid.full{grid-template-columns:1fr;}
+.settings-form{background:#fff;border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
+.settings-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
+.settings-form h2:first-child{margin-top:0;}
+.file-list{margin:0;padding-left:0;list-style:none;}
+.file-list li{padding:2px 0;}
 .save-btn{margin-top:22px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:11px 22px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
 .save-btn:hover{background:var(--orange-d);}
 .save-btn:disabled{opacity:.6;cursor:default;}
 .save-message{margin-top:12px;font-size:13px;color:#16A34A;}
 .save-message.error{color:#DC2626;}
+.table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.table-scroll table{min-width:640px;}
+
+@media(max-width:760px){
+  .dash-header{padding:14px 16px;}
+  .dash-header h1{font-size:16px;}
+  .tabs{padding:10px 16px 0; overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap;}
+  .tab-btn{padding:9px 14px; font-size:13.5px; white-space:nowrap; flex-shrink:0;}
+  .content{padding:16px;}
+  .filters{flex-direction:column;}
+  .filters input{max-width:none;}
+  .pricing-form,.settings-form{padding:18px; max-width:100%;}
+  .field-grid{grid-template-columns:1fr;}
+}
+@media(max-width:480px){
+  .login-card{padding:26px 22px;}
+  th,td{padding:9px 10px; font-size:12.5px;}
+}
 </style>
 </head>
 <body>
@@ -88,6 +113,7 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="pricing">Pricing</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
   <div class="content">
 
@@ -105,21 +131,31 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
           <option>Failed</option>
         </select>
       </div>
-      <table>
-        <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th></tr></thead>
-        <tbody id="ordersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th></tr></thead>
+          <tbody id="ordersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel" id="panel-customers">
-      <table>
-        <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead>
-        <tbody id="customersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead>
+          <tbody id="customersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel" id="panel-pricing">
       <div class="pricing-form" id="pricingForm">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-settings">
+      <div class="settings-form" id="settingsForm">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -157,6 +193,7 @@ function showDash(){
   loadOrders();
   loadCustomers();
   loadPricing();
+  loadSettings();
 }
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -222,6 +259,17 @@ function statusSelectHtml(orderId, current){
     '</select>';
 }
 
+function filesDetailHtml(o){
+  let files = null;
+  try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
+  if (!files || !files.length) {
+    return '<div><strong>File:</strong> ' + o.file_name + '</div>';
+  }
+  return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
+    files.map((f) => '<li>' + f.fileName + ' — ' + f.pageCount + ' page' + (f.pageCount === 1 ? '' : 's') + '</li>').join('') +
+    '</ul>';
+}
+
 function renderOrders(orders){
   const body = document.getElementById('ordersBody');
   if (!orders.length){
@@ -238,8 +286,8 @@ function renderOrders(orders){
       '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
-      '<div><strong>File:</strong> ' + o.file_name + '</div>' +
-      '<div><strong>Paper:</strong> ' + o.paper_size + ' · ' + o.print_mode + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
+      filesDetailHtml(o) +
+      '<div><strong>Paper:</strong> ' + o.paper_size + (o.paper_type ? ' (' + o.paper_type + ')' : '') + ' · ' + o.print_mode + ' · ' + o.print_side + '-sided · ' + o.copies + ' copies</div>' +
       '<div><strong>Delivery:</strong> ' + o.delivery_method +
         (o.delivery_method === 'delivery' ? ' — ' + o.delivery_address + ', ' + o.delivery_city + ', ' + o.delivery_state + ' ' + o.delivery_pincode : '') +
       '</div>' +
@@ -299,23 +347,24 @@ function rateFieldHtml(label, key, value){
     '<input type="number" step="0.5" min="0" data-key="' + key + '" value="' + value + '" /></label>';
 }
 
+function paperTypeFieldGroupHtml(label, size, type, rates){
+  return '<h2>' + label + '</h2><div class="field-grid">' +
+    rateFieldHtml('B/W · single (₹/page)', 'rates.' + size + '.' + type + '.bw.single', rates.bw.single) +
+    rateFieldHtml('B/W · double (₹/sheet)', 'rates.' + size + '.' + type + '.bw.double', rates.bw.double) +
+    rateFieldHtml('Color · single (₹/page)', 'rates.' + size + '.' + type + '.color.single', rates.color.single) +
+    rateFieldHtml('Color · double (₹/sheet)', 'rates.' + size + '.' + type + '.color.double', rates.color.double) +
+  '</div>';
+}
+
 async function loadPricing(){
   const form = document.getElementById('pricingForm');
   const res = await fetch('/api/pricing');
   const p = await res.json();
   form.innerHTML =
-    '<h2>A4</h2><div class="field-grid">' +
-      rateFieldHtml('B/W · single (₹/page)', 'rates.a4.bw.single', p.rates.a4.bw.single) +
-      rateFieldHtml('B/W · double (₹/sheet)', 'rates.a4.bw.double', p.rates.a4.bw.double) +
-      rateFieldHtml('Color · single (₹/page)', 'rates.a4.color.single', p.rates.a4.color.single) +
-      rateFieldHtml('Color · double (₹/sheet)', 'rates.a4.color.double', p.rates.a4.color.double) +
-    '</div>' +
-    '<h2>A3</h2><div class="field-grid">' +
-      rateFieldHtml('B/W · single (₹/page)', 'rates.a3.bw.single', p.rates.a3.bw.single) +
-      rateFieldHtml('B/W · double (₹/sheet)', 'rates.a3.bw.double', p.rates.a3.bw.double) +
-      rateFieldHtml('Color · single (₹/page)', 'rates.a3.color.single', p.rates.a3.color.single) +
-      rateFieldHtml('Color · double (₹/sheet)', 'rates.a3.color.double', p.rates.a3.color.double) +
-    '</div>' +
+    paperTypeFieldGroupHtml('A4 — Normal paper (70–75 GSM)', 'a4', 'normal', p.rates.a4.normal) +
+    paperTypeFieldGroupHtml('A4 — Bond paper (100 GSM)', 'a4', 'bond', p.rates.a4.bond) +
+    paperTypeFieldGroupHtml('A4 — Premium digital color paper', 'a4', 'premium', p.rates.a4.premium) +
+    paperTypeFieldGroupHtml('A3', 'a3', 'normal', p.rates.a3.normal) +
     '<h2>Other</h2><div class="field-grid">' +
       rateFieldHtml('Delivery charge (₹ flat)', 'deliveryCharge', p.deliveryCharge) +
       rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
@@ -329,10 +378,11 @@ async function loadPricing(){
 async function savePricing(){
   const btn = document.getElementById('savePricingBtn');
   const msg = document.getElementById('pricingMessage');
+  const blankRates = () => ({ bw: {}, color: {} });
   const pricing = {
     rates: {
-      a4: { bw: {}, color: {} },
-      a3: { bw: {}, color: {} }
+      a4: { normal: blankRates(), bond: blankRates(), premium: blankRates() },
+      a3: { normal: blankRates() }
     },
     deliveryCharge: 0,
     gstPercent: 0
@@ -363,6 +413,86 @@ async function savePricing(){
   } finally {
     btn.disabled = false;
     btn.textContent = 'Save pricing';
+  }
+}
+
+/* -- SETTINGS -- */
+function textFieldHtml(label, key, value, isTextarea){
+  const tag = isTextarea ? 'textarea' : 'input';
+  const valueAttr = isTextarea ? '' : ' value="' + (value || '').replace(/"/g, '&quot;') + '"';
+  const inner = isTextarea ? (value || '') : '';
+  return '<label class="field"><span>' + label + '</span>' +
+    '<' + tag + ' data-key="' + key + '"' + valueAttr + '>' + inner + '</' + tag + '></label>';
+}
+
+async function loadSettings(){
+  const form = document.getElementById('settingsForm');
+  const res = await fetch('/api/settings');
+  const s = await res.json();
+  form.innerHTML =
+    '<h2>Contact information</h2><div class="field-grid">' +
+      textFieldHtml('Business name', 'businessName', s.businessName) +
+      textFieldHtml('Phone', 'phone', s.phone) +
+      textFieldHtml('WhatsApp', 'whatsapp', s.whatsapp) +
+      textFieldHtml('Email', 'email', s.email) +
+    '</div>' +
+    '<h2>Address information</h2><div class="field-grid full">' +
+      textFieldHtml('Head office address', 'headOfficeAddress', s.headOfficeAddress, true) +
+      textFieldHtml('Pickup address', 'pickupAddress', s.pickupAddress, true) +
+    '</div>' +
+    '<h2>Social media</h2><div class="field-grid">' +
+      textFieldHtml('Facebook URL', 'social.facebook', s.social.facebook) +
+      textFieldHtml('Instagram URL', 'social.instagram', s.social.instagram) +
+      textFieldHtml('LinkedIn URL', 'social.linkedin', s.social.linkedin) +
+      textFieldHtml('YouTube URL', 'social.youtube', s.social.youtube) +
+    '</div>' +
+    '<h2>SEO metadata</h2><div class="field-grid full">' +
+      textFieldHtml('Meta title', 'seo.metaTitle', s.seo.metaTitle) +
+      textFieldHtml('Meta description', 'seo.metaDescription', s.seo.metaDescription, true) +
+      textFieldHtml('Keywords (comma-separated)', 'seo.keywords', s.seo.keywords) +
+    '</div>' +
+    '<h2>Legal pages</h2><div class="field-grid full">' +
+      textFieldHtml('Privacy policy', 'legal.privacyPolicy', s.legal.privacyPolicy, true) +
+      textFieldHtml('Refund policy', 'legal.refundPolicy', s.legal.refundPolicy, true) +
+      textFieldHtml('Terms & conditions', 'legal.termsConditions', s.legal.termsConditions, true) +
+      textFieldHtml('Shipping policy', 'legal.shippingPolicy', s.legal.shippingPolicy, true) +
+    '</div>' +
+    '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
+    '<div id="settingsMessage"></div>';
+
+  document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+}
+
+async function saveSettings(){
+  const btn = document.getElementById('saveSettingsBtn');
+  const msg = document.getElementById('settingsMessage');
+  const settings = { legal: {}, social: {}, seo: {} };
+  document.querySelectorAll('#settingsForm input[data-key], #settingsForm textarea[data-key]').forEach((input) => {
+    const path = input.dataset.key.split('.');
+    let node = settings;
+    for (let i = 0; i < path.length - 1; i++) node = node[path[i]];
+    node[path[path.length - 1]] = input.value;
+  });
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  msg.textContent = '';
+  msg.className = 'save-message';
+  try {
+    const res = await adminFetch('/api/admin/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) throw new Error('save_failed');
+    msg.textContent = 'Saved — the home page now reflects these settings.';
+  } catch (err) {
+    if (err.message !== 'unauthorized'){
+      msg.textContent = 'Failed to save settings.';
+      msg.className = 'save-message error';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save settings';
   }
 }
 
