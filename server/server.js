@@ -403,7 +403,6 @@ app.post('/api/orders', express.json(), async (req, res) => {
     colorPages: totalColorPages,
     bwPages: totalBwPages,
     printSide: printSide || 'single',
-    paperSize: paperSize || 'a4',
     paperType: paperType || 'normal',
     copies: Number(copies) || 1,
     deliveryMethod: deliveryMethod || 'pickup'
@@ -451,7 +450,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     print_mode: summaryMode,
     print_side: printSide || 'single',
     copies: Number(copies) || 1,
-    paper_size: paperSize || 'a4',
+    paper_size: 'a4', // A3 support removed — every order is A4 regardless of client input
     paper_type: paperType || 'normal',
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,

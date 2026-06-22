@@ -91,25 +91,21 @@ const DEFAULT_PRICING = {
       normal: { bw: { single: 1.5, double: 2.5 }, color: { single: 6, double: 10 } },
       bond: { bw: { single: 2.5, double: 4 }, color: { single: 8, double: 14 } },
       premium: { bw: { single: 4, double: 7 }, color: { single: 12, double: 20 } }
-    },
-    a3: {
-      normal: { bw: { single: 4, double: 7 }, color: { single: 14, double: 24 } }
     }
   },
   deliveryCharge: 30,
   gstPercent: 5
 }
 
-// Pre-paper-type pricing had a flat rates.<size>.bw/color shape. Wrap it under
+// Pre-paper-type pricing had a flat rates.a4.bw/color shape. Wrap it under
 // a 'normal' paper type and seed bond/premium as clones so the admin can tune
 // them from there, instead of breaking already-deployed settings rows.
+// (A3 support was removed — any legacy rates.a3 data in already-stored
+// settings rows is simply ignored, not migrated.)
 function migratePricing(pricing) {
   if (!pricing.rates.a4.normal && pricing.rates.a4.bw) {
     const normal = { bw: pricing.rates.a4.bw, color: pricing.rates.a4.color }
     pricing.rates.a4 = { normal, bond: JSON.parse(JSON.stringify(normal)), premium: JSON.parse(JSON.stringify(normal)) }
-  }
-  if (!pricing.rates.a3.normal && pricing.rates.a3.bw) {
-    pricing.rates.a3 = { normal: { bw: pricing.rates.a3.bw, color: pricing.rates.a3.color } }
   }
   return pricing
 }

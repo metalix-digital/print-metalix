@@ -407,7 +407,6 @@ async function loadPricing(){
     paperTypeFieldGroupHtml('A4 — Normal paper (70–75 GSM)', 'a4', 'normal', p.rates.a4.normal) +
     paperTypeFieldGroupHtml('A4 — Bond paper (100 GSM)', 'a4', 'bond', p.rates.a4.bond) +
     paperTypeFieldGroupHtml('A4 — Premium digital color paper', 'a4', 'premium', p.rates.a4.premium) +
-    paperTypeFieldGroupHtml('A3', 'a3', 'normal', p.rates.a3.normal) +
     '<h2>Other</h2><div class="field-grid">' +
       rateFieldHtml('Delivery charge (₹ flat)', 'deliveryCharge', p.deliveryCharge) +
       rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
@@ -424,8 +423,7 @@ async function savePricing(){
   const blankRates = () => ({ bw: {}, color: {} });
   const pricing = {
     rates: {
-      a4: { normal: blankRates(), bond: blankRates(), premium: blankRates() },
-      a3: { normal: blankRates() }
+      a4: { normal: blankRates(), bond: blankRates(), premium: blankRates() }
     },
     deliveryCharge: 0,
     gstPercent: 0

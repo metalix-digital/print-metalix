@@ -1,11 +1,10 @@
 // Pure rate math — color/B&W page counts are resolved per-file by the
 // caller (client estimate and server authoritative calc both do this the
 // same way) so a single order can mix per-file print modes correctly.
-function calculate(config, { colorPages, bwPages, printSide, paperSize, paperType, copies, deliveryMethod }) {
-  const size = paperSize === 'a3' ? 'a3' : 'a4'
+function calculate(config, { colorPages, bwPages, printSide, paperType, copies, deliveryMethod }) {
   const side = printSide === 'double' ? 'double' : 'single'
-  const type = config.rates[size][paperType] ? paperType : 'normal'
-  const rates = config.rates[size][type]
+  const type = config.rates.a4[paperType] ? paperType : 'normal'
+  const rates = config.rates.a4[type]
 
   const perCopy = (colorPages || 0) * rates.color[side] + (bwPages || 0) * rates.bw[side]
   const printCost = Math.round(perCopy * Math.max(1, copies || 1))

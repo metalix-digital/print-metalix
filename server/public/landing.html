@@ -624,12 +624,6 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
           <p>Need 50+ copies? We'll handle large volumes with the same turnaround promise.</p>
           <div class="price">Contact us for rates</div>
         </div>
-        <div class="service-card">
-          <div class="sc-icon">📐</div>
-          <h3>A3 printing</h3>
-          <p>Posters, drawings, and large-format documents on A3 paper — B/W and color.</p>
-          <div class="price" id="svc-a3">From ₹4/page</div>
-        </div>
       </div>
     </div>
   </section>
@@ -646,8 +640,6 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹2.5/sheet</span><span class="note">2 pages per sheet</span></div>
         <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
         <div class="pt-row"><span class="name">Color · A4 · Double-sided</span><span class="price" id="pt-a4-color-double">₹10/sheet</span><span class="note">2 pages per sheet</span></div>
-        <div class="pt-row"><span class="name">B/W · A3</span><span class="price" id="pt-a3-bw">₹4/page</span><span class="note">Large format</span></div>
-        <div class="pt-row"><span class="name">Color · A3</span><span class="price" id="pt-a3-color">₹14/page</span><span class="note">Large format</span></div>
         <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹30 flat</span><span class="note">Within city limits</span></div>
         <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
       </div>
@@ -967,7 +959,6 @@ function fmtPrice(n){
 fetch('/api/pricing').then(r => r.json()).then(p => {
   const rates = p.rates || {};
   const a4 = (rates.a4 || {}).normal || {};
-  const a3 = (rates.a3 || {}).normal || {};
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
 
   if (a4.bw) {
@@ -984,13 +975,6 @@ fetch('/api/pricing').then(r => r.json()).then(p => {
     set('svc-color', `₹${fmtPrice(a4.color.single)}/page`);
     set('pt-a4-color-single', `₹${fmtPrice(a4.color.single)}/page`);
     set('pt-a4-color-double', `₹${fmtPrice(a4.color.double)}/sheet`);
-  }
-  if (a3.bw) {
-    set('svc-a3', `From ₹${fmtPrice(a3.bw.single)}/page`);
-    set('pt-a3-bw', `₹${fmtPrice(a3.bw.single)}/page`);
-  }
-  if (a3.color) {
-    set('pt-a3-color', `₹${fmtPrice(a3.color.single)}/page`);
   }
   if (p.deliveryCharge != null) {
     set('ticket-delivery', `₹${fmtPrice(p.deliveryCharge)}`);

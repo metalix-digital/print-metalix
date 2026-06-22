@@ -311,20 +311,11 @@
         </div>
       </div>
 
-      <div class="field-row" style="margin-top:26px;">
-        <div class="opt-group" style="margin-top:0;">
-          <span class="opt-label">Printing side</span>
-          <div class="seg">
-            <label><input type="radio" name="side" value="single" checked><span class="pill">Single</span></label>
-            <label><input type="radio" name="side" value="double"><span class="pill">Double</span></label>
-          </div>
-        </div>
-        <div class="opt-group" style="margin-top:0;">
-          <span class="opt-label">Paper size</span>
-          <div class="seg">
-            <label><input type="radio" name="papersize" value="a4" checked><span class="pill">A4</span></label>
-            <label><input type="radio" name="papersize" value="a3"><span class="pill">A3</span></label>
-          </div>
+      <div class="opt-group">
+        <span class="opt-label">Printing side</span>
+        <div class="seg">
+          <label><input type="radio" name="side" value="single" checked><span class="pill">Single</span></label>
+          <label><input type="radio" name="side" value="double"><span class="pill">Double</span></label>
         </div>
       </div>
 
@@ -604,17 +595,13 @@ function calcEstimate(){
   return { colorPages, bwPages, printCost, deliveryCharge, gstAmount, totalAmount };
 }
 
-const PAPER_DIMENSIONS = {
-  a4: { w: 8.3, h: 11.7 },
-  a3: { w: 11.7, h: 16.5 }
-};
+const A4_DIMENSIONS = { w: 8.3, h: 11.7 };
 function updateOrientationDims(){
-  const dims = PAPER_DIMENSIONS[state.paperSize] || PAPER_DIMENSIONS.a4;
   const el = document.getElementById('orientationDims');
   if(!el) return;
   el.textContent = state.orientation === 'landscape'
-    ? `${dims.h} × ${dims.w} in`
-    : `${dims.w} × ${dims.h} in`;
+    ? `${A4_DIMENSIONS.h} × ${A4_DIMENSIONS.w} in`
+    : `${A4_DIMENSIONS.w} × ${A4_DIMENSIONS.h} in`;
 }
 
 function updateModePriceHints(){
@@ -666,13 +653,8 @@ function setMode(mode){
 document.querySelectorAll('input[name=mode]').forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
 document.querySelectorAll('input[name=orientation]').forEach(r=> r.addEventListener('change', e=>{ state.orientation = e.target.value; recalc(); }));
 document.querySelectorAll('input[name=side]').forEach(r=> r.addEventListener('change', e=>{ state.side = e.target.value; recalc(); }));
-document.querySelectorAll('input[name=papersize]').forEach(r=> r.addEventListener('change', e=>{
-  state.paperSize = e.target.value;
-  paperTypeGroup.style.display = state.paperSize === 'a4' ? 'block' : 'none';
-  recalc();
-}));
 document.querySelectorAll('input[name=papertype]').forEach(r=> r.addEventListener('change', e=>{ state.paperType = e.target.value; recalc(); }));
-paperTypeGroup.style.display = state.paperSize === 'a4' ? 'block' : 'none';
+paperTypeGroup.style.display = 'block';
 
 const copiesInput = document.getElementById('copiesInput');
 function setCopies(n){
