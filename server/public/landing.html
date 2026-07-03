@@ -1043,8 +1043,7 @@ function fmtPrice(n){
 // defer these two fetches until the page is idle. This keeps them off the
 // initial critical request path, where they were stretching the LCP network
 // dependency chain.
-function syncLiveData(){
-fetch('/api/pricing').then(r => r.json()).then(p => {
+function applyPricing(p){
   const rates = p.rates || {};
   const a4 = (rates.a4 || {}).normal || {};
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
@@ -1068,9 +1067,9 @@ fetch('/api/pricing').then(r => r.json()).then(p => {
     set('ticket-delivery', `₹${fmtPrice(p.deliveryCharge)}`);
     set('pt-delivery', `+₹${fmtPrice(p.deliveryCharge)} flat`);
   }
-}).catch(err => console.error('Failed to load live pricing', err));
+}
 
-fetch('/api/settings').then(r => r.json()).then(s => {
+function applySettings(s){
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
   const setHref = (id, href) => { const el = document.getElementById(id); if (el) el.href = href; };
   const setMeta = (id, content) => { const el = document.getElementById(id); if (el) el.content = content; };
@@ -1129,13 +1128,22 @@ fetch('/api/settings').then(r => r.json()).then(s => {
     setLegal('terms', s.legal.termsConditions);
     setLegal('privacy', s.legal.privacyPolicy);
   }
-}).catch(err => console.error('Failed to load site settings', err));
 }
-// Run the sync once the browser is idle (or shortly after load as a fallback).
+
+// One deferred request fills in live pricing, settings, and branches — keeping
+// all three off the initial critical request chain.
+function bootstrap(){
+  fetch('/api/bootstrap').then(r => r.json()).then(data => {
+    if (data.pricing) applyPricing(data.pricing);
+    if (data.settings) applySettings(data.settings);
+    if (window.__applyBranches) window.__applyBranches(data.locations || []);
+  }).catch(err => console.error('Failed to load bootstrap data', err));
+}
+// Run once the browser is idle (or shortly after load as a fallback).
 if ('requestIdleCallback' in window) {
-  requestIdleCallback(syncLiveData, { timeout: 3000 });
+  requestIdleCallback(bootstrap, { timeout: 3000 });
 } else {
-  window.addEventListener('load', () => setTimeout(syncLiveData, 200));
+  window.addEventListener('load', () => setTimeout(bootstrap, 200));
 }
 
 /* -- PAGE ROUTING -- */
@@ -1602,21 +1610,17 @@ function showToast(msg, icon='✓'){
     }
     window.location.href = '/order';
   };
-  // Defer the branches fetch off the initial critical path — the picker shows
-  // "Select branch" instantly and populates once the browser is idle. (A user
-  // can't click through to /order in the first moments anyway.)
-  function loadBranches(){
-    fetch('/api/locations').then(function(r){ return r.json(); }).then(function(d){
-      branches = d.locations || [];
-      if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
-      var sel = getSel();
-      if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
-      updateBtn(); renderMenu();
-    }).catch(function(){ updateBtn(); });
-  }
+  // Branches are delivered by the single deferred /api/bootstrap fetch (see
+  // bootstrap()), which calls this once the data arrives. The picker shows
+  // "Select branch" instantly and populates when idle.
+  window.__applyBranches = function(list){
+    branches = list || [];
+    if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
+    var sel = getSel();
+    if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
+    updateBtn(); renderMenu();
+  };
   updateBtn();
-  if ('requestIdleCallback' in window) requestIdleCallback(loadBranches, { timeout: 3000 });
-  else window.addEventListener('load', function(){ setTimeout(loadBranches, 200); });
 })();
 </script>
 </body>

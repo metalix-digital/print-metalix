@@ -173,6 +173,16 @@ app.get('/api/settings', (req, res) => {
   res.json(db.getSiteSettings())
 })
 
+// One request for everything the landing page enhances with (pricing, site
+// settings, active branches) — lets the client make a single deferred fetch
+// instead of three, shrinking the critical request chain.
+app.get('/api/bootstrap', (req, res) => {
+  const locations = db.getLocations().filter((l) => l.active).map((l) => ({
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || ''
+  }))
+  res.json({ pricing: db.getPricing(), settings: db.getSiteSettings(), locations })
+})
+
 // Website "contact us" form → emails the business inbox. Always logs the
 // submission first so a message is never lost even if email delivery fails.
 app.post('/api/contact', express.json(), async (req, res) => {
