@@ -9,10 +9,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Inter',sans-serif;background:#FAFAF8;color:#1C1917;-webkit-font-smoothing:antialiased;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:#1C1917;-webkit-font-smoothing:antialiased;}
 :root{
-  --orange:#FF6600; --orange-d:#E05500; --ink:#1C1917; --ink2:#44403C; --ink3:#78716C;
-  --line:#E7E5E4; --paper:#FAFAF8; --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+  --orange:#FF6600; --orange-d:#E05500; --orange-soft:#FFF1E6;
+  --ink:#1C1917; --ink2:#44403C; --ink3:#8A827B;
+  --line:#EAE7E3; --line2:#F1EEEA; --paper:#FBFAF8; --bg:#F6F4F1; --card:#FFFFFF;
+  --ok:#15803D; --ok-bg:#E7F6EC; --warn:#B45309; --warn-bg:#FBF0DF; --err:#DC2626; --err-bg:#FCEBEB;
+  --info:#1D4ED8; --info-bg:#E8EEFD; --slate:#57534E; --slate-bg:#F0EEEB;
+  --shadow:0 1px 2px rgba(28,25,23,.04),0 10px 30px -12px rgba(28,25,23,.16);
+  --shadow-sm:0 1px 2px rgba(28,25,23,.05),0 3px 10px -6px rgba(28,25,23,.12);
+  --radius:14px;
 }
 
 /* login */
@@ -118,6 +124,104 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 .modal-ok{background:var(--orange);color:#fff;border-color:var(--orange);}
 .modal-ok:hover{background:var(--orange-d);}
 .modal-ok:focus-visible,.modal-cancel:focus-visible{outline:2px solid var(--orange);outline-offset:2px;}
+
+/* ============ visual refresh ============ */
+body{background:var(--bg);}
+.dash-header{position:sticky;top:0;z-index:40;padding:15px 28px;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);}
+.dash-header h1{font-family:'Syne',sans-serif;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;}
+.dash-header h1::before{content:"";width:11px;height:11px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px var(--orange-soft);}
+.logout-btn{border-radius:9px;font-weight:600;transition:.15s;}
+.tabs{position:sticky;top:57px;z-index:39;gap:2px;padding:8px 28px;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);}
+.tab-btn{border-radius:9px;border-bottom:none;padding:8px 15px;transition:.15s;}
+.tab-btn:hover{color:var(--ink);background:var(--line2);}
+.tab-btn.active{color:var(--orange);background:var(--orange-soft);border-bottom:none;}
+.content{padding:26px 28px 60px;max-width:1180px;}
+
+.filters input,.filters select{border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;background:var(--card);transition:.15s;box-shadow:var(--shadow-sm);}
+.filters input:focus,.filters select:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+
+/* order list as a card with roomy rows */
+.table-scroll{border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line);}
+table{box-shadow:none;border-radius:0;}
+th{background:var(--paper);padding:13px 16px;font-size:11px;letter-spacing:.06em;color:var(--ink3);border-bottom:1px solid var(--line);}
+td{padding:15px 16px;border-bottom:1px solid var(--line2);}
+tr.order-row{transition:background .12s;}
+tr.order-row:hover{background:var(--paper);}
+tr.order-row.sel{background:var(--orange-soft);}
+.order-id{font-weight:700;font-size:13px;letter-spacing:-.01em;}
+.cust-name{font-weight:600;}
+.amt{font-weight:700;font-variant-numeric:tabular-nums;}
+.placed{color:var(--ink3);font-size:12.5px;white-space:nowrap;}
+
+/* colored status select (looks like a pill, still editable) */
+select.status-select{border-radius:999px;padding:6px 26px 6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
+  border:1.5px solid var(--line);background:var(--card);appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%2378716C' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;}
+select.status-select:focus{outline:none;box-shadow:0 0 0 3px rgba(255,102,0,.18);}
+.st-ok{color:var(--ok);background-color:var(--ok-bg);border-color:transparent;}
+.st-err{color:var(--err);background-color:var(--err-bg);border-color:transparent;}
+.st-warn{color:var(--warn);background-color:var(--warn-bg);border-color:transparent;}
+.st-info{color:var(--info);background-color:var(--info-bg);border-color:transparent;}
+.st-active{color:var(--orange-d);background-color:var(--orange-soft);border-color:transparent;}
+.st-slate{color:var(--slate);background-color:var(--slate-bg);border-color:transparent;}
+
+/* payment badge */
+.pay-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;text-transform:capitalize;background:var(--slate-bg);color:var(--slate);}
+.pay-badge.paid{background:var(--ok-bg);color:var(--ok);}
+.pay-badge.failed{background:var(--err-bg);color:var(--err);}
+
+/* selection checkbox */
+.cb{width:17px;height:17px;border:1.5px solid #CFCAC4;border-radius:5px;cursor:pointer;accent-color:var(--orange);}
+th.cbcol,td.cbcol{width:44px;padding-left:18px;}
+
+/* bulk action bar */
+.bulk-bar{position:sticky;top:106px;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  margin-bottom:14px;padding:11px 16px;border-radius:12px;background:#1C1917;color:#fff;box-shadow:var(--shadow);}
+.bulk-bar.hidden{display:none !important;}
+.bulk-bar .count{font-weight:700;font-size:13.5px;}
+.bulk-bar .count b{color:var(--orange);}
+.bulk-bar select{margin-left:auto;border:1.5px solid #3f3a36;background:#2a2622;color:#fff;border-radius:9px;padding:8px 11px;font:inherit;font-size:13px;}
+.bulk-bar .b-apply{background:var(--orange);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-weight:700;font-size:13.5px;cursor:pointer;}
+.bulk-bar .b-apply:hover{background:var(--orange-d);}
+.bulk-bar .b-clear{background:none;border:1.5px solid #46413c;color:#d6d3d1;border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;}
+
+/* action buttons */
+.dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
+.dl-btn:hover{background:var(--orange);color:#fff;}
+.jobsheet-btn{border-radius:9px;transition:.15s;}
+.jobsheet-btn:hover{opacity:.9;}
+.file-list{list-style:none;margin:6px 0 2px;}
+.file-list li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line2);}
+.file-list li:last-child{border-bottom:none;}
+
+/* Stages tab */
+.stages-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;max-width:680px;}
+.stages-wrap h2{font-family:'Syne',sans-serif;font-size:18px;margin-bottom:4px;}
+.stages-wrap .hint{font-size:13px;color:var(--ink3);margin-bottom:20px;}
+.stage-list{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
+.stage-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;background:var(--paper);}
+.stage-item .grip{color:#C7C0B8;cursor:grab;font-size:15px;user-select:none;}
+.stage-item .name{font-weight:600;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.stage-item .notify-toggle{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink3);white-space:nowrap;cursor:pointer;}
+.stage-item .notify-toggle input{accent-color:var(--orange);width:16px;height:16px;cursor:pointer;}
+.stage-item .del{background:none;border:1.5px solid var(--line);color:var(--err);border-radius:8px;width:32px;height:32px;font-size:15px;cursor:pointer;flex:none;transition:.15s;}
+.stage-item .del:hover{background:var(--err-bg);border-color:var(--err-bg);}
+.stage-item .move{background:none;border:1.5px solid var(--line);color:var(--ink3);border-radius:7px;width:26px;height:24px;cursor:pointer;font-size:11px;line-height:1;}
+.stage-item .move:disabled{opacity:.35;cursor:default;}
+.stage-add{display:flex;gap:9px;margin-bottom:8px;flex-wrap:wrap;}
+.stage-add input[type=text]{flex:1;min-width:180px;border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;font:inherit;font-size:14px;}
+.stage-add input[type=text]:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+.stage-add label{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink2);}
+.stage-add .add-btn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:0 18px;font-weight:700;font-size:14px;cursor:pointer;}
+.stage-add .add-btn:hover{background:#000;}
+.toast-msg{margin-top:14px;font-size:13px;font-weight:600;min-height:18px;}
+@media(max-width:760px){
+  .dash-header,.tabs{padding-left:16px;padding-right:16px;}
+  .tabs{top:56px;}
+  .content{padding:18px 16px 50px;}
+  .bulk-bar{top:auto;position:fixed;left:12px;right:12px;bottom:12px;top:auto;}
+}
 </style>
 </head>
 <body>
@@ -156,6 +260,7 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="pricing">Pricing</button>
+    <button class="tab-btn" data-tab="stages">Stages</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
   <div class="content">
@@ -165,19 +270,21 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
         <input type="text" id="orderSearch" placeholder="Search by name, mobile, or order ID" />
         <select id="orderStatusFilter">
           <option value="">All statuses</option>
-          <option>Received</option>
-          <option>Payment Successful</option>
-          <option>Queued For Printing</option>
-          <option>Printing</option>
-          <option>Completed</option>
-          <option>Manual Intervention Required</option>
-          <option>Failed</option>
         </select>
+      </div>
+      <div class="bulk-bar hidden" id="bulkBar">
+        <span class="count"><b id="bulkCount">0</b> selected</span>
+        <select id="bulkStatus"></select>
+        <button class="b-apply" id="bulkApply" type="button">Apply status</button>
+        <button class="b-clear" id="bulkClear" type="button">Clear</button>
       </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th></tr></thead>
-          <tbody id="ordersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          <thead><tr>
+            <th class="cbcol"><input type="checkbox" class="cb" id="selectAll" title="Select all" /></th>
+            <th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th>
+          </tr></thead>
+          <tbody id="ordersBody"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -197,6 +304,12 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
       </div>
     </div>
 
+    <div class="panel" id="panel-stages">
+      <div class="stages-wrap" id="stagesWrap">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
     <div class="panel" id="panel-settings">
       <div class="settings-form" id="settingsForm">
         <div class="loading">Loading…</div>
@@ -208,15 +321,62 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 
 <script>
 const TOKEN_KEY = 'metalix_admin_token';
-// Paid orders always start at "Queued For Printing" (set automatically on
-// payment) — "Received"/"Payment Successful" are pre-payment states that
-// never appear here since the admin order list only ever shows paid orders.
-// The middle status branches by delivery method since "Awaiting Customer
-// Pickup" only makes sense for in-store pickup and "Out For Delivery" only
-// for home delivery.
+
+// The workflow stages are admin-editable (Stages tab) and loaded from the
+// server; this list is the fallback shown until the first fetch returns.
+let orderStages = [
+  { name: 'Queued For Printing', notify: false },
+  { name: 'Printing', notify: false },
+  { name: 'Awaiting Customer Pickup', notify: true },
+  { name: 'Out For Delivery', notify: true },
+  { name: 'Completed', notify: true },
+  { name: 'Manual Intervention Required', notify: false },
+  { name: 'Failed', notify: false }
+];
+function stageNames(){ return orderStages.map((s) => s.name); }
+
+// A stored/legacy status that's no longer a configured stage stays selectable
+// (prepended) so an order's current status never silently disappears.
 function getStatusesForOrder(order){
-  const middle = order.delivery_method === 'delivery' ? 'Out For Delivery' : 'Awaiting Customer Pickup';
-  return ['Queued For Printing', 'Printing', middle, 'Completed', 'Manual Intervention Required', 'Failed'];
+  const list = stageNames();
+  if (order && order.order_status && !list.includes(order.order_status)) return [order.order_status].concat(list);
+  return list.slice();
+}
+
+// Map a status to a semantic colour class for the status pill.
+function stageColorClass(name){
+  const n = String(name || '').toLowerCase();
+  if (n.includes('complet') || n.includes('delivered') || n.includes('collected')) return 'st-ok';
+  if (n.includes('fail') || n.includes('manual') || n.includes('cancel')) return 'st-err';
+  if (n.includes('deliver') || n.includes('pickup') || n.includes('ship') || n.includes('ready')) return 'st-info';
+  if (n.includes('print')) return 'st-active';
+  if (n.includes('queue') || n.includes('receiv') || n.includes('pending')) return 'st-slate';
+  return 'st-active';
+}
+
+async function loadStagesConfig(){
+  try {
+    const res = await adminFetch('/api/admin/stages');
+    const data = await res.json();
+    if (Array.isArray(data.stages) && data.stages.length) orderStages = data.stages;
+  } catch (err) { /* keep fallback list */ }
+  populateStatusFilter();
+}
+
+// Fill the Orders filter + bulk-action dropdowns from the configured stages.
+function populateStatusFilter(){
+  const filter = document.getElementById('orderStatusFilter');
+  if (filter){
+    const cur = filter.value;
+    filter.innerHTML = '<option value="">All statuses</option>' +
+      stageNames().map((s) => '<option>' + escHtml(s) + '</option>').join('');
+    filter.value = cur;
+  }
+  const bulk = document.getElementById('bulkStatus');
+  if (bulk){
+    bulk.innerHTML = '<option value="" disabled selected>Change status to…</option>' +
+      stageNames().map((s) => '<option>' + escHtml(s) + '</option>').join('');
+  }
 }
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY); }
@@ -239,12 +399,14 @@ function showLogin(){
   document.getElementById('loginWrap').classList.remove('hidden');
   document.getElementById('dashWrap').classList.add('hidden');
 }
-function showDash(){
+async function showDash(){
   document.getElementById('loginWrap').classList.add('hidden');
   document.getElementById('dashWrap').classList.remove('hidden');
+  await loadStagesConfig();   // stages drive the status dropdowns, so load first
   loadOrders();
   loadCustomers();
   loadPricing();
+  loadStages();
   loadSettings();
 }
 
@@ -357,6 +519,77 @@ document.getElementById('orderSearch').addEventListener('input', () => {
 });
 document.getElementById('orderStatusFilter').addEventListener('change', loadOrders);
 
+/* -- bulk selection -- */
+let selectedOrders = new Set();
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const n = selectedOrders.size;
+  document.getElementById('bulkCount').textContent = n;
+  bar.classList.toggle('hidden', n === 0);
+}
+function syncSelectAll(){
+  const boxes = document.querySelectorAll('.row-cb');
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.checked = boxes.length > 0 && Array.from(boxes).every((b) => b.checked);
+}
+function clearSelection(){
+  selectedOrders.clear();
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.checked = false;
+  updateBulkBar();
+}
+function showFlash(msg){
+  const f = document.createElement('div');
+  f.textContent = msg;
+  f.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1C1917;color:#fff;padding:11px 18px;border-radius:11px;font-size:13.5px;font-weight:600;z-index:2000;box-shadow:0 12px 34px rgba(0,0,0,.28);';
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 2800);
+}
+document.getElementById('selectAll').addEventListener('change', (e) => {
+  const on = e.target.checked;
+  document.querySelectorAll('.row-cb').forEach((cb) => {
+    cb.checked = on;
+    if (on) selectedOrders.add(cb.dataset.order); else selectedOrders.delete(cb.dataset.order);
+    cb.closest('tr').classList.toggle('sel', on);
+  });
+  updateBulkBar();
+});
+document.getElementById('bulkClear').addEventListener('click', () => {
+  document.querySelectorAll('.row-cb').forEach((cb) => { cb.checked = false; cb.closest('tr').classList.remove('sel'); });
+  clearSelection();
+});
+document.getElementById('bulkApply').addEventListener('click', async () => {
+  const to = document.getElementById('bulkStatus').value;
+  const ids = Array.from(selectedOrders);
+  if (!to){ alert('Pick a status to apply.'); return; }
+  if (!ids.length) return;
+  const willEmail = !!(orderStages.find((s) => s.name === to) || {}).notify;
+  const inner =
+    '<h3 class="modal-title">Update ' + ids.length + ' order' + (ids.length === 1 ? '' : 's') + '?</h3>' +
+    '<p class="modal-sub">' + (willEmail ? 'Customers with an email on file will be notified.' : 'No customer email will be sent for this stage.') + '</p>' +
+    '<div class="modal-status">Set status to <span class="chip chip-to">' + escHtml(to) + '</span></div>' +
+    '<table class="modal-meta">' +
+      '<tr><td class="k">Orders selected</td><td class="v">' + ids.length + '</td></tr>' +
+      '<tr><td class="k">New status</td><td class="v">' + escHtml(to) + '</td></tr>' +
+      '<tr><td class="k">Emails customer</td><td class="v">' + (willEmail ? 'Yes' : 'No') + '</td></tr>' +
+    '</table>';
+  const ok = await showConfirmModal(inner);
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/orders/bulk-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, order_status: to })
+    });
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Bulk update failed.'); return; }
+    await loadOrders();
+    showFlash('Updated ' + data.updated + ' order' + (data.updated === 1 ? '' : 's') + (data.emailed ? ' · ' + data.emailed + ' emailed' : ''));
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Bulk update failed.');
+  }
+});
+
 async function loadOrders(){
   const body = document.getElementById('ordersBody');
   const search = document.getElementById('orderSearch').value.trim();
@@ -369,7 +602,7 @@ async function loadOrders(){
     const data = await res.json();
     renderOrders(data.orders || []);
   } catch (err) {
-    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="6" class="empty">Failed to load orders</td></tr>';
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load orders</td></tr>';
   }
 }
 
@@ -378,8 +611,8 @@ function statusSelectHtml(order){
   // Defensive: keep showing a legacy/unexpected stored value as a selectable
   // option even if it's not in the canonical list, so old data never vanishes.
   if (order.order_status && !statuses.includes(order.order_status)) statuses.unshift(order.order_status);
-  return '<select class="status-select" data-order="' + order.id + '" data-prev="' + (order.order_status || '') + '">' +
-    statuses.map((s) => '<option' + (s === order.order_status ? ' selected' : '') + '>' + s + '</option>').join('') +
+  return '<select class="status-select ' + stageColorClass(order.order_status) + '" data-order="' + order.id + '" data-prev="' + escHtml(order.order_status || '') + '">' +
+    statuses.map((s) => '<option' + (s === order.order_status ? ' selected' : '') + '>' + escHtml(s) + '</option>').join('') +
     '</select>';
 }
 
@@ -477,38 +710,52 @@ function renderOrders(orders){
   const body = document.getElementById('ordersBody');
   ordersById = {};
   orders.forEach((o) => { ordersById[o.id] = o; });
+  clearSelection();
   if (!orders.length){
-    body.innerHTML = '<tr><td colspan="6" class="empty">No orders found</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty">No orders found</td></tr>';
     return;
   }
+  const payClass = (p) => { const s = String(p || '').toLowerCase(); return s.includes('paid') ? 'paid' : (s.includes('fail') ? 'failed' : ''); };
   body.innerHTML = orders.map((o) => (
     '<tr class="order-row" data-toggle="' + o.id + '">' +
-      '<td>' + o.id + '</td>' +
-      '<td>' + o.customer_name + '<div class="subtle">' + o.customer_mobile + '</div></td>' +
-      '<td>₹' + o.total_amount + '</td>' +
-      '<td>' + o.payment_status + '</td>' +
+      '<td class="cbcol"><input type="checkbox" class="cb row-cb" data-order="' + escHtml(o.id) + '"></td>' +
+      '<td><span class="order-id">' + escHtml(o.id) + '</span></td>' +
+      '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
+      '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
+      '<td><span class="pay-badge ' + payClass(o.payment_status) + '">' + escHtml(o.payment_status || '—') + '</span></td>' +
       '<td>' + statusSelectHtml(o) + '</td>' +
-      '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
+      '<td><span class="placed">' + (o.created_at ? escHtml(new Date(o.created_at).toLocaleString()) : '—') + '</span></td>' +
     '</tr>' +
-    '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="6"><div class="detail">' +
+    '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="7"><div class="detail">' +
       filesDetailHtml(o) +
-      '<div><strong>Paper:</strong> ' + o.paper_size + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : (PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : (MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : o.print_side + '-sided') + ' · ' + o.copies + ' copies (see per-file detail above for mixed orders)</div>' +
-      '<div><strong>Delivery:</strong> ' + o.delivery_method +
-        (o.delivery_method === 'delivery' ? ' — ' + o.delivery_address + ', ' + o.delivery_city + ', ' + o.delivery_state + ' ' + o.delivery_pincode : '') +
+      '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
+      '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
+        (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
-      (o.customer_email ? '<div><strong>Email:</strong> ' + o.customer_email + '</div>' : '') +
+      (o.customer_email ? '<div><strong>Email:</strong> ' + escHtml(o.customer_email) + '</div>' : '') +
       '<div class="jobsheet-actions">' +
-        '<button class="jobsheet-btn" data-action="print" data-order="' + o.id + '" data-status="' + o.order_status + '">🖨 Print Job Sheet</button>' +
-        '<button class="jobsheet-btn" data-action="download" data-order="' + o.id + '" data-status="' + o.order_status + '">⬇ Download PDF</button>' +
+        '<button class="jobsheet-btn" data-action="print" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">🖨 Print Job Sheet</button>' +
+        '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
       '</div>' +
     '</div></td></tr>'
   )).join('');
 
+  body.querySelectorAll('.row-cb').forEach((cb) => {
+    cb.addEventListener('click', (e) => e.stopPropagation());
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.order;
+      if (cb.checked) selectedOrders.add(id); else selectedOrders.delete(id);
+      cb.closest('tr').classList.toggle('sel', cb.checked);
+      syncSelectAll();
+      updateBulkBar();
+    });
+  });
+
   body.querySelectorAll('tr.order-row').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('select')) return;
+      if (e.target.closest('select') || e.target.closest('input')) return;
       const id = row.dataset.toggle;
-      const detail = body.querySelector('tr[data-detail="' + id + '"]');
+      const detail = body.querySelector('tr[data-detail="' + CSS.escape(id) + '"]');
       if (detail) detail.classList.toggle('hidden');
     });
   });
@@ -571,6 +818,7 @@ function renderOrders(orders){
           body: JSON.stringify({ order_status: to })
         });
         sel.dataset.prev = to;
+        sel.className = 'status-select ' + stageColorClass(to);
         if (o) o.order_status = to;
       } catch (err) {
         sel.value = from;
@@ -578,6 +826,100 @@ function renderOrders(orders){
       }
     });
   });
+}
+
+/* -- STAGES -- */
+// Edits happen on a draft copy so unsaved tweaks don't leak into the Orders
+// dropdowns; only a successful Save commits the draft to the live config.
+let stagesDraft = [];
+
+function loadStages(){
+  stagesDraft = orderStages.map((s) => ({ name: s.name, notify: !!s.notify }));
+  const wrap = document.getElementById('stagesWrap');
+  wrap.innerHTML =
+    '<h2>Order stages</h2>' +
+    '<p class="hint">These are the statuses you can set on an order. Turn on <strong>Notify</strong> to email the customer when an order reaches that stage. Reorder with the arrows. Changes apply after you Save.</p>' +
+    '<div class="stage-list" id="stageList"></div>' +
+    '<div class="stage-add">' +
+      '<input type="text" id="newStageName" placeholder="New stage name" maxlength="60" />' +
+      '<label><input type="checkbox" id="newStageNotify" /> Notify customer</label>' +
+      '<button class="add-btn" id="addStageBtn" type="button">Add stage</button>' +
+    '</div>' +
+    '<button class="save-btn" id="saveStagesBtn" type="button">Save stages</button>' +
+    '<div class="toast-msg" id="stagesMsg"></div>';
+  renderStageList();
+  document.getElementById('addStageBtn').addEventListener('click', addStage);
+  document.getElementById('newStageName').addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); addStage(); } });
+  document.getElementById('saveStagesBtn').addEventListener('click', saveStages);
+}
+
+function renderStageList(){
+  const list = document.getElementById('stageList');
+  if (!stagesDraft.length){ list.innerHTML = '<div class="subtle">No stages yet — add one below.</div>'; return; }
+  list.innerHTML = stagesDraft.map((s, i) =>
+    '<div class="stage-item" data-i="' + i + '">' +
+      '<div style="display:flex;flex-direction:column;gap:3px;">' +
+        '<button class="move" data-move="up" type="button"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
+        '<button class="move" data-move="down" type="button"' + (i === stagesDraft.length - 1 ? ' disabled' : '') + '>▼</button>' +
+      '</div>' +
+      '<span class="name">' + escHtml(s.name) + '</span>' +
+      '<label class="notify-toggle"><input type="checkbox" data-notify' + (s.notify ? ' checked' : '') + ' /> Notify</label>' +
+      '<button class="del" type="button" title="Delete stage">✕</button>' +
+    '</div>'
+  ).join('');
+  list.querySelectorAll('.stage-item').forEach((el) => {
+    const i = Number(el.dataset.i);
+    el.querySelector('[data-notify]').addEventListener('change', (e) => { stagesDraft[i].notify = e.target.checked; });
+    el.querySelector('.del').addEventListener('click', () => { stagesDraft.splice(i, 1); renderStageList(); });
+    el.querySelectorAll('.move').forEach((mb) => {
+      mb.addEventListener('click', () => {
+        const j = i + (mb.dataset.move === 'up' ? -1 : 1);
+        if (j < 0 || j >= stagesDraft.length) return;
+        const t = stagesDraft[i]; stagesDraft[i] = stagesDraft[j]; stagesDraft[j] = t;
+        renderStageList();
+      });
+    });
+  });
+}
+
+function setStagesMsg(msg, isErr){
+  const el = document.getElementById('stagesMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isErr ? '#DC2626' : '#15803D';
+}
+
+function addStage(){
+  const inp = document.getElementById('newStageName');
+  const name = inp.value.trim();
+  const notify = document.getElementById('newStageNotify').checked;
+  if (!name){ setStagesMsg('Enter a stage name.', true); return; }
+  if (stagesDraft.some((s) => s.name.toLowerCase() === name.toLowerCase())){ setStagesMsg('That stage already exists.', true); return; }
+  stagesDraft.push({ name: name, notify: notify });
+  inp.value = '';
+  document.getElementById('newStageNotify').checked = false;
+  renderStageList();
+  setStagesMsg('', false);
+  inp.focus();
+}
+
+async function saveStages(){
+  if (!stagesDraft.length){ setStagesMsg('Keep at least one stage.', true); return; }
+  try {
+    const res = await adminFetch('/api/admin/stages', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stages: stagesDraft })
+    });
+    const data = await res.json();
+    if (!res.ok){ setStagesMsg(data.message || 'Could not save stages.', true); return; }
+    orderStages = data.stages;
+    populateStatusFilter();
+    loadOrders();               // refresh the status dropdowns in the orders list
+    setStagesMsg('Stages saved.', false);
+  } catch (err) {
+    if (err.message !== 'unauthorized') setStagesMsg('Could not save stages.', true);
+  }
 }
 
 /* -- CUSTOMERS -- */

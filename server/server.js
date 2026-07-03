@@ -507,17 +507,74 @@ app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   const updated = db.updateOrder(order.id, updates)
 
-  // Email the customer when their order reaches a notifiable milestone
-  // (ready for pickup / out for delivery / completed) — but only when the
-  // status actually changed. Fire-and-forget so a mail hiccup never fails the
-  // admin's update.
-  if (order.order_status !== updated.order_status && mailer.NOTIFIABLE_STATUSES.has(updated.order_status)) {
+  // Email the customer when the order reaches a stage marked "notify" (managed
+  // in the admin Stages tab) — but only when the status actually changed.
+  // Fire-and-forget so a mail hiccup never fails the admin's update.
+  if (order.order_status !== updated.order_status && stageNotifies(updated.order_status)) {
     const trackUrl = `${req.protocol}://${req.get('host')}/track/${updated.id}`
     mailer.sendOrderStatusEmail(updated, trackUrl).catch((err) => {
       console.error(`[orders] failed to email status update for ${updated.id}:`, err.message)
     })
   }
   return res.json({ order: updated })
+})
+
+// Whether reaching `status` should email the customer, per the admin-managed
+// stage config (falls back to false for unknown/legacy statuses).
+function stageNotifies(status) {
+  const stage = db.getOrderStages().find((s) => s.name === status)
+  return !!(stage && stage.notify)
+}
+
+// Bulk status update: apply one status to many orders at once. Skips orders
+// that are missing or already at that status, and emails each customer whose
+// new stage is notify-enabled.
+app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, res) => {
+  const { ids, order_status } = req.body || {}
+  if (!Array.isArray(ids) || !ids.length || !order_status) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order and a status.' })
+  }
+  const notify = stageNotifies(order_status)
+  const base = `${req.protocol}://${req.get('host')}`
+  let updated = 0
+  let emailed = 0
+  for (const id of ids) {
+    const order = db.getOrder(id)
+    if (!order || order.order_status === order_status) continue
+    const u = db.updateOrder(id, { order_status })
+    updated++
+    if (notify && u.customer_email) {
+      emailed++
+      mailer.sendOrderStatusEmail(u, `${base}/track/${u.id}`).catch((err) => {
+        console.error(`[orders] bulk email failed for ${id}:`, err.message)
+      })
+    }
+  }
+  return res.json({ updated, emailed })
+})
+
+// Admin-managed order workflow stages (add / delete / reorder / notify flag).
+app.get('/api/admin/stages', requireAdmin, (req, res) => {
+  return res.json({ stages: db.getOrderStages() })
+})
+
+app.put('/api/admin/stages', requireAdmin, express.json(), (req, res) => {
+  const { stages } = req.body || {}
+  if (!Array.isArray(stages) || !stages.length) {
+    return res.status(400).json({ error: 'invalid_stages', message: 'Keep at least one stage.' })
+  }
+  const clean = []
+  const seen = new Set()
+  for (const s of stages) {
+    const name = String((s && s.name) || '').trim().slice(0, 60)
+    if (!name) return res.status(400).json({ error: 'invalid_stage_name', message: "Stage names can't be empty." })
+    const key = name.toLowerCase()
+    if (seen.has(key)) return res.status(400).json({ error: 'duplicate_stage', message: `Duplicate stage: ${name}` })
+    seen.add(key)
+    clean.push({ name, notify: !!(s && s.notify) })
+  }
+  db.setOrderStages(clean)
+  return res.json({ stages: db.getOrderStages() })
 })
 
 app.get('/api/admin/customers', requireAdmin, (req, res) => {

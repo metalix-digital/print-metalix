@@ -193,6 +193,30 @@ function setAdminAuth({ username, password_hash }) {
     .run('admin_auth', JSON.stringify({ username, password_hash }))
 }
 
+// Order workflow stages are admin-editable (add/delete/reorder) and stored in
+// settings under 'order_stages'. Each stage carries a `notify` flag deciding
+// whether reaching it emails the customer. These defaults reproduce the
+// original hardcoded workflow so existing orders keep working before any edit.
+const DEFAULT_ORDER_STAGES = [
+  { name: 'Queued For Printing', notify: false },
+  { name: 'Printing', notify: false },
+  { name: 'Awaiting Customer Pickup', notify: true },
+  { name: 'Out For Delivery', notify: true },
+  { name: 'Completed', notify: true },
+  { name: 'Manual Intervention Required', notify: false },
+  { name: 'Failed', notify: false }
+]
+
+function getOrderStages() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('order_stages')
+  return row ? JSON.parse(row.value) : DEFAULT_ORDER_STAGES
+}
+
+function setOrderStages(stages) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run('order_stages', JSON.stringify(stages))
+}
+
 function createOrder(order) {
   const now = order.created_at
   db.prepare(`
@@ -376,6 +400,8 @@ module.exports = {
   setSiteSettings,
   getAdminAuth,
   setAdminAuth,
+  getOrderStages,
+  setOrderStages,
   createUser,
   findUserByIdentifier,
   findUserByGoogleId,
