@@ -471,9 +471,32 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) =>
         const buffer = fs.readFileSync(filePath)
         const ext = path.extname(f.fileName || safeFileId).toLowerCase() || '.pdf'
         const pdfBuffer = ext === '.pdf' ? buffer : await convertToPdf(buffer, ext)
+        // Normalize every document page onto an A4 sheet: fit-to-page (preserve
+        // aspect ratio, centered), using A4 portrait or landscape to match the
+        // source page's orientation. Guarantees the whole job sheet prints on A4.
         const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
-        const pages = await merged.copyPages(srcDoc, srcDoc.getPageIndices())
-        pages.forEach((p) => merged.addPage(p))
+        for (const idx of srcDoc.getPageIndices()) {
+          // Content-less pages can't be embedded (pdf-lib throws at save), so
+          // detect them and emit a blank A4 sheet — preserving page count/order.
+          let hasContents = false
+          try { hasContents = !!srcDoc.getPage(idx).node.Contents() } catch (e) { hasContents = false }
+          if (!hasContents) { merged.addPage([A4_PT.width, A4_PT.height]); continue }
+          try {
+            const [ep] = await merged.embedPdf(srcDoc, [idx])
+            const pw = ep.width
+            const ph = ep.height
+            const landscape = pw > ph
+            const pageW = landscape ? A4_PT.height : A4_PT.width
+            const pageH = landscape ? A4_PT.width : A4_PT.height
+            const scale = Math.min(pageW / pw, pageH / ph)
+            const w = pw * scale
+            const h = ph * scale
+            const pg = merged.addPage([pageW, pageH])
+            pg.drawPage(ep, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h })
+          } catch (pageErr) {
+            merged.addPage([A4_PT.width, A4_PT.height])
+          }
+        }
       } catch (err) {
         const page = merged.addPage([A4_PT.width, A4_PT.height])
         const lines = [
@@ -487,6 +510,12 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) =>
     }
 
     await addImagePage(backImage)
+
+    // Embed the order ID as the PDF title so "print → Save as PDF" and most
+    // viewers suggest an order-ID filename (downloads are already named below).
+    merged.setTitle(`Metalix Job Sheet ${order.id}`)
+    merged.setAuthor('Metalix Print')
+    merged.setSubject(`Job sheet for order ${order.id}`)
 
     const pdfBytes = await merged.save()
     res.setHeader('Content-Type', 'application/pdf')

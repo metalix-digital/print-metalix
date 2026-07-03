@@ -423,6 +423,9 @@ async function loadOrder(){
       return;
     }
     const { order } = await res.json();
+    // Order ID in the page title → the browser's print/"Save as PDF" dialog
+    // suggests an order-ID filename for the manual print button too.
+    document.title = 'Metalix Job Sheet ' + order.id;
     populate(order);
     if (action === 'print') {
       setTimeout(() => printMergedPdf(order), 300);
