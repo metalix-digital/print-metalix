@@ -49,6 +49,7 @@ body{font-family:'Inter',sans-serif;background:#FAFAF8;color:#1C1917;-webkit-fon
   --orange:#FF6600;
   --orange-d:#E05500;
   --orange-l:#FFF4EB;
+  --orange-text:#C2410C;
   --ink:#1C1917;
   --ink2:#44403C;
   --ink3:#78716C;
@@ -78,7 +79,7 @@ nav a{
   padding:8px 14px;border-radius:8px;transition:all .15s;cursor:pointer;
 }
 nav a:hover{color:var(--ink);background:#F5F4F2;}
-nav a.active{color:var(--orange);}
+nav a.active{color:var(--orange-text);}
 .h-space{flex:1;}
 .h-actions{display:flex;align-items:center;gap:10px;}
 .btn-ghost-sm{
@@ -115,7 +116,7 @@ nav a.active{color:var(--orange);}
     font-size:15px;font-weight:600;color:var(--ink2);text-decoration:none;
     padding:12px 4px;border-bottom:1px solid #F0EFED;cursor:pointer;
   }
-  .mobile-menu a.active{color:var(--orange);}
+  .mobile-menu a.active{color:var(--orange-text);}
   .mobile-menu .mm-actions{display:flex;gap:10px;margin-top:14px;}
   .mobile-menu .mm-actions button{flex:1;}
 }
@@ -137,7 +138,7 @@ nav a.active{color:var(--orange);}
 .hero-eyebrow{
   display:inline-flex;align-items:center;gap:8px;
   font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
-  color:var(--orange);background:var(--orange-l);border:1px solid #FFCCA0;
+  color:var(--orange-text);background:var(--orange-l);border:1px solid #FFCCA0;
   padding:6px 12px;border-radius:999px;margin-bottom:22px;
 }
 .hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:blink 2s ease-in-out infinite;}
@@ -146,7 +147,7 @@ nav a.active{color:var(--orange);}
   font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(36px,5vw,58px);
   line-height:1.08;letter-spacing:-.03em;margin-bottom:22px;
 }
-.hero h1 em{font-style:normal;color:var(--orange);}
+.hero h1 em{font-style:normal;color:var(--orange-text);}
 .hero-sub{font-size:17px;color:var(--ink2);line-height:1.65;margin-bottom:34px;max-width:460px;}
 .hero-actions{display:flex;gap:12px;flex-wrap:wrap;}
 .btn-hero{
@@ -155,7 +156,7 @@ nav a.active{color:var(--orange);}
   transition:all .15s;display:inline-flex;align-items:center;gap:8px;
 }
 .btn-hero-primary{
-  background:var(--orange);color:#fff;
+  background:var(--orange);color:var(--ink);
   box-shadow:0 10px 28px -10px rgba(255,102,0,.55);
 }
 .btn-hero-primary:hover{background:var(--orange-d);box-shadow:0 14px 32px -10px rgba(255,102,0,.65);transform:translateY(-1px);}
@@ -185,8 +186,8 @@ nav a.active{color:var(--orange);}
 .mock-row b{color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;}
 .mock-total{display:flex;justify-content:space-between;border-top:1.5px dashed #DDD9D4;margin-top:8px;padding-top:10px;}
 .mock-total .tl{font-weight:700;font-size:14px;}
-.mock-total .tv{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--orange);}
-.mock-btn{background:var(--orange);color:#fff;border:none;border-radius:9px;width:100%;padding:13px;font-weight:700;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;}
+.mock-total .tv{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--orange-text);}
+.mock-btn{background:var(--orange);color:var(--ink);border:none;border-radius:9px;width:100%;padding:13px;font-weight:700;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;}
 .float-badge{
   position:absolute;background:#fff;border-radius:12px;padding:10px 14px;
   box-shadow:var(--shadow-lg);border:1px solid var(--line);
@@ -226,7 +227,7 @@ nav a.active{color:var(--orange);}
 /* -- SECTIONS -- */
 .section{padding:80px 24px;}
 .section-inner{max-width:1140px;margin:0 auto;}
-.section-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--orange);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;}
+.section-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--orange-text);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;}
 .section-title{font-family:'Syne',sans-serif;font-weight:700;font-size:clamp(26px,3.5vw,38px);letter-spacing:-.02em;margin-bottom:14px;}
 .section-sub{font-size:16px;color:var(--ink2);line-height:1.65;max-width:560px;}
 
@@ -239,7 +240,7 @@ nav a.active{color:var(--orange);}
 .how-step{padding:28px 20px;position:relative;text-align:center;}
 .how-step::after{
   content:'→';position:absolute;right:-8px;top:28px;
-  color:var(--orange);font-size:20px;font-weight:700;
+  color:var(--orange-text);font-size:20px;font-weight:700;
 }
 .how-step:last-child::after{display:none;}
 @media(max-width:860px){
@@ -270,7 +271,7 @@ nav a.active{color:var(--orange);}
 .service-card p{font-size:13px;color:var(--ink3);line-height:1.55;}
 .service-card .price{
   font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;
-  color:var(--orange);margin-top:12px;
+  color:var(--orange-text);margin-top:12px;
 }
 
 /* -- PRICING -- */
@@ -291,7 +292,7 @@ nav a.active{color:var(--orange);}
 .pt-row:last-child{border-bottom:none;}
 .pt-row:hover{background:#FAFAF8;}
 .pt-row .name{font-weight:600;}
-.pt-row .price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--orange);}
+.pt-row .price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--orange-text);}
 .pt-row .note{font-size:12px;color:var(--ink3);}
 @media(max-width:600px){
   .pt-head,.pt-row{grid-template-columns:1fr 1fr;gap:4px;}
@@ -306,7 +307,7 @@ nav a.active{color:var(--orange);}
 .ci-icon{width:42px;height:42px;border-radius:10px;background:var(--orange-l);border:1px solid #FFCCA0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
 .ci-title{font-weight:700;font-size:14px;margin-bottom:3px;}
 .ci-val{font-size:13.5px;color:var(--ink2);line-height:1.55;}
-.ci-val a{color:var(--orange);font-weight:600;text-decoration:none;}
+.ci-val a{color:var(--orange-text);font-weight:600;text-decoration:none;}
 .ci-val a:hover{text-decoration:underline;}
 .hours-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;color:var(--ink2);margin-top:6px;}
 .hours-grid .day{font-weight:600;color:var(--ink);}
@@ -334,7 +335,7 @@ nav a.active{color:var(--orange);}
   cursor:pointer;padding:12px 22px;border-bottom:2.5px solid transparent;margin-bottom:-2px;
   transition:all .15s;font-family:'Inter',sans-serif;
 }
-.ptab.active{color:var(--orange);border-bottom-color:var(--orange);}
+.ptab.active{color:var(--orange-text);border-bottom-color:var(--orange);}
 .ptab:hover:not(.active){color:var(--ink);}
 .ptab-content{display:none;}
 .ptab-content.active{display:block;}
@@ -362,7 +363,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 .footer-brand img{width:36px;height:36px;border-radius:50%;}
 .footer-brand span{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;}
 .footer-col p{font-size:13.5px;color:#A8A29E;line-height:1.7;margin-bottom:18px;}
-.footer-col h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#78716C;margin-bottom:16px;}
+.footer-col h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#A8A29E;margin-bottom:16px;}
 .footer-col ul{list-style:none;}
 .footer-col ul li{margin-bottom:10px;}
 .footer-col ul a{font-size:14px;color:#A8A29E;text-decoration:none;cursor:pointer;transition:color .15s;}
@@ -382,7 +383,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
   max-width:1140px;margin:0 auto;padding:20px 24px;
   display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
 }
-.footer-bottom span{font-size:13px;color:#78716C;}
+.footer-bottom span{font-size:13px;color:#A8A29E;}
 
 /* -- LOGIN MODAL -- */
 .modal-overlay{
@@ -435,20 +436,20 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 }
 .submit-btn{
   width:100%;padding:13px;border-radius:10px;border:none;
-  background:var(--orange);color:#fff;font-weight:700;font-size:15px;
+  background:var(--orange);color:var(--ink);font-weight:700;font-size:15px;
   font-family:'Inter',sans-serif;cursor:pointer;margin-top:6px;
   box-shadow:0 8px 20px -8px rgba(255,102,0,.5);
   transition:all .15s;
 }
 .submit-btn:hover{background:var(--orange-d);box-shadow:0 10px 24px -8px rgba(255,102,0,.6);transform:translateY(-1px);}
 .modal-footer-text{text-align:center;font-size:12.5px;color:var(--ink3);margin-top:16px;}
-.modal-footer-text a{color:var(--orange);font-weight:600;cursor:pointer;text-decoration:none;}
+.modal-footer-text a{color:var(--orange-text);font-weight:600;cursor:pointer;text-decoration:none;}
 .pass-strength{height:4px;border-radius:2px;background:var(--line);margin-top:8px;overflow:hidden;}
 .pass-strength-bar{height:100%;border-radius:2px;width:0;transition:width .3s,background .3s;}
 .pass-hint{font-size:11.5px;color:var(--ink3);margin-top:5px;}
 .terms-check{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--ink2);margin-bottom:16px;line-height:1.5;}
 .terms-check input[type=checkbox]{margin-top:2px;accent-color:var(--orange);}
-.terms-check a{color:var(--orange);font-weight:600;cursor:pointer;}
+.terms-check a{color:var(--orange-text);font-weight:600;cursor:pointer;}
 .modal-success{text-align:center;padding:20px 0;}
 .modal-success .si{font-size:48px;margin-bottom:14px;}
 .modal-success h3{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:6px;}
@@ -785,7 +786,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
   <div class="policy-wrap">
     <div class="section-eyebrow" style="margin-bottom:10px;">Legal & policies</div>
     <h1>Our policies</h1>
-    <p class="meta">Last updated: June 2026 · Questions? <a href="mailto:hello@metalix.in" style="color:var(--orange);font-weight:600;">hello@metalix.in</a></p>
+    <p class="meta">Last updated: June 2026 · Questions? <a href="mailto:hello@metalix.in" style="color:var(--orange-text);font-weight:600;">hello@metalix.in</a></p>
 
     <div class="policy-tabs">
       <button class="ptab active" onclick="showPolicyTab('refund',this)">Refund & Reprint</button>
@@ -865,7 +866,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <h2>File retention</h2>
       <p>Uploaded documents are automatically and permanently deleted from our systems <strong>7 days after your order is completed</strong>.</p>
       <h2>Your rights</h2>
-      <p>You can request deletion of your personal data or a copy of what we hold by emailing <a href="mailto:hello@metalix.in" style="color:var(--orange);">hello@metalix.in</a>.</p>
+      <p>You can request deletion of your personal data or a copy of what we hold by emailing <a href="mailto:hello@metalix.in" style="color:var(--orange-text);">hello@metalix.in</a>.</p>
     </div>
 
   </div>
@@ -952,7 +953,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
           <button class="toggle-pass" onclick="togglePass('loginPass',this)" type="button">👁</button>
         </div>
       </div>
-      <div style="text-align:right;margin:-8px 0 16px;"><a role="button" tabindex="0" style="font-size:12.5px;color:var(--orange);font-weight:600;cursor:pointer;" onclick="showForgotPassword()">Forgot password?</a></div>
+      <div style="text-align:right;margin:-8px 0 16px;"><a role="button" tabindex="0" style="font-size:12.5px;color:var(--orange-text);font-weight:600;cursor:pointer;" onclick="showForgotPassword()">Forgot password?</a></div>
       <button class="submit-btn" id="loginSubmitBtn" onclick="realLogin()">Log in</button>
       <div class="modal-footer-text">Don't have an account? <a role="button" tabindex="0" onclick="switchTab('signup', document.querySelectorAll('.mtab')[1])">Sign up</a></div>
     </div>
