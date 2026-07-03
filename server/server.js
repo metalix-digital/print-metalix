@@ -537,9 +537,11 @@ app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   const updated = db.updateOrder(order.id, updates)
 
-  // Email the customer when the status actually changed. Fire-and-forget so a
-  // mail hiccup never fails the admin's update.
+  // Keep the linked print job in step, and email the customer — but only when
+  // the status actually changed. Fire-and-forget so a hiccup never fails the
+  // admin's update.
   if (order.order_status !== updated.order_status) {
+    printQueue.syncPrintJobStatus(updated.id, updated.order_status)
     emailStatusChange(updated, `${req.protocol}://${req.get('host')}`)
   }
   return res.json({ order: updated })
@@ -597,6 +599,7 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
     if (!order || order.order_status === order_status) continue
     const u = db.updateOrder(id, { order_status })
     updated++
+    printQueue.syncPrintJobStatus(u.id, u.order_status)
     if (u.customer_email && willEmailOnStatus(u.order_status)) {
       emailed++
       emailStatusChange(u, base)

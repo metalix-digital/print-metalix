@@ -411,6 +411,10 @@ function updatePrintJob(id, updates) {
   return db.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id)
 }
 
+function getLatestPrintJobForOrder(orderId) {
+  return db.prepare('SELECT * FROM print_jobs WHERE order_id = ? ORDER BY created_at DESC, id DESC LIMIT 1').get(orderId) || null
+}
+
 function createUser({ id, name, email, mobile, password_hash, google_id }) {
   const now = Date.now()
   db.prepare(`
@@ -485,6 +489,7 @@ module.exports = {
   listCustomers,
   createPrintJob,
   updatePrintJob,
+  getLatestPrintJobForOrder,
   getSiteSettings,
   setSiteSettings,
   getAdminAuth,

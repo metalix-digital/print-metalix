@@ -1,8 +1,9 @@
 const db = require('./db')
 
-// Stub print pipeline — no kiosk/printer hardware is connected yet.
-// enqueue() just records a queued job; a future kiosk agent or admin
-// action is expected to call markPrinting/markCompleted/markFailed.
+// Stub print pipeline — no kiosk/printer hardware is connected yet. enqueue()
+// records a queued job when an order is confirmed. Since the admin drives the
+// workflow via order status, syncPrintJobStatus() keeps the print_jobs record
+// in step whenever the order's status changes.
 function enqueue(orderId) {
   const job = db.createPrintJob(orderId)
   db.updateOrder(orderId, { order_status: 'Queued For Printing' })
@@ -10,19 +11,27 @@ function enqueue(orderId) {
   return job
 }
 
-function markPrinting(jobId, orderId) {
-  db.updatePrintJob(jobId, { status: 'printing' })
-  db.updateOrder(orderId, { order_status: 'Printing' })
+// Maps an order status (including admin-defined custom stages) to the physical
+// print-job lifecycle state, or null for stages that shouldn't move the job.
+function jobStatusForOrderStatus(orderStatus) {
+  const s = String(orderStatus || '').toLowerCase()
+  if (s.includes('fail') || s.includes('manual') || s.includes('cancel')) return 'failed'
+  if (s.includes('queue')) return 'queued'
+  if (s.includes('print')) return 'printing' // "Printing" (queued handled above)
+  // Everything past printing — completed / delivered / collected / pickup /
+  // out for delivery / ready to ship — means the print itself is done.
+  if (['complet', 'deliver', 'collect', 'pickup', 'ship', 'ready', 'out for'].some((k) => s.includes(k))) return 'completed'
+  return null
 }
 
-function markCompleted(jobId, orderId) {
-  db.updatePrintJob(jobId, { status: 'completed' })
-  db.updateOrder(orderId, { order_status: 'Completed' })
+// Keeps the order's latest print job in sync with its order status. No-op if
+// there's no job, the status doesn't map, or it's already correct.
+function syncPrintJobStatus(orderId, orderStatus) {
+  const target = jobStatusForOrderStatus(orderStatus)
+  if (!target) return
+  const job = db.getLatestPrintJobForOrder(orderId)
+  if (!job || job.status === target) return
+  db.updatePrintJob(job.id, { status: target })
 }
 
-function markFailed(jobId, orderId, reason) {
-  db.updatePrintJob(jobId, { status: 'failed', error_reason: reason })
-  db.updateOrder(orderId, { order_status: 'Manual Intervention Required', failure_reason: reason })
-}
-
-module.exports = { enqueue, markPrinting, markCompleted, markFailed }
+module.exports = { enqueue, syncPrintJobStatus }
