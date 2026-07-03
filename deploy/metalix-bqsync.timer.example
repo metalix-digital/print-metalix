@@ -1,0 +1,17 @@
+# Daily trigger for metalix-bqsync.service. Install to
+# /etc/systemd/system/metalix-bqsync.timer, then:
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now metalix-bqsync.timer
+#   systemctl list-timers metalix-bqsync.timer   # confirm next run
+#
+[Unit]
+Description=Run Metalix BigQuery sync daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true          # run a missed sync after the VM was off
+RandomizedDelaySec=15m   # avoid hitting BigQuery exactly at midnight
+
+[Install]
+WantedBy=timers.target

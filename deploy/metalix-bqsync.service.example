@@ -1,0 +1,20 @@
+# Oneshot job that exports the business tables (orders, print_jobs, users)
+# from SQLite into BigQuery. Triggered by metalix-bqsync.timer, not enabled
+# on its own. Install to /etc/systemd/system/metalix-bqsync.service.
+#
+#   sudo cp /var/www/metalix/deploy/metalix-bqsync.service.example \
+#           /etc/systemd/system/metalix-bqsync.service
+#
+[Unit]
+Description=Metalix — export SQLite tables to BigQuery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/metalix/server
+ExecStart=/usr/bin/node scripts/bqSync.js
+# Defaults are dataset 'metalix_analytics' in 'asia-south1'; override here if needed:
+# Environment=BQ_DATASET=metalix_analytics
+# Environment=BQ_LOCATION=asia-south1
