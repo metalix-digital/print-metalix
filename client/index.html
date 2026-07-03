@@ -505,7 +505,7 @@ let pricingConfig = null;
 
 // Defaults applied to every newly uploaded file — each file's settings are
 // then fully independent (print mode, paper type, orientation, side, copies).
-const NEW_FILE_DEFAULTS = { printMode: 'auto', paperType: 'normal', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
+const NEW_FILE_DEFAULTS = { printMode: 'bw', paperType: 'normal', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
 
 let state = {
   files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, paperType, orientation, printSide, copies, password}, ...]
@@ -531,7 +531,7 @@ fetchPricing();
 // server authoritative total always agree.
 function resolveFileColorPages(f){
   const pageCount = f.pageCount || 0;
-  const mode = f.printMode || 'auto';
+  const mode = f.printMode || 'bw';
   let colorPages;
   if(mode === 'color') colorPages = pageCount;
   else if(mode === 'bw') colorPages = 0;
@@ -672,9 +672,8 @@ function renderFileList(){
         <div class="fcard-field">
           <span class="fcard-field-label">Print color</span>
           <select class="fselect fmode" data-index="${i}" aria-label="Print mode for this file">
-            <option value="auto" ${f.printMode==='auto'?'selected':''}>Auto</option>
-            <option value="color" ${f.printMode==='color'?'selected':''}>Color</option>
             <option value="bw" ${f.printMode==='bw'?'selected':''}>Black &amp; White</option>
+            <option value="color" ${f.printMode==='color'?'selected':''}>Color</option>
           </select>
         </div>
         <div class="fcard-field">
@@ -971,7 +970,7 @@ function modeLabel(mode){
   return mode === 'color' ? 'Color' : mode === 'bw' ? 'Black & White' : 'Auto';
 }
 function modeSummaryLabel(){
-  const modes = new Set(state.files.map((f) => f.printMode || 'auto'));
+  const modes = new Set(state.files.map((f) => f.printMode || 'bw'));
   return modes.size === 1 ? modeLabel([...modes][0]) : 'Mixed';
 }
 
@@ -987,7 +986,7 @@ function buildOrderPayload(){
       pageCount: f.pageCount,
       colorPageCount: f.colorCount,
       fileSize: f.fileSize,
-      printMode: f.printMode || 'auto',
+      printMode: f.printMode || 'bw',
       orientation: f.orientation || 'portrait',
       printSide: f.printSide || 'single',
       paperType: f.paperType || 'normal',
