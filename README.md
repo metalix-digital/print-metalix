@@ -41,16 +41,14 @@ Set these environment variables (via your process manager or a `server/.env` fil
 enable the corresponding features. **Do not commit real values** — keep secrets out of
 the repo.
 
-| Variable | Purpose |
+| Feature | Variables |
 |---|---|
-| `PORT` | HTTP port (default `5050`) |
-| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay payments & webhook verification |
-| `ADMIN_JWT_SECRET` | Signing secret for admin/customer sessions |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap admin login (used once to seed the DB) |
-| `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
-| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Email delivery (SMTP) |
-| `SOFFICE_BIN` | Path to LibreOffice `soffice` for Word/PPT → PDF |
+| Server | `PORT` (default `5050`) |
+| Payments | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` |
+| Admin & sessions | `ADMIN_JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_RESET_EMAIL` |
+| Google sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Email | `GMAIL_USER`, `GMAIL_APP_PASSWORD` |
+| Documents | `SOFFICE_BIN` (LibreOffice, for Word/PPT → PDF) |
 
 ---
 
@@ -102,26 +100,6 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 - Order status workflow (Queued → Printing → Delivery/Pickup → Completed)
 - Login by ID + password; "Forgot password" emails a time-limited reset link (the login
   ID must be correct, and the link goes only to the configured reset email)
-
----
-
-## API reference
-
-**Public** — `GET /api/health` · `GET /api/pricing` · `GET /api/settings` ·
-`GET /api/auth/config` · `GET /track/:id`
-
-**Uploads & orders** — `POST /api/upload` · `POST /api/orders` · `GET /api/orders/:id` ·
-`POST /api/orders/:id/verify-payment` · `POST /api/webhook`
-
-**Customer auth** — `POST /api/auth/signup` · `POST /api/auth/login` ·
-`POST /api/auth/google` · `POST /api/auth/forgot-password` ·
-`POST /api/auth/reset-password` · `GET /api/me` · `GET /api/my/orders`
-
-**Admin** — `POST /api/admin/login` · `POST /api/admin/forgot-password` ·
-`POST /api/admin/reset-password` · `GET /api/admin/orders` · `GET /api/admin/orders/:id` ·
-`PATCH /api/admin/orders/:id` · `POST /api/admin/orders/:id/jobsheet-pdf` ·
-`GET /api/admin/orders/:id/files/:fileId/download` · `GET /api/admin/customers` ·
-`PUT /api/admin/pricing` · `PUT /api/admin/settings`
 
 ---
 
