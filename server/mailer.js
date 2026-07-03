@@ -145,12 +145,6 @@ async function sendAdminPasswordResetEmail(toEmail, resetUrl) {
 
 // ---- Order status updates -----------------------------------------------
 
-// Which status changes actually email the customer. We only notify on the
-// milestones a customer cares about — prints ready to collect, out for
-// delivery, and done — not on internal steps like Queued/Printing or on
-// problem states (which the team handles by hand).
-const NOTIFIABLE_STATUSES = new Set(['Awaiting Customer Pickup', 'Out For Delivery', 'Completed'])
-
 // Customer-facing copy for each status. Keys match order_status values set by
 // the app (server.js / printQueue.js). Unlisted statuses fall back to generic.
 const STATUS_COPY = {
@@ -214,4 +208,4 @@ async function sendOrderStatusEmail(order, trackUrl, attachments) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments: attachments || [] })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, resetEmailTemplate, orderStatusTemplate, NOTIFIABLE_STATUSES }
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, resetEmailTemplate, orderStatusTemplate }
