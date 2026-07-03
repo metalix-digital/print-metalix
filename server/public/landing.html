@@ -1013,6 +1013,12 @@ function fmtPrice(n){
   const num = Number(n);
   return Number.isInteger(num) ? String(num) : String(Math.round(num * 100) / 100);
 }
+// Live pricing and site settings are synced from the admin DB, but the static
+// HTML already carries correct default values (prices, contact, policies), so
+// defer these two fetches until the page is idle. This keeps them off the
+// initial critical request path, where they were stretching the LCP network
+// dependency chain.
+function syncLiveData(){
 fetch('/api/pricing').then(r => r.json()).then(p => {
   const rates = p.rates || {};
   const a4 = (rates.a4 || {}).normal || {};
@@ -1099,6 +1105,13 @@ fetch('/api/settings').then(r => r.json()).then(s => {
     setLegal('privacy', s.legal.privacyPolicy);
   }
 }).catch(err => console.error('Failed to load site settings', err));
+}
+// Run the sync once the browser is idle (or shortly after load as a fallback).
+if ('requestIdleCallback' in window) {
+  requestIdleCallback(syncLiveData, { timeout: 3000 });
+} else {
+  window.addEventListener('load', () => setTimeout(syncLiveData, 200));
+}
 
 /* -- PAGE ROUTING -- */
 function showPage(id){
