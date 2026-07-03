@@ -102,10 +102,25 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 <div class="login-wrap" id="loginWrap">
   <form class="login-card" id="loginForm">
     <h1>Metalix Admin</h1>
-    <p>Enter the admin password to continue</p>
-    <input type="password" id="loginPassword" placeholder="Password" autofocus />
-    <div class="login-error hidden" id="loginError">Incorrect password</div>
+    <p>Enter your login ID and password to continue</p>
+    <input type="text" id="loginUsername" placeholder="Login ID" autocomplete="username" autofocus />
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+    <div class="login-error hidden" id="loginError">Incorrect login ID or password</div>
     <button type="submit">Log in</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" id="forgotLink" style="font-size:13px;color:var(--ink3);text-decoration:underline;cursor:pointer;">Forgot password?</a>
+    </div>
+    <div class="login-error hidden" id="forgotMsg" style="color:var(--ink3);margin-top:12px;text-align:center;"></div>
+  </form>
+
+  <!-- Shown when the page is opened from an emailed reset link (?adminReset=…) -->
+  <form class="login-card hidden" id="resetForm">
+    <h1>Reset admin password</h1>
+    <p>Choose a new password for the admin dashboard.</p>
+    <input type="password" id="resetPassword" placeholder="New password (min 8 characters)" autocomplete="new-password" />
+    <input type="password" id="resetPassword2" placeholder="Confirm new password" autocomplete="new-password" />
+    <div class="login-error hidden" id="resetError"></div>
+    <button type="submit">Set new password</button>
   </form>
 </div>
 
@@ -212,13 +227,14 @@ function showDash(){
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
   const errEl = document.getElementById('loginError');
   errEl.classList.add('hidden');
   const res = await fetch('/api/admin/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
+    body: JSON.stringify({ username, password })
   });
   if (!res.ok){
     errEl.classList.remove('hidden');
@@ -227,6 +243,63 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   const body = await res.json();
   setToken(body.token);
   showDash();
+});
+
+// Forgot password — no email is entered here; the server sends the reset link
+// to the fixed, pre-configured admin email address.
+document.getElementById('forgotLink').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById('forgotMsg');
+  msgEl.classList.remove('hidden');
+  msgEl.textContent = 'Sending…';
+  try {
+    const res = await fetch('/api/admin/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    const body = await res.json();
+    msgEl.textContent = body.message || 'If an admin account exists, a reset link has been sent.';
+  } catch (err) {
+    msgEl.textContent = 'Could not send reset email. Please try again.';
+  }
+});
+
+// If opened from an emailed reset link, show the "set new password" form.
+const adminResetToken = new URLSearchParams(location.search).get('adminReset');
+if (adminResetToken) {
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('resetForm').classList.remove('hidden');
+}
+
+document.getElementById('resetForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pw = document.getElementById('resetPassword').value;
+  const pw2 = document.getElementById('resetPassword2').value;
+  const errEl = document.getElementById('resetError');
+  errEl.classList.remove('hidden');
+  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
+  if (pw !== pw2){ errEl.textContent = 'Passwords do not match.'; return; }
+  errEl.classList.add('hidden');
+  const res = await fetch('/api/admin/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: adminResetToken, newPassword: pw })
+  });
+  const body = await res.json();
+  if (!res.ok){
+    errEl.classList.remove('hidden');
+    errEl.textContent = body.message || 'This reset link is invalid or has expired.';
+    return;
+  }
+  // Success — drop the token from the URL and return to the login form.
+  document.getElementById('resetForm').classList.add('hidden');
+  document.getElementById('loginForm').classList.remove('hidden');
+  const msgEl = document.getElementById('forgotMsg');
+  msgEl.classList.remove('hidden');
+  msgEl.style.color = '#16A34A';
+  msgEl.textContent = 'Password updated — you can now log in.';
+  history.replaceState(null, '', '/admin');
 });
 
 document.getElementById('logoutBtn').addEventListener('click', () => {

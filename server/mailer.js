@@ -31,4 +31,22 @@ async function sendPasswordResetEmail(toEmail, resetUrl) {
   })
 }
 
-module.exports = { sendPasswordResetEmail }
+async function sendAdminPasswordResetEmail(toEmail, resetUrl) {
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${toEmail}: Reset admin password: ${resetUrl}`)
+    return
+  }
+  await transporter.sendMail({
+    from: `"Metalix Print (no-reply)" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Reset your Metalix Print ADMIN password',
+    html: `
+      <p>We received a request to reset the <strong>admin</strong> password for the Metalix Print dashboard.</p>
+      <p><a href="${resetUrl}">Click here to set a new admin password</a> (link expires in 1 hour).</p>
+      <p>If you didn't request this, ignore this email — the admin password will not change.</p>
+    `
+  })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail }

@@ -178,6 +178,21 @@ function setSiteSettings(settings) {
     .run('site', JSON.stringify(settings))
 }
 
+// The single admin credential lives in the settings table (key 'admin_auth')
+// as { username, password_hash } — a bcrypt hash, same as customer passwords.
+// It is seeded once from ADMIN_USERNAME/ADMIN_PASSWORD env (see server.js) so a
+// fresh DB starts with the operator's configured login and can then be changed
+// or reset entirely from the web without touching .env again.
+function getAdminAuth() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_auth')
+  return row ? JSON.parse(row.value) : null
+}
+
+function setAdminAuth({ username, password_hash }) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run('admin_auth', JSON.stringify({ username, password_hash }))
+}
+
 function createOrder(order) {
   const now = order.created_at
   db.prepare(`
@@ -359,6 +374,8 @@ module.exports = {
   updatePrintJob,
   getSiteSettings,
   setSiteSettings,
+  getAdminAuth,
+  setAdminAuth,
   createUser,
   findUserByIdentifier,
   findUserByGoogleId,

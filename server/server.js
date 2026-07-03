@@ -181,14 +181,67 @@ app.put('/api/admin/settings', requireAdmin, express.json(), (req, res) => {
   return res.json(db.getSiteSettings())
 })
 
-app.post('/api/admin/login', express.json(), (req, res) => {
-  const { password } = req.body || {}
-  const adminPassword = process.env.ADMIN_PASSWORD || 'metalix-admin'
-  if (password !== adminPassword) {
-    return res.status(401).json({ error: 'invalid_password' })
+// --- Admin authentication -------------------------------------------------
+// The admin credential (login id + bcrypt password hash) lives in the DB via
+// db.getAdminAuth/setAdminAuth so it can be changed or reset from the web. It's
+// seeded once at startup from env (see seedAdminAuth at the bottom of the file).
+// The forgot-password link always goes to this fixed, server-side address — the
+// client never supplies a destination, so a stranger can't redirect the reset.
+const ADMIN_RESET_EMAIL = process.env.ADMIN_RESET_EMAIL || 'support@metalix.in'
+
+app.post('/api/admin/login', express.json(), async (req, res) => {
+  const { username, password } = req.body || {}
+  if (!username || !password) {
+    return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
+  }
+  const admin = db.getAdminAuth()
+  const usernameOk = admin && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
+  if (!admin || !usernameOk || !(await bcrypt.compare(password, admin.password_hash))) {
+    return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
   }
   const token = jwt.sign({ role: 'admin' }, getJwtSecret(), { expiresIn: '12h' })
   return res.json({ token })
+})
+
+// Always returns the same generic response so this endpoint can't be used to
+// probe whether an admin account exists. The reset email destination is fixed
+// server-side (ADMIN_RESET_EMAIL) and never read from the request body.
+app.post('/api/admin/forgot-password', express.json(), async (req, res) => {
+  const generic = { message: 'If an admin account exists, a reset link has been sent to the registered admin email.' }
+  const admin = db.getAdminAuth()
+  if (admin) {
+    const rawToken = crypto.randomBytes(32).toString('hex')
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
+    db.createPasswordReset({
+      id: crypto.randomUUID(),
+      user_id: 'admin', // sentinel: distinguishes admin resets from customer resets
+      token_hash: tokenHash,
+      expires_at: Date.now() + 60 * 60 * 1000 // 1 hour
+    })
+    const resetUrl = `${req.protocol}://${req.get('host')}/admin?adminReset=${rawToken}`
+    try {
+      await mailer.sendAdminPasswordResetEmail(ADMIN_RESET_EMAIL, resetUrl)
+    } catch (err) {
+      console.error('[admin] failed to send admin reset email', err.message)
+    }
+  }
+  return res.json(generic)
+})
+
+app.post('/api/admin/reset-password', express.json(), async (req, res) => {
+  const { token, newPassword } = req.body || {}
+  if (!token || !newPassword) return res.status(400).json({ error: 'missing_fields' })
+  if (newPassword.length < 8) return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' })
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+  const reset = db.findValidPasswordReset(tokenHash)
+  if (!reset || reset.user_id !== 'admin') return res.status(400).json({ error: 'invalid_or_expired_token' })
+
+  const admin = db.getAdminAuth()
+  const password_hash = await bcrypt.hash(newPassword, 10)
+  db.setAdminAuth({ username: admin ? admin.username : (process.env.ADMIN_USERNAME || 'support@metalix.in'), password_hash })
+  db.markPasswordResetUsed(reset.id)
+  return res.json({ message: 'Admin password updated — you can now log in.' })
 })
 
 function publicUser(user) {
@@ -262,7 +315,9 @@ app.post('/api/auth/reset-password', express.json(), async (req, res) => {
 
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const reset = db.findValidPasswordReset(tokenHash)
-  if (!reset) return res.status(400).json({ error: 'invalid_or_expired_token' })
+  // reset.user_id === 'admin' is an admin reset token — it must go through
+  // /api/admin/reset-password, never this customer endpoint.
+  if (!reset || reset.user_id === 'admin') return res.status(400).json({ error: 'invalid_or_expired_token' })
 
   const password_hash = await bcrypt.hash(newPassword, 10)
   db.updateUserPassword(reset.user_id, password_hash)
@@ -809,12 +864,25 @@ if (fs.existsSync(clientDist)) {
   })
 }
 
+// Seed the DB-backed admin credential once, from env, if it doesn't exist yet.
+// After this the login id / password are managed entirely from the web (change
+// or reset), so ADMIN_PASSWORD in .env only matters for the very first boot.
+async function seedAdminAuth() {
+  if (db.getAdminAuth()) return
+  const username = process.env.ADMIN_USERNAME || 'support@metalix.in'
+  const password = process.env.ADMIN_PASSWORD || 'metalix-admin'
+  const password_hash = await bcrypt.hash(password, 10)
+  db.setAdminAuth({ username, password_hash })
+  console.log(`[admin] seeded initial admin credential (login id: ${username})`)
+}
+
 const { loadSecretsIntoEnv } = require('./secrets')
 const PORT = process.env.PORT || 5050
-loadSecretsIntoEnv().then(() => {
+loadSecretsIntoEnv().then(async () => {
   if (!process.env.ADMIN_PASSWORD || !process.env.ADMIN_JWT_SECRET) {
     console.warn('Warning: ADMIN_PASSWORD/ADMIN_JWT_SECRET not set, using insecure development defaults.')
   }
+  await seedAdminAuth()
   app.listen(PORT, () => console.log(`Running on ${PORT}`))
   cleanupExpiredFiles()
   setInterval(cleanupExpiredFiles, 60 * 60 * 1000)
