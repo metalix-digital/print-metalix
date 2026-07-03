@@ -648,7 +648,7 @@ function fileCost(f){
   const split = resolveFileColorPages(f);
   const side = f.printSide === 'double' ? 'double' : 'single';
   const copies = Math.max(1, f.copies || 1);
-  return Math.round((split.colorPages * rates.color[side] + split.bwPages * rates.bw[side]) * copies);
+  return Math.round((split.colorPages * (rates.color.single || 0) + split.bwPages * rates.bw[side]) * copies);
 }
 
 function renderFileList(){

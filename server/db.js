@@ -103,9 +103,9 @@ db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_i
 const DEFAULT_PRICING = {
   rates: {
     a4: {
-      normal: { bw: { single: 1.5, double: 2.5 }, color: { single: 6, double: 10 } },
-      bond: { bw: { single: 2.5, double: 4 }, color: { single: 8, double: 14 } },
-      premium: { bw: { single: 4, double: 7 }, color: { single: 12, double: 20 } }
+      normal: { bw: { single: 1.5, double: 2.5 }, color: { single: 6 } },
+      bond: { bw: { single: 2.5, double: 4 }, color: { single: 8 } },
+      premium: { bw: { single: 4, double: 7 }, color: { single: 12 } }
     }
   },
   deliveryCharge: 30,

@@ -15,7 +15,9 @@ function calculate(config, { files, deliveryMethod }) {
     const b = f.bwPages || 0
     colorPages += c * copies
     bwPages += b * copies
-    printCost += (c * rates.color[side] + b * rates.bw[side]) * copies
+    // Colour is single-sided only, so colour pages always price at the single
+    // rate (there is no colour double-sided rate); B&W still varies by side.
+    printCost += (c * (rates.color.single || 0) + b * rates.bw[side]) * copies
   })
   printCost = Math.round(printCost)
   const deliveryCharge = deliveryMethod === 'delivery' ? config.deliveryCharge : 0
