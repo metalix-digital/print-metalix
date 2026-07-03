@@ -8,7 +8,12 @@
 <meta name="keywords" id="meta-keywords" content="print shop, online printing, document printing, Gurugram">
 <link rel="icon" type="image/svg+xml" href="/logo.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Weights match actual usage (Syne 700/800, Inter 400/500/600/700, Plex Mono 600/700).
+     Loaded non-render-blocking via the media=print swap trick; display=swap keeps text
+     visible in the fallback font until the web fonts arrive. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@600;700&display=swap"></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -1154,6 +1159,7 @@ function showPolicyTab(tab, btn){
 
 /* -- MODAL -- */
 function openModal(tab){
+  initGoogleSignIn();  // lazy-load the GSI client on first sign-in intent
   document.getElementById('authModal').classList.add('show');
   document.body.style.overflow='hidden';
   document.getElementById('authTabs').classList.remove('hidden');
@@ -1266,9 +1272,17 @@ function getCustomerToken(){ return localStorage.getItem(CUSTOMER_TOKEN_KEY); }
 function setCustomerToken(t){ localStorage.setItem(CUSTOMER_TOKEN_KEY, t); }
 function clearCustomerToken(){ localStorage.removeItem(CUSTOMER_TOKEN_KEY); }
 
-/* -- GOOGLE SIGN-IN -- */
+/* -- GOOGLE SIGN-IN --
+   Loaded lazily the first time the auth modal opens, not on page load. The GSI
+   client is a heavy third-party script; deferring it keeps it off the critical
+   path for the vast majority of visitors who never sign in, cutting Total
+   Blocking Time and unused-JavaScript on first paint. initGoogleSignIn() is
+   idempotent, so repeated modal opens only trigger the load once. */
 let googleReady = false;
+let googleLoadStarted = false;
 function initGoogleSignIn(){
+  if (googleLoadStarted) return;
+  googleLoadStarted = true;
   fetch('/api/auth/config').then(r => r.json()).then(cfg => {
     if (!cfg.googleClientId) return;
     const script = document.createElement('script');
@@ -1282,9 +1296,8 @@ function initGoogleSignIn(){
       googleReady = true;
     };
     document.head.appendChild(script);
-  }).catch(() => {});
+  }).catch(() => { googleLoadStarted = false; });
 }
-initGoogleSignIn();
 
 async function handleGoogleCredential(response){
   try {

@@ -718,14 +718,18 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
 // Serve a logo or other public assets from server/public
 const publicDir = path.join(__dirname, 'public')
 if (fs.existsSync(publicDir)) {
+  // The logo is a static brand asset that effectively never changes, so let
+  // browsers cache it for a year instead of re-fetching it on every visit
+  // (Lighthouse flags the default max-age=0 as an inefficient cache policy).
+  const logoCache = { maxAge: '365d', immutable: true }
   app.get('/logo.png', (req, res) => {
     const file = path.join(publicDir, 'logo.png')
-    if (fs.existsSync(file)) return res.sendFile(file)
+    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
     return res.status(404).end()
   })
   app.get('/logo.svg', (req, res) => {
     const file = path.join(publicDir, 'logo.svg')
-    if (fs.existsSync(file)) return res.sendFile(file)
+    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
     return res.status(404).end()
   })
 }
@@ -754,7 +758,17 @@ app.get('/track/:id', (req, res) => {
 // If a production client build exists, serve it (single-process deploy)
 const clientDist = path.join(__dirname, '..', 'client', 'dist')
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist))
+  // Vite fingerprints built assets (…-[hash].js/.css), so they can be cached
+  // long-term. index.html is returned by the catch-all below without maxAge,
+  // so new deploys are always picked up immediately.
+  app.use(express.static(clientDist, {
+    maxAge: '30d',
+    setHeaders: (res, filePath) => {
+      // Never long-cache HTML — it's the entry point that references the
+      // hashed assets, so it must be revalidated to pick up new deploys.
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache')
+    },
+  }))
   app.get('*', (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'))
   })
