@@ -69,6 +69,7 @@ const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive } = require('./fileRetention')
+const { buildInvoicePdf } = require('./invoice')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
@@ -507,14 +508,10 @@ app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   const updated = db.updateOrder(order.id, updates)
 
-  // Email the customer when the order reaches a stage marked "notify" (managed
-  // in the admin Stages tab) — but only when the status actually changed.
-  // Fire-and-forget so a mail hiccup never fails the admin's update.
-  if (order.order_status !== updated.order_status && stageNotifies(updated.order_status)) {
-    const trackUrl = `${req.protocol}://${req.get('host')}/track/${updated.id}`
-    mailer.sendOrderStatusEmail(updated, trackUrl).catch((err) => {
-      console.error(`[orders] failed to email status update for ${updated.id}:`, err.message)
-    })
+  // Email the customer when the status actually changed. Fire-and-forget so a
+  // mail hiccup never fails the admin's update.
+  if (order.order_status !== updated.order_status) {
+    emailStatusChange(updated, `${req.protocol}://${req.get('host')}`)
   }
   return res.json({ order: updated })
 })
@@ -526,6 +523,35 @@ function stageNotifies(status) {
   return !!(stage && stage.notify)
 }
 
+// Whether a status change to `status` results in a customer email at all —
+// a notify-enabled stage, or "Completed" (which always sends the invoice).
+function willEmailOnStatus(status) {
+  return status === 'Completed' || stageNotifies(status)
+}
+
+// Sends the appropriate customer email for a status change. "Completed" always
+// gets a PDF invoice attached; other notify-enabled stages get the plain status
+// email. Fully fire-and-forget (errors are logged, never thrown).
+function emailStatusChange(order, base) {
+  if (!order || !order.customer_email) return
+  const trackUrl = `${base}/track/${order.id}`
+  if (order.order_status === 'Completed') {
+    ;(async () => {
+      let attachments = []
+      try {
+        attachments = [{ filename: `Invoice-${order.id}.pdf`, content: await buildInvoicePdf(order) }]
+      } catch (err) {
+        console.error(`[invoice] generation failed for ${order.id}:`, err.message)
+      }
+      await mailer.sendOrderStatusEmail(order, trackUrl, attachments)
+    })().catch((err) => console.error(`[orders] completed email failed for ${order.id}:`, err.message))
+    return
+  }
+  if (stageNotifies(order.order_status)) {
+    mailer.sendOrderStatusEmail(order, trackUrl).catch((err) => console.error(`[orders] status email failed for ${order.id}:`, err.message))
+  }
+}
+
 // Bulk status update: apply one status to many orders at once. Skips orders
 // that are missing or already at that status, and emails each customer whose
 // new stage is notify-enabled.
@@ -534,7 +560,6 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
   if (!Array.isArray(ids) || !ids.length || !order_status) {
     return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order and a status.' })
   }
-  const notify = stageNotifies(order_status)
   const base = `${req.protocol}://${req.get('host')}`
   let updated = 0
   let emailed = 0
@@ -543,11 +568,9 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
     if (!order || order.order_status === order_status) continue
     const u = db.updateOrder(id, { order_status })
     updated++
-    if (notify && u.customer_email) {
+    if (u.customer_email && willEmailOnStatus(u.order_status)) {
       emailed++
-      mailer.sendOrderStatusEmail(u, `${base}/track/${u.id}`).catch((err) => {
-        console.error(`[orders] bulk email failed for ${id}:`, err.message)
-      })
+      emailStatusChange(u, base)
     }
   }
   return res.json({ updated, emailed })

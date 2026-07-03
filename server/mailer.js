@@ -163,7 +163,9 @@ const STATUS_COPY = {
   'Failed': { title: 'There was a problem', line: 'We ran into a problem processing your order. Our team will reach out with next steps.', accent: BRAND.red }
 }
 
-function orderStatusTemplate(order, trackUrl) {
+function orderStatusTemplate(order, trackUrl, opts) {
+  opts = opts || {}
+  const invoiceLine = opts.invoice ? ' A copy of your invoice is attached to this email.' : ''
   const copy = { ...(STATUS_COPY[order.order_status] || { title: 'Order update', line: `Your order status is now "${order.order_status}".`, accent: BRAND.orange }) }
   // "Completed" means delivered (delivery) or collected (pickup) — say which.
   if (order.order_status === 'Completed') {
@@ -179,7 +181,7 @@ function orderStatusTemplate(order, trackUrl) {
     <tr><td style="padding:34px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;">
       ${pill}
       <h1 style="margin:16px 0 10px 0;font-size:23px;line-height:1.25;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">${copy.title}</h1>
-      <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${name}, ${copy.line}</p>
+      <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${name}, ${copy.line}${invoiceLine}</p>
     </td></tr>
     ${trackBtn}
     <tr><td style="padding:18px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
@@ -194,21 +196,22 @@ function orderStatusTemplate(order, trackUrl) {
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
   const html = renderEmailShell({ preheader: `${copy.title} — order ${order.id}`, accent: copy.accent, cardHtml, footerHtml })
 
-  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\nTrack your order: ${trackUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
+  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}${invoiceLine}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\nTrack your order: ${trackUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
   return { html, text, subject: `Order ${order.id}: ${order.order_status}` }
 }
 
 // Emails the customer that their order status changed. No-op (with a stub log)
 // when the customer has no email on file or SMTP isn't configured.
-async function sendOrderStatusEmail(order, trackUrl) {
+async function sendOrderStatusEmail(order, trackUrl, attachments) {
   if (!order || !order.customer_email) return
-  const { html, text, subject } = orderStatusTemplate(order, trackUrl)
+  const hasInvoice = !!(attachments && attachments.length)
+  const { html, text, subject } = orderStatusTemplate(order, trackUrl, { invoice: hasInvoice })
   const transporter = getTransporter()
   if (!transporter) {
-    console.log(`[mailer] stub -> ${order.customer_email}: ${subject}`)
+    console.log(`[mailer] stub -> ${order.customer_email}: ${subject}${hasInvoice ? ' (+invoice attached)' : ''}`)
     return
   }
-  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text })
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments: attachments || [] })
 }
 
 module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, resetEmailTemplate, orderStatusTemplate, NOTIFIABLE_STATUSES }
