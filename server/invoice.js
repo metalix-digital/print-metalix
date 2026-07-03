@@ -11,6 +11,7 @@ const INK = rgb(0.1, 0.13, 0.22)
 const MUTED = rgb(0.42, 0.45, 0.5)
 const LINE = rgb(0.85, 0.84, 0.79)
 const SOFT = rgb(0.97, 0.96, 0.93)
+const WHITE = rgb(1, 1, 1)
 
 function money(n) { return 'Rs. ' + (Number(n) || 0).toLocaleString('en-IN') }
 
@@ -19,6 +20,9 @@ async function buildInvoicePdf(order) {
   try { settings = db.getSiteSettings() || {} } catch (e) { settings = {} }
   const bizName = settings.businessName || 'Metalix Print'
   const bizPhone = settings.phone || ''
+  const bizEmail = settings.email || ''
+  const bizAddr = settings.headOfficeAddress || ''
+  const gstin = settings.gstin || '09AHOPH6696N2Z8'
 
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595.28, 841.89]) // A4
@@ -34,12 +38,26 @@ async function buildInvoicePdf(order) {
     page.drawText(str, { x: xRight - f.widthOfTextAtSize(str, size), y: yy, size, font: f, color })
   }
 
-  // Header
-  text(bizName, M, y, 20, bold)
-  right('TAX INVOICE', width - M, y + 2, 15, bold, ORANGE)
-  y -= 16
-  if (bizPhone) text(bizPhone, M, y, 10, font, MUTED)
-  y -= 22
+  // Header: logo mark (orange disc + white "M") next to the business block
+  const R = 17
+  const cx = M + R
+  const cy = y - R + 3
+  page.drawCircle({ x: cx, y: cy, size: R, color: ORANGE })
+  const mW = bold.widthOfTextAtSize('M', 19)
+  page.drawText('M', { x: cx - mW / 2, y: cy - 6.5, size: 19, font: bold, color: WHITE })
+
+  const tx = M + R * 2 + 12
+  text(bizName, tx, y - 6, 18, bold)
+  const trunc = (s, max) => (s.length > max ? s.slice(0, max - 1) + '.' : s)
+  let iy = y - 21
+  if (bizAddr) { text(trunc(bizAddr, 84), tx, iy, 8.5, font, MUTED); iy -= 11 }
+  const contact = [bizPhone, bizEmail].filter(Boolean).join('   |   ')
+  if (contact) { text(contact, tx, iy, 8.5, font, MUTED); iy -= 11 }
+  if (gstin) { text('GSTIN: ' + gstin, tx, iy, 8.5, bold, MUTED); iy -= 11 }
+
+  right('TAX INVOICE', width - M, y, 15, bold, ORANGE)
+
+  y = Math.min(iy - 4, y - 46)
   page.drawRectangle({ x: M, y, width: width - 2 * M, height: 2, color: ORANGE })
   y -= 26
 

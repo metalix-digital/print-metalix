@@ -147,6 +147,7 @@ const DEFAULT_SITE_SETTINGS = {
   phone: '+91 98765 43210',
   whatsapp: '+91 98765 43210',
   email: 'hello@metalix.in',
+  gstin: '09AHOPH6696N2Z8',
   headOfficeAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
   pickupAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
   legal: {
