@@ -245,21 +245,29 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   showDash();
 });
 
-// Forgot password — no email is entered here; the server sends the reset link
-// to the fixed, pre-configured admin email address.
+// Forgot password — requires the admin Login ID (reused from the field above).
+// The server only sends the link if the ID matches, and always to the fixed,
+// pre-configured admin email address (never an address typed here).
 document.getElementById('forgotLink').addEventListener('click', async (e) => {
   e.preventDefault();
   const msgEl = document.getElementById('forgotMsg');
   msgEl.classList.remove('hidden');
+  msgEl.style.color = '';
+  const username = document.getElementById('loginUsername').value.trim();
+  if (!username){
+    msgEl.textContent = 'Enter your Login ID above first, then click Forgot password.';
+    document.getElementById('loginUsername').focus();
+    return;
+  }
   msgEl.textContent = 'Sending…';
   try {
     const res = await fetch('/api/admin/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}'
+      body: JSON.stringify({ username })
     });
     const body = await res.json();
-    msgEl.textContent = body.message || 'If an admin account exists, a reset link has been sent.';
+    msgEl.textContent = body.message || 'If that login ID is correct, a reset link has been sent.';
   } catch (err) {
     msgEl.textContent = 'Could not send reset email. Please try again.';
   }

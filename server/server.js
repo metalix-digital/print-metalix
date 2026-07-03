@@ -203,13 +203,18 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   return res.json({ token })
 })
 
-// Always returns the same generic response so this endpoint can't be used to
-// probe whether an admin account exists. The reset email destination is fixed
-// server-side (ADMIN_RESET_EMAIL) and never read from the request body.
+// Requires the correct admin login id before anything is sent — this stops a
+// random visitor from spamming the admin inbox with reset emails. The response
+// is always the same generic message regardless of whether the id matched, so
+// the endpoint still can't be used to probe which login ids are valid. The
+// reset email destination is fixed server-side (ADMIN_RESET_EMAIL) and never
+// read from the request body.
 app.post('/api/admin/forgot-password', express.json(), async (req, res) => {
-  const generic = { message: 'If an admin account exists, a reset link has been sent to the registered admin email.' }
+  const { username } = req.body || {}
+  const generic = { message: 'If that login ID is correct, a reset link has been sent to the registered admin email.' }
   const admin = db.getAdminAuth()
-  if (admin) {
+  const usernameOk = admin && username && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
+  if (admin && usernameOk) {
     const rawToken = crypto.randomBytes(32).toString('hex')
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
     db.createPasswordReset({
