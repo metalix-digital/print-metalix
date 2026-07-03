@@ -173,6 +173,25 @@ app.get('/api/settings', (req, res) => {
   res.json(db.getSiteSettings())
 })
 
+// Website "contact us" form → emails the business inbox. Always logs the
+// submission first so a message is never lost even if email delivery fails.
+app.post('/api/contact', express.json(), async (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 100)
+  const contact = String((req.body && req.body.contact) || '').trim().slice(0, 120)
+  const message = String((req.body && req.body.message) || '').trim().slice(0, 5000)
+  if (!name || !contact || !message) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Please fill in all fields.' })
+  }
+  console.log(`[contact] ${name} <${contact}>: ${message.replace(/\s+/g, ' ').slice(0, 300)}`)
+  try {
+    await mailer.sendContactMessageEmail({ name, contact, message })
+  } catch (err) {
+    console.error('[contact] email send failed:', err.message)
+    return res.status(500).json({ error: 'send_failed', message: 'Could not send right now — please WhatsApp or call us.' })
+  }
+  return res.json({ message: 'Message sent.' })
+})
+
 app.put('/api/admin/settings', requireAdmin, express.json(), (req, res) => {
   const settings = req.body
   if (!settings || !settings.legal || !settings.social || !settings.seo) {

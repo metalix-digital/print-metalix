@@ -1499,15 +1499,30 @@ function checkStrength(inp){
 }
 
 /* -- CONTACT FORM -- */
-function sendContactForm(){
+async function sendContactForm(){
   const name = document.getElementById('cName').value.trim();
   const contact = document.getElementById('cContact').value.trim();
   const msg = document.getElementById('cMsg').value.trim();
   if(!name||!contact||!msg){ showToast('Please fill in all fields','⚠️'); return; }
-  document.getElementById('cName').value='';
-  document.getElementById('cContact').value='';
-  document.getElementById('cMsg').value='';
-  showToast('Message sent! We\'ll get back to you shortly.','✓');
+  const btn = document.querySelector('.contact-form .submit-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, contact, message: msg })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ showToast(data.message || 'Could not send. Please try again.','⚠️'); return; }
+    document.getElementById('cName').value='';
+    document.getElementById('cContact').value='';
+    document.getElementById('cMsg').value='';
+    showToast('Message sent! We\'ll get back to you shortly.','✓');
+  } catch(e){
+    showToast('Could not send — please WhatsApp or call us.','⚠️');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = 'Send message'; }
+  }
 }
 
 /* -- TOAST -- */

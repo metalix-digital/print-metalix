@@ -208,4 +208,43 @@ async function sendOrderStatusEmail(order, trackUrl, attachments) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments: attachments || [] })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail }
+// Emails a website "contact us" submission to the business inbox. Reply-To is
+// set to the sender when they gave an email, so staff can reply directly.
+async function sendContactMessageEmail({ name, contact, message }) {
+  const to = process.env.CONTACT_EMAIL || 'support@metalix.in'
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const isEmail = /@/.test(contact)
+  const contactHtml = isEmail
+    ? `<a href="mailto:${esc(contact)}" style="color:${BRAND.orangeDark};">${esc(contact)}</a>`
+    : `<a href="tel:${esc(contact)}" style="color:${BRAND.orangeDark};">${esc(contact)}</a>`
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:34px 40px 8px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 style="margin:0 0 18px 0;font-size:22px;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">New contact message</h1>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;margin-bottom:18px;">
+        <tr><td style="padding:12px 16px 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">From<br><span style="font-size:14px;color:${BRAND.ink};font-weight:700;">${esc(name)}</span></td></tr>
+        <tr><td style="padding:4px 16px 12px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">Email / mobile<br><span style="font-size:14px;">${contactHtml}</span></td></tr>
+      </table>
+      <p style="margin:0 0 6px 0;font-size:12px;color:${BRAND.muted};font-family:Arial,Helvetica,sans-serif;">Message</p>
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${BRAND.body};padding-bottom:34px;">${esc(message).replace(/\n/g, '<br>')}</div>
+    </td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Sent from the print.metalix.in contact form. Reply to this email to respond to the customer.</p>`
+  const html = renderEmailShell({ preheader: `New message from ${name}`, cardHtml, footerHtml })
+  const text = `New contact message\n\nFrom: ${name}\nEmail/Mobile: ${contact}\n\n${message}`
+
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${to}: contact from ${name} (${contact}): ${message}`)
+    return
+  }
+  await transporter.sendMail({
+    from: `"Metalix Print (website)" <${process.env.GMAIL_USER}>`,
+    to,
+    replyTo: isEmail ? contact : undefined,
+    subject: `New website message from ${name}`,
+    html,
+    text
+  })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail }
