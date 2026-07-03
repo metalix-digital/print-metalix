@@ -133,6 +133,19 @@ async function ensureTable(dataset, table) {
   if (!exists) {
     await dataset.createTable(table.name, { schema: { fields: table.schema }, location: LOCATION })
     console.log(`[bqsync] created table ${DATASET}.${table.name}`)
+    return
+  }
+  // Self-heal schema drift: add any columns the source has gained (e.g.
+  // location_id, payment_method) to the existing target, so the MERGE — which
+  // references every column — doesn't fail. BigQuery only permits ADDING
+  // nullable columns, which is exactly what these new fields are.
+  const [meta] = await t.getMetadata()
+  const existing = (meta.schema && meta.schema.fields) || []
+  const have = new Set(existing.map((f) => f.name))
+  const missing = table.schema.filter((f) => !have.has(f.name))
+  if (missing.length) {
+    await t.setMetadata({ schema: { fields: existing.concat(missing) } })
+    console.log(`[bqsync] added columns to ${DATASET}.${table.name}: ${missing.map((f) => f.name).join(', ')}`)
   }
 }
 
