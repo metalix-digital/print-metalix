@@ -768,6 +768,12 @@ app.get('/sitemap.xml', (req, res) => {
   res.type('application/xml').sendFile(path.join(publicDir, 'sitemap.xml'))
 })
 
+// llms.txt — a machine-readable site summary for AI agents (llmstxt.org). Checked
+// by Lighthouse's Agentic Browsing category; must expose an H1, a summary, and links.
+app.get('/llms.txt', (req, res) => {
+  res.type('text/plain').sendFile(path.join(publicDir, 'llms.txt'))
+})
+
 // Password-protected admin dashboard (orders, customers, pricing).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'))

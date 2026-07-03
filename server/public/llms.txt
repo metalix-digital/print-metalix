@@ -1,0 +1,25 @@
+# Metalix Print
+
+> Online document printing in Gurugram, India. Upload a PDF, Word, or PowerPoint file, choose your print settings, pay online, and get it printed and delivered to your door — usually within 3–4 hours.
+
+Metalix Print is a self-serve online printing service. Customers upload documents, pick options (colour or black & white, single- or double-sided, paper size, binding), see live per-page pricing, pay securely, and track the order through to delivery. Accounts are optional but let customers track and manage orders.
+
+## Main pages
+
+- [Home](https://print.metalix.in/): Service overview, how it works, pricing, and contact details.
+- [Place an order](https://print.metalix.in/order): Upload files, choose print settings, see live pricing, and pay.
+- [Policies](https://print.metalix.in/policies): Refund & reprint policy, delivery policy, terms of service, and privacy policy.
+
+## Services
+
+- Document printing from PDF, Word (DOC/DOCX), and PowerPoint (PPT/PPTX) files.
+- Colour and black & white printing, single- or double-sided.
+- Multiple paper sizes and binding options.
+- Home and office delivery in Gurugram, usually within 3–4 hours.
+
+## Contact
+
+- Phone / WhatsApp: +91 70424 43143
+- Email: hello@metalix.in
+- Address: M86/2, M3M Solitude, Sector 89, Gurugram, Haryana 122505, India
+- Hours: Mon–Fri 9:00 AM – 9:00 PM, Sat 9:00 AM – 8:00 PM, Sun 10:00 AM – 6:00 PM
