@@ -793,7 +793,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
     }
     const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
     const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
-    const fileSide = VALID_SIDES.includes(f.printSide) ? f.printSide : 'single'
+    // Colour prints are single-sided only — enforce server-side regardless of input.
+    const fileSide = fileMode === 'color' ? 'single' : (VALID_SIDES.includes(f.printSide) ? f.printSide : 'single')
     const filePaperType = VALID_PAPER_TYPES.includes(f.paperType) ? f.paperType : 'normal'
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null

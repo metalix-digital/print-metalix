@@ -65,6 +65,8 @@
   .fseg2{ display:flex; background:var(--paper-dim); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px; }
   .fseg2 button{ flex:1; border:none; background:transparent; border-radius:6px; padding:7px 6px; font-size:12px; font-weight:600; color:var(--ink-soft); cursor:pointer; transition:all .15s ease; font-family:'Inter',sans-serif; }
   .fseg2 button.active{ background:#fff; color:var(--ink); box-shadow:0 2px 6px rgba(26,34,56,.1); }
+  .fseg2 button:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+  .fside-note{ display:block; margin-top:5px; font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; }
   .fselect{ width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:12.5px; font-family:'Inter',sans-serif; color:var(--ink); background:var(--paper-dim); cursor:pointer; }
   .fselect:focus{ outline:none; border-color:var(--orange); }
   .fcopies{ display:flex; align-items:center; gap:0; background:var(--paper-dim); border:1px solid var(--line); border-radius:9px; padding:3px; width:100%; justify-content:space-between; }
@@ -694,9 +696,10 @@ function renderFileList(){
         <div class="fcard-field">
           <span class="fcard-field-label">Printing side</span>
           <div class="fseg2" data-field="printSide" data-index="${i}">
-            <button type="button" data-value="single" class="${(f.printSide||'single')==='single'?'active':''}">Single</button>
-            <button type="button" data-value="double" class="${f.printSide==='double'?'active':''}">Double</button>
+            <button type="button" data-value="single" class="${(f.printMode==='color' || (f.printSide||'single')==='single')?'active':''}">Single</button>
+            <button type="button" data-value="double" class="${(f.printMode!=='color' && f.printSide==='double')?'active':''}" ${f.printMode==='color'?'disabled':''}>Double</button>
           </div>
+          ${f.printMode==='color' ? '<span class="fside-note">Single-sided only for colour prints</span>' : ''}
         </div>
 
         <div class="fcard-field" style="grid-column:1 / -1;">
@@ -727,7 +730,9 @@ function renderFileList(){
   fileList.querySelectorAll('.fmode').forEach((sel) => {
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', (e) => {
-      state.files[Number(sel.dataset.index)].printMode = e.target.value;
+      const f = state.files[Number(sel.dataset.index)];
+      f.printMode = e.target.value;
+      if (f.printMode === 'color') f.printSide = 'single'; // colour prints are single-sided only
       renderFileList();
       recalc();
     });
@@ -746,6 +751,8 @@ function renderFileList(){
         e.stopPropagation();
         const index = Number(seg.dataset.index);
         const field = seg.dataset.field;
+        // Colour prints are single-sided only — ignore double-sided for them.
+        if (field === 'printSide' && btn.dataset.value === 'double' && state.files[index].printMode === 'color') return;
         state.files[index][field] = btn.dataset.value;
         renderFileList();
         recalc();
