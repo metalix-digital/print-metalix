@@ -46,4 +46,4 @@ function purgeExpiredArchive() {
   return orders.length
 }
 
-module.exports = { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, ARCHIVE_RETENTION_MS }
+module.exports = { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive }

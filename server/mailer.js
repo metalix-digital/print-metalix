@@ -208,4 +208,4 @@ async function sendOrderStatusEmail(order, trackUrl, attachments) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments: attachments || [] })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, resetEmailTemplate, orderStatusTemplate }
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail }
