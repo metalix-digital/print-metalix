@@ -1004,8 +1004,17 @@ function buildOrderPayload(){
     deliveryAddress: state.deliveryMethod === 'delivery' ? document.getElementById('addrLine').value.trim() : undefined,
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,
     deliveryState: state.deliveryMethod === 'delivery' ? document.getElementById('addrState').value.trim() : undefined,
-    deliveryPincode: state.deliveryMethod === 'delivery' ? document.getElementById('addrPincode').value.trim() : undefined
+    deliveryPincode: state.deliveryMethod === 'delivery' ? document.getElementById('addrPincode').value.trim() : undefined,
+    locationId: getSelectedBranchId()
   };
+}
+
+// The branch the customer picked on the landing page (saved to localStorage).
+// The server resolves it against the active branch list, so sending the id is
+// enough; if none is set the order simply has no branch.
+function getSelectedBranchId(){
+  try { return (JSON.parse(localStorage.getItem('metalix_branch') || 'null') || {}).id || undefined; }
+  catch(e){ return undefined; }
 }
 
 function showSuccess(order){
