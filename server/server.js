@@ -753,6 +753,21 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'landing.html'))
 })
 
+// Policies live as a view inside the landing page, but expose a real, crawlable
+// URL for them (the footer/nav link here). landing.html reads the path on load
+// and opens the policy view; see initFromUrl() there.
+app.get('/policies', (req, res) => {
+  res.sendFile(path.join(publicDir, 'landing.html'))
+})
+
+// SEO: robots.txt (references the sitemap) and the sitemap itself.
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').sendFile(path.join(publicDir, 'robots.txt'))
+})
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').sendFile(path.join(publicDir, 'sitemap.xml'))
+})
+
 // Password-protected admin dashboard (orders, customers, pricing).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'))
