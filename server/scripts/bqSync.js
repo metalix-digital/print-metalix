@@ -3,14 +3,14 @@
 // deploy/metalix-bqsync.*.example) under the same service account that already
 // backs Secret Manager / Storage — so it authenticates via ADC, no keys.
 //
-// Strategy: incremental UPSERT (never full-reload). Each run loads the current
-// SQLite rows into a per-table staging table, then MERGEs them into the target
-// on `id`: new rows are INSERTed, rows that already exist are UPDATEd in place.
-// So BigQuery keeps growing with new orders AND reflects later changes (an
-// order's status/payment/completed_at update instead of freezing at first
-// capture). Nothing in the target is ever deleted by the sync. The dataset is
-// tiny (MVP), so staging every row each run is cheap; if volume grows, stage
-// only rows with updated_at past a watermark.
+// Strategy: incremental UPSERT + delete-reconcile (never full-reload). Each run
+// loads the current SQLite rows into a per-table staging table, then MERGEs them
+// into the target on `id` (INSERT new, UPDATE existing in place) and finally
+// DELETEs target rows whose id is no longer in staging. So BigQuery keeps
+// growing with new orders, reflects later changes (status/payment/completed_at),
+// AND drops rows deleted from the app (e.g. test orders removed in admin). The
+// dataset is tiny (MVP), so staging every row each run is cheap; if volume
+// grows, switch to an updated_at watermark.
 //
 // Deliberately NOT exported: users.password_hash, the whole password_resets
 // table, and settings — auth secrets / ephemeral tokens / config with no
@@ -173,18 +173,33 @@ async function mergeStagingIntoTarget(bq, table) {
   return (meta.statistics && meta.statistics.query && meta.statistics.query.dmlStats) || {}
 }
 
+// Removes target rows whose key is no longer present in staging — i.e. rows
+// deleted from SQLite (e.g. test orders removed in the admin app). This is what
+// keeps deletions from lingering in BigQuery. Returns the deleted row count.
+async function deleteRemovedFromTarget(bq, table) {
+  const key = table.key || 'id'
+  const sql = `DELETE FROM \`${DATASET}.${table.name}\` T
+    WHERE NOT EXISTS (SELECT 1 FROM \`${DATASET}.${STG_PREFIX}${table.name}\` S WHERE S.\`${key}\` = T.\`${key}\`)`
+  const [job] = await bq.createQueryJob({ query: sql, location: LOCATION })
+  await job.getQueryResults()
+  const [meta] = await job.getMetadata()
+  const stats = (meta.statistics && meta.statistics.query && meta.statistics.query.dmlStats) || {}
+  return stats.deletedRowCount || 0
+}
+
 async function syncTable(bq, dataset, db, table) {
   await ensureTable(dataset, table)
   const rows = db.prepare(table.query).all()
   if (rows.length === 0) {
-    console.log(`[bqsync] ${table.name}: no source rows, nothing to merge`)
+    console.log(`[bqsync] ${table.name}: no source rows, skipping (target left unchanged)`)
     return
   }
   await loadStaging(dataset, table, rows)
   const stats = await mergeStagingIntoTarget(bq, table)
+  const deleted = await deleteRemovedFromTarget(bq, table)
   const inserted = stats.insertedRowCount || 0
   const updated = stats.updatedRowCount || 0
-  console.log(`[bqsync] ${DATASET}.${table.name}: +${inserted} inserted, ~${updated} updated (from ${rows.length} staged)`)
+  console.log(`[bqsync] ${DATASET}.${table.name}: +${inserted} inserted, ~${updated} updated, -${deleted} deleted (from ${rows.length} staged)`)
 }
 
 async function main() {

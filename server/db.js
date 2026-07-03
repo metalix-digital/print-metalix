@@ -289,6 +289,38 @@ function listOrders({ status, search, limit, offset } = {}) {
   return db.prepare(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params)
 }
 
+// Hard-deletes an order and its print jobs. Returns the order row (so the
+// caller can remove its uploaded files) or null if it didn't exist.
+function deleteOrder(id) {
+  const order = getOrder(id)
+  if (!order) return null
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM print_jobs WHERE order_id = ?').run(id)
+    db.prepare('DELETE FROM orders WHERE id = ?').run(id)
+  })
+  tx()
+  return order
+}
+
+// All orders (any payment state) for a mobile — the admin "customer" identity
+// is the mobile number, since the Customers view is grouped by it.
+function listOrdersByMobile(mobile) {
+  return db.prepare('SELECT * FROM orders WHERE customer_mobile = ?').all(mobile)
+}
+
+// Hard-deletes a customer: every order for the mobile (+ their print jobs) and
+// any matching user account. Returns the deleted order rows (for file cleanup).
+function deleteCustomerByMobile(mobile) {
+  const orders = listOrdersByMobile(mobile)
+  const tx = db.transaction(() => {
+    for (const o of orders) db.prepare('DELETE FROM print_jobs WHERE order_id = ?').run(o.id)
+    db.prepare('DELETE FROM orders WHERE customer_mobile = ?').run(mobile)
+    db.prepare('DELETE FROM users WHERE mobile = ?').run(mobile)
+  })
+  tx()
+  return orders
+}
+
 function listOrdersForCustomer(customerId) {
   return db.prepare(`
     SELECT * FROM orders
@@ -390,6 +422,9 @@ module.exports = {
   createOrder,
   getOrder,
   updateOrder,
+  deleteOrder,
+  listOrdersByMobile,
+  deleteCustomerByMobile,
   listOrders,
   listOrdersForCustomer,
   listOrdersForFileCleanup,

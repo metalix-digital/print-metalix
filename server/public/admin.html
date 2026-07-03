@@ -184,7 +184,16 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .bulk-bar select{margin-left:auto;border:1.5px solid #3f3a36;background:#2a2622;color:#fff;border-radius:9px;padding:8px 11px;font:inherit;font-size:13px;}
 .bulk-bar .b-apply{background:var(--orange);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-weight:700;font-size:13.5px;cursor:pointer;}
 .bulk-bar .b-apply:hover{background:var(--orange-d);}
+.bulk-bar .b-del{background:#3a1f1c;color:#FCA5A5;border:1.5px solid #5b2a25;border-radius:9px;padding:8px 14px;font-weight:700;font-size:13.5px;cursor:pointer;}
+.bulk-bar .b-del:hover{background:var(--err);color:#fff;border-color:var(--err);}
 .bulk-bar .b-clear{background:none;border:1.5px solid #46413c;color:#d6d3d1;border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;}
+/* destructive buttons */
+.del-order-btn{background:#fff !important;color:var(--err) !important;border:1.5px solid #F1C7C7 !important;}
+.del-order-btn:hover{background:var(--err) !important;color:#fff !important;border-color:var(--err) !important;}
+.del-cust-btn{background:#fff;border:1.5px solid #F1C7C7;color:var(--err);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
+.del-cust-btn:hover{background:var(--err);color:#fff;border-color:var(--err);}
+.modal-ok.danger{background:var(--err);border-color:var(--err);}
+.modal-ok.danger:hover{background:#B91C1C;}
 
 /* action buttons */
 .dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
@@ -276,6 +285,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <span class="count"><b id="bulkCount">0</b> selected</span>
         <select id="bulkStatus"></select>
         <button class="b-apply" id="bulkApply" type="button">Apply status</button>
+        <button class="b-del" id="bulkDelete" type="button">Delete</button>
         <button class="b-clear" id="bulkClear" type="button">Clear</button>
       </div>
       <div class="table-scroll">
@@ -292,8 +302,8 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="panel" id="panel-customers">
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead>
-          <tbody id="customersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th></th></tr></thead>
+          <tbody id="customersBody"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -589,6 +599,47 @@ document.getElementById('bulkApply').addEventListener('click', async () => {
     if (err.message !== 'unauthorized') alert('Bulk update failed.');
   }
 });
+document.getElementById('bulkDelete').addEventListener('click', () => {
+  deleteOrdersFlow(Array.from(selectedOrders), null);
+});
+
+// Confirm + hard-delete one or many orders. `single` (an order object) tailors
+// the dialog for a single order; pass null for a bulk delete.
+async function deleteOrdersFlow(ids, single){
+  if (!ids.length) return;
+  const inner = single
+    ? '<h3 class="modal-title">Delete this order?</h3>' +
+      '<p class="modal-sub">Permanently removes the order and its files — and drops it from BigQuery on the next sync. This can\'t be undone.</p>' +
+      '<table class="modal-meta">' +
+        '<tr><td class="k">Order ID</td><td class="v">' + escHtml(single.id) + '</td></tr>' +
+        '<tr><td class="k">Customer</td><td class="v">' + escHtml(single.customer_name || '—') + '</td></tr>' +
+        '<tr><td class="k">Amount</td><td class="v">₹' + escHtml(single.total_amount) + '</td></tr>' +
+      '</table>'
+    : '<h3 class="modal-title">Delete ' + ids.length + ' order' + (ids.length === 1 ? '' : 's') + '?</h3>' +
+      '<p class="modal-sub">Permanently removes the selected orders and their files — and drops them from BigQuery on the next sync. This can\'t be undone.</p>' +
+      '<table class="modal-meta"><tr><td class="k">Orders to delete</td><td class="v">' + ids.length + '</td></tr></table>';
+  const ok = await showConfirmModal(inner, 'Delete', true);
+  if (!ok) return;
+  try {
+    let deleted = 0;
+    if (ids.length === 1) {
+      const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(ids[0]), { method: 'DELETE' });
+      if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Delete failed.'); return; }
+      deleted = 1;
+    } else {
+      const res = await adminFetch('/api/admin/orders/bulk-delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids })
+      });
+      const d = await res.json();
+      if (!res.ok){ alert(d.message || 'Delete failed.'); return; }
+      deleted = d.deleted;
+    }
+    await loadOrders();
+    showFlash('Deleted ' + deleted + ' order' + (deleted === 1 ? '' : 's'));
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Delete failed.');
+  }
+}
 
 async function loadOrders(){
   const body = document.getElementById('ordersBody');
@@ -686,14 +737,16 @@ function orderTotalPages(o){
 }
 
 // Lightweight OK/Cancel confirmation modal. Resolves true (confirm) or false.
-function showConfirmModal(innerHtml){
+// confirmLabel + danger let destructive actions show a red "Delete" button.
+function showConfirmModal(innerHtml, confirmLabel, danger){
+  confirmLabel = confirmLabel || 'Confirm change';
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true">' + innerHtml +
       '<div class="modal-actions">' +
         '<button class="modal-cancel" type="button">Cancel</button>' +
-        '<button class="modal-ok" type="button">Confirm change</button>' +
+        '<button class="modal-ok' + (danger ? ' danger' : '') + '" type="button">' + escHtml(confirmLabel) + '</button>' +
       '</div></div>';
     document.body.appendChild(overlay);
     const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
@@ -736,6 +789,7 @@ function renderOrders(orders){
       '<div class="jobsheet-actions">' +
         '<button class="jobsheet-btn" data-action="print" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">🖨 Print Job Sheet</button>' +
         '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
+        '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Delete order</button>' +
       '</div>' +
     '</div></td></tr>'
   )).join('');
@@ -765,7 +819,13 @@ function renderOrders(orders){
       downloadOrderFile(btn.dataset.order, btn.dataset.file, btn.dataset.name);
     });
   });
-  body.querySelectorAll('.jobsheet-btn').forEach((btn) => {
+  body.querySelectorAll('.del-order-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteOrdersFlow([btn.dataset.order], ordersById[btn.dataset.order] || {});
+    });
+  });
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
@@ -930,21 +990,50 @@ async function loadCustomers(){
     const data = await res.json();
     const customers = data.customers || [];
     if (!customers.length){
-      body.innerHTML = '<tr><td colspan="6" class="empty">No customers yet</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="empty">No customers yet</td></tr>';
       return;
     }
     body.innerHTML = customers.map((c) => (
       '<tr>' +
-        '<td>' + c.customer_name + '</td>' +
-        '<td>' + c.customer_mobile + '</td>' +
-        '<td>' + (c.customer_email || '—') + '</td>' +
-        '<td>' + c.order_count + '</td>' +
-        '<td>₹' + c.total_spent + '</td>' +
-        '<td>' + new Date(c.last_order_at).toLocaleDateString() + '</td>' +
+        '<td>' + escHtml(c.customer_name || '—') + '</td>' +
+        '<td>' + escHtml(c.customer_mobile || '—') + '</td>' +
+        '<td>' + escHtml(c.customer_email || '—') + '</td>' +
+        '<td>' + escHtml(c.order_count) + '</td>' +
+        '<td>₹' + escHtml(c.total_spent) + '</td>' +
+        '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
+        '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Delete</button></td>' +
       '</tr>'
     )).join('');
+    body.querySelectorAll('.del-cust-btn').forEach((btn) => {
+      btn.addEventListener('click', () => deleteCustomer(btn.dataset.mobile, btn.dataset.name, btn.dataset.count));
+    });
   } catch (err) {
-    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="6" class="empty">Failed to load customers</td></tr>';
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load customers</td></tr>';
+  }
+}
+
+// Confirm + hard-delete a customer (all their orders + account).
+async function deleteCustomer(mobile, name, count){
+  if (!mobile){ alert('This customer has no mobile on file and cannot be deleted here.'); return; }
+  const inner =
+    '<h3 class="modal-title">Delete this customer?</h3>' +
+    '<p class="modal-sub">Permanently removes the customer, all their orders and files, and their account — and drops them from BigQuery on the next sync. This can\'t be undone.</p>' +
+    '<table class="modal-meta">' +
+      '<tr><td class="k">Customer</td><td class="v">' + escHtml(name || '—') + '</td></tr>' +
+      '<tr><td class="k">Mobile</td><td class="v">' + escHtml(mobile) + '</td></tr>' +
+      '<tr><td class="k">Orders to delete</td><td class="v">' + escHtml(count) + '</td></tr>' +
+    '</table>';
+  const ok = await showConfirmModal(inner, 'Delete', true);
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(mobile), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Delete failed.'); return; }
+    loadCustomers();
+    loadOrders();
+    showFlash('Deleted customer · ' + data.deletedOrders + ' order' + (data.deletedOrders === 1 ? '' : 's') + ' removed');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Delete failed.');
   }
 }
 

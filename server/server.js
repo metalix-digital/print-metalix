@@ -68,7 +68,7 @@ const mailer = require('./mailer')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
-const { cleanupExpiredFiles } = require('./fileRetention')
+const { cleanupExpiredFiles, deleteFilesForOrder } = require('./fileRetention')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
@@ -551,6 +551,40 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
     }
   }
   return res.json({ updated, emailed })
+})
+
+// Hard-delete a single order (removes its uploaded files + print jobs too).
+// Deletions propagate to BigQuery on the next sync (or a manual `npm run
+// bqsync`), which reconciles rows removed from SQLite.
+app.delete('/api/admin/orders/:id', requireAdmin, (req, res) => {
+  const order = db.deleteOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  try { deleteFilesForOrder(order) } catch (err) { console.error('[orders] file cleanup on delete failed:', err.message) }
+  return res.json({ deleted: true })
+})
+
+// Bulk hard-delete of orders.
+app.post('/api/admin/orders/bulk-delete', requireAdmin, express.json(), (req, res) => {
+  const { ids } = req.body || {}
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order.' })
+  let deleted = 0
+  for (const id of ids) {
+    const order = db.deleteOrder(id)
+    if (!order) continue
+    deleted++
+    try { deleteFilesForOrder(order) } catch (err) { console.error('[orders] file cleanup on delete failed:', err.message) }
+  }
+  return res.json({ deleted })
+})
+
+// Hard-delete a customer (identified by mobile) — removes all their orders,
+// print jobs, uploaded files, and any matching user account.
+app.delete('/api/admin/customers/:mobile', requireAdmin, (req, res) => {
+  const orders = db.deleteCustomerByMobile(req.params.mobile)
+  for (const o of orders) {
+    try { deleteFilesForOrder(o) } catch (err) { console.error('[customers] file cleanup on delete failed:', err.message) }
+  }
+  return res.json({ deleted: true, deletedOrders: orders.length })
 })
 
 // Admin-managed order workflow stages (add / delete / reorder / notify flag).
