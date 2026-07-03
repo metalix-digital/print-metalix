@@ -732,6 +732,20 @@ if (fs.existsSync(publicDir)) {
     if (fs.existsSync(file)) return res.sendFile(file, logoCache)
     return res.status(404).end()
   })
+
+  // Self-hosted, glyph-subset web fonts referenced by landing.html's @font-face
+  // rules. Content-hashed by weight and effectively immutable, so cache them for
+  // a year. Fonts are always fetched in CORS mode (the preload uses crossorigin),
+  // so advertise an open ACAO to keep the preload and the @font-face fetch on the
+  // same cached response instead of double-fetching.
+  app.use('/fonts', express.static(path.join(publicDir, 'fonts'), {
+    maxAge: '365d',
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Content-Type', 'font/woff2')
+    },
+  }))
 }
 
 // Marketing landing page at the root path, served ahead of the SPA catch-all below.

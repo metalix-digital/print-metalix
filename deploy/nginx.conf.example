@@ -1,0 +1,49 @@
+# Reference nginx configuration for print.metalix.in
+# --------------------------------------------------
+# The app already sets correct Cache-Control headers in Express (see server.js:
+# /fonts, /logo.*, and the hashed client-dist assets), and nginx passes proxied
+# response headers through unchanged, so those caches are already effective in
+# production. This file documents the recommended front-of-app tuning so the
+# behaviour is explicit and reproducible on a fresh box.
+#
+# Apply by copying the relevant directives into the server block that currently
+# proxies to the Node app, then: nginx -t && systemctl reload nginx
+
+server {
+    listen 443 ssl http2;
+    server_name print.metalix.in;
+
+    # --- TLS omitted: keep your existing ssl_certificate / ssl_certificate_key ---
+
+    # Compress text responses. woff2/png/jpg are already compressed, so they are
+    # intentionally excluded (gzipping them wastes CPU for ~0 bytes saved).
+    gzip on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_vary on;
+    gzip_types
+        text/plain text/css text/javascript
+        application/javascript application/json
+        image/svg+xml;
+
+    # Long-cache the self-hosted, content-stable fonts. This mirrors the
+    # Cache-Control Express already emits; keeping it here means the header is
+    # correct even if a font is ever served directly by nginx.
+    location /fonts/ {
+        proxy_pass http://127.0.0.1:5050;
+        proxy_set_header Host $host;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Access-Control-Allow-Origin "*";
+    }
+
+    # Everything else proxies to the Node app, which sets its own Cache-Control
+    # (max-age=0/no-cache for HTML, long max-age for logos and hashed assets).
+    location / {
+        proxy_pass http://127.0.0.1:5050;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
