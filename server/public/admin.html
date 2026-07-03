@@ -194,6 +194,8 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .del-cust-btn:hover{background:var(--err);color:#fff;border-color:var(--err);}
 .modal-ok.danger{background:var(--err);border-color:var(--err);}
 .modal-ok.danger:hover{background:#B91C1C;}
+.restore-btn{background:#fff;border:1.5px solid var(--ok);color:var(--ok);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
+.restore-btn:hover{background:var(--ok);color:#fff;}
 
 /* action buttons */
 .dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
@@ -270,6 +272,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="pricing">Pricing</button>
     <button class="tab-btn" data-tab="stages">Stages</button>
+    <button class="tab-btn" data-tab="archive">Archive</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
   <div class="content">
@@ -285,7 +288,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <span class="count"><b id="bulkCount">0</b> selected</span>
         <select id="bulkStatus"></select>
         <button class="b-apply" id="bulkApply" type="button">Apply status</button>
-        <button class="b-del" id="bulkDelete" type="button">Delete</button>
+        <button class="b-del" id="bulkDelete" type="button">Archive</button>
         <button class="b-clear" id="bulkClear" type="button">Clear</button>
       </div>
       <div class="table-scroll">
@@ -317,6 +320,16 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="panel" id="panel-stages">
       <div class="stages-wrap" id="stagesWrap">
         <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-archive">
+      <p class="subtle" style="margin:0 2px 12px;">Archived orders are hidden from Orders, Customers, and BigQuery. They're kept for 30 days, then permanently deleted. Restore anytime, or delete now.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Archived</th><th>Purges in</th><th></th></tr></thead>
+          <tbody id="archiveBody"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
+        </table>
       </div>
     </div>
 
@@ -417,6 +430,7 @@ async function showDash(){
   loadCustomers();
   loadPricing();
   loadStages();
+  loadArchive();
   loadSettings();
 }
 
@@ -603,41 +617,43 @@ document.getElementById('bulkDelete').addEventListener('click', () => {
   deleteOrdersFlow(Array.from(selectedOrders), null);
 });
 
-// Confirm + hard-delete one or many orders. `single` (an order object) tailors
-// the dialog for a single order; pass null for a bulk delete.
+// Confirm + archive one or many orders (soft-delete, recoverable for 30 days).
+// `single` (an order object) tailors the dialog for one order; null for bulk.
 async function deleteOrdersFlow(ids, single){
   if (!ids.length) return;
+  const graceNote = 'It leaves Orders, Customers, and BigQuery right away, and is kept in the Archive for 30 days before being permanently deleted.';
   const inner = single
-    ? '<h3 class="modal-title">Delete this order?</h3>' +
-      '<p class="modal-sub">Permanently removes the order and its files — and drops it from BigQuery on the next sync. This can\'t be undone.</p>' +
+    ? '<h3 class="modal-title">Archive this order?</h3>' +
+      '<p class="modal-sub">' + graceNote + '</p>' +
       '<table class="modal-meta">' +
         '<tr><td class="k">Order ID</td><td class="v">' + escHtml(single.id) + '</td></tr>' +
         '<tr><td class="k">Customer</td><td class="v">' + escHtml(single.customer_name || '—') + '</td></tr>' +
         '<tr><td class="k">Amount</td><td class="v">₹' + escHtml(single.total_amount) + '</td></tr>' +
       '</table>'
-    : '<h3 class="modal-title">Delete ' + ids.length + ' order' + (ids.length === 1 ? '' : 's') + '?</h3>' +
-      '<p class="modal-sub">Permanently removes the selected orders and their files — and drops them from BigQuery on the next sync. This can\'t be undone.</p>' +
-      '<table class="modal-meta"><tr><td class="k">Orders to delete</td><td class="v">' + ids.length + '</td></tr></table>';
-  const ok = await showConfirmModal(inner, 'Delete', true);
+    : '<h3 class="modal-title">Archive ' + ids.length + ' order' + (ids.length === 1 ? '' : 's') + '?</h3>' +
+      '<p class="modal-sub">' + graceNote + '</p>' +
+      '<table class="modal-meta"><tr><td class="k">Orders to archive</td><td class="v">' + ids.length + '</td></tr></table>';
+  const ok = await showConfirmModal(inner, 'Archive');
   if (!ok) return;
   try {
-    let deleted = 0;
+    let archived = 0;
     if (ids.length === 1) {
       const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(ids[0]), { method: 'DELETE' });
-      if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Delete failed.'); return; }
-      deleted = 1;
+      if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Archive failed.'); return; }
+      archived = 1;
     } else {
       const res = await adminFetch('/api/admin/orders/bulk-delete', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids })
       });
       const d = await res.json();
-      if (!res.ok){ alert(d.message || 'Delete failed.'); return; }
-      deleted = d.deleted;
+      if (!res.ok){ alert(d.message || 'Archive failed.'); return; }
+      archived = d.archived;
     }
     await loadOrders();
-    showFlash('Deleted ' + deleted + ' order' + (deleted === 1 ? '' : 's'));
+    loadArchive();
+    showFlash('Archived ' + archived + ' order' + (archived === 1 ? '' : 's'));
   } catch (err) {
-    if (err.message !== 'unauthorized') alert('Delete failed.');
+    if (err.message !== 'unauthorized') alert('Archive failed.');
   }
 }
 
@@ -789,7 +805,7 @@ function renderOrders(orders){
       '<div class="jobsheet-actions">' +
         '<button class="jobsheet-btn" data-action="print" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">🖨 Print Job Sheet</button>' +
         '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
-        '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Delete order</button>' +
+        '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Archive order</button>' +
       '</div>' +
     '</div></td></tr>'
   )).join('');
@@ -1001,7 +1017,7 @@ async function loadCustomers(){
         '<td>' + escHtml(c.order_count) + '</td>' +
         '<td>₹' + escHtml(c.total_spent) + '</td>' +
         '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
-        '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Delete</button></td>' +
+        '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
       '</tr>'
     )).join('');
     body.querySelectorAll('.del-cust-btn').forEach((btn) => {
@@ -1012,26 +1028,88 @@ async function loadCustomers(){
   }
 }
 
-// Confirm + hard-delete a customer (all their orders + account).
+// Confirm + archive a customer (archives all their orders, recoverable 30 days).
 async function deleteCustomer(mobile, name, count){
-  if (!mobile){ alert('This customer has no mobile on file and cannot be deleted here.'); return; }
+  if (!mobile){ alert('This customer has no mobile on file and cannot be archived here.'); return; }
   const inner =
-    '<h3 class="modal-title">Delete this customer?</h3>' +
-    '<p class="modal-sub">Permanently removes the customer, all their orders and files, and their account — and drops them from BigQuery on the next sync. This can\'t be undone.</p>' +
+    '<h3 class="modal-title">Archive this customer?</h3>' +
+    '<p class="modal-sub">Archives all of this customer\'s orders — they leave Orders, Customers, and BigQuery right away, and are kept for 30 days before being permanently deleted. Restore anytime from the Archive tab.</p>' +
     '<table class="modal-meta">' +
       '<tr><td class="k">Customer</td><td class="v">' + escHtml(name || '—') + '</td></tr>' +
       '<tr><td class="k">Mobile</td><td class="v">' + escHtml(mobile) + '</td></tr>' +
-      '<tr><td class="k">Orders to delete</td><td class="v">' + escHtml(count) + '</td></tr>' +
+      '<tr><td class="k">Orders to archive</td><td class="v">' + escHtml(count) + '</td></tr>' +
     '</table>';
-  const ok = await showConfirmModal(inner, 'Delete', true);
+  const ok = await showConfirmModal(inner, 'Archive');
   if (!ok) return;
   try {
     const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(mobile), { method: 'DELETE' });
     const data = await res.json();
-    if (!res.ok){ alert(data.message || 'Delete failed.'); return; }
+    if (!res.ok){ alert(data.message || 'Archive failed.'); return; }
     loadCustomers();
     loadOrders();
-    showFlash('Deleted customer · ' + data.deletedOrders + ' order' + (data.deletedOrders === 1 ? '' : 's') + ' removed');
+    loadArchive();
+    showFlash('Archived customer · ' + data.archivedOrders + ' order' + (data.archivedOrders === 1 ? '' : 's'));
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Archive failed.');
+  }
+}
+
+/* -- ARCHIVE -- */
+async function loadArchive(){
+  const body = document.getElementById('archiveBody');
+  if (!body) return;
+  try {
+    const res = await adminFetch('/api/admin/archive');
+    const data = await res.json();
+    const orders = data.orders || [];
+    const retentionDays = data.retentionDays || 30;
+    if (!orders.length){ body.innerHTML = '<tr><td colspan="7" class="empty">Archive is empty</td></tr>'; return; }
+    const DAY = 24 * 60 * 60 * 1000;
+    body.innerHTML = orders.map((o) => {
+      const daysLeft = Math.max(0, Math.ceil((o.archived_at + retentionDays * DAY - Date.now()) / DAY));
+      return '<tr>' +
+        '<td><span class="order-id">' + escHtml(o.id) + '</span></td>' +
+        '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
+        '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
+        '<td><span class="pay-badge ' + (String(o.order_status).toLowerCase().includes('complet') ? 'paid' : '') + '">' + escHtml(o.order_status || '—') + '</span></td>' +
+        '<td><span class="placed">' + (o.archived_at ? escHtml(new Date(o.archived_at).toLocaleDateString()) : '—') + '</span></td>' +
+        '<td><span class="placed">' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + '</span></td>' +
+        '<td style="white-space:nowrap;"><button class="restore-btn" data-order="' + escHtml(o.id) + '">Restore</button> ' +
+          '<button class="del-cust-btn purge-btn" data-order="' + escHtml(o.id) + '">Delete now</button></td>' +
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('.restore-btn').forEach((btn) => btn.addEventListener('click', () => restoreArchivedOrder(btn.dataset.order)));
+    body.querySelectorAll('.purge-btn').forEach((btn) => btn.addEventListener('click', () => purgeArchivedOrder(btn.dataset.order)));
+  } catch (err) {
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load archive</td></tr>';
+  }
+}
+
+async function restoreArchivedOrder(id){
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(id) + '/restore', { method: 'POST' });
+    if (!res.ok){ alert('Restore failed.'); return; }
+    loadArchive();
+    loadOrders();
+    loadCustomers();
+    showFlash('Order restored');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Restore failed.');
+  }
+}
+
+async function purgeArchivedOrder(id){
+  const inner =
+    '<h3 class="modal-title">Delete permanently?</h3>' +
+    '<p class="modal-sub">Immediately and permanently deletes this order and its files. This can\'t be undone.</p>' +
+    '<table class="modal-meta"><tr><td class="k">Order ID</td><td class="v">' + escHtml(id) + '</td></tr></table>';
+  const ok = await showConfirmModal(inner, 'Delete permanently', true);
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(id) + '/purge', { method: 'DELETE' });
+    if (!res.ok){ alert('Delete failed.'); return; }
+    loadArchive();
+    showFlash('Order permanently deleted');
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Delete failed.');
   }

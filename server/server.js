@@ -68,7 +68,7 @@ const mailer = require('./mailer')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
-const { cleanupExpiredFiles, deleteFilesForOrder } = require('./fileRetention')
+const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive } = require('./fileRetention')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
@@ -553,38 +553,46 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
   return res.json({ updated, emailed })
 })
 
-// Hard-delete a single order (removes its uploaded files + print jobs too).
-// Deletions propagate to BigQuery on the next sync (or a manual `npm run
-// bqsync`), which reconciles rows removed from SQLite.
+// Archive (soft-delete) a single order. It leaves the Orders/Customers views
+// and BigQuery immediately, but is recoverable for 30 days before the purge
+// job removes it for good.
 app.delete('/api/admin/orders/:id', requireAdmin, (req, res) => {
-  const order = db.deleteOrder(req.params.id)
+  const order = db.archiveOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
-  try { deleteFilesForOrder(order) } catch (err) { console.error('[orders] file cleanup on delete failed:', err.message) }
-  return res.json({ deleted: true })
+  return res.json({ archived: true })
 })
 
-// Bulk hard-delete of orders.
+// Bulk archive of orders.
 app.post('/api/admin/orders/bulk-delete', requireAdmin, express.json(), (req, res) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order.' })
-  let deleted = 0
-  for (const id of ids) {
-    const order = db.deleteOrder(id)
-    if (!order) continue
-    deleted++
-    try { deleteFilesForOrder(order) } catch (err) { console.error('[orders] file cleanup on delete failed:', err.message) }
-  }
-  return res.json({ deleted })
+  let archived = 0
+  for (const id of ids) { if (db.archiveOrder(id)) archived++ }
+  return res.json({ archived })
 })
 
-// Hard-delete a customer (identified by mobile) — removes all their orders,
-// print jobs, uploaded files, and any matching user account.
+// Archive a customer (identified by mobile) — archives all their orders.
 app.delete('/api/admin/customers/:mobile', requireAdmin, (req, res) => {
-  const orders = db.deleteCustomerByMobile(req.params.mobile)
-  for (const o of orders) {
-    try { deleteFilesForOrder(o) } catch (err) { console.error('[customers] file cleanup on delete failed:', err.message) }
-  }
-  return res.json({ deleted: true, deletedOrders: orders.length })
+  const orders = db.archiveCustomerByMobile(req.params.mobile)
+  return res.json({ archived: true, archivedOrders: orders.length })
+})
+
+// Archive management: list, restore, or permanently delete now.
+app.get('/api/admin/archive', requireAdmin, (req, res) => {
+  return res.json({ orders: db.listArchivedOrders(), retentionDays: 30 })
+})
+
+app.post('/api/admin/orders/:id/restore', requireAdmin, (req, res) => {
+  const order = db.restoreOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  return res.json({ restored: true })
+})
+
+app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
+  const order = db.deleteOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  try { deleteFilesForOrder(order) } catch (err) { console.error('[archive] file cleanup on purge failed:', err.message) }
+  return res.json({ deleted: true })
 })
 
 // Admin-managed order workflow stages (add / delete / reorder / notify flag).
@@ -999,6 +1007,8 @@ loadSecretsIntoEnv().then(async () => {
   app.listen(PORT, () => console.log(`Running on ${PORT}`))
   cleanupExpiredFiles()
   setInterval(cleanupExpiredFiles, 60 * 60 * 1000)
+  purgeExpiredArchive()
+  setInterval(purgeExpiredArchive, 6 * 60 * 60 * 1000)
   backupDatabase()
   setInterval(backupDatabase, 6 * 60 * 60 * 1000)
 })

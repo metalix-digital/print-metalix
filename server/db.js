@@ -91,6 +91,7 @@ ensureColumn('orders', 'files_json', 'TEXT')
 ensureColumn('orders', 'customer_id', 'TEXT')
 ensureColumn('orders', 'completed_at', 'INTEGER')
 ensureColumn('orders', 'files_deleted_at', 'INTEGER')
+ensureColumn('orders', 'archived_at', 'INTEGER')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 
@@ -273,7 +274,7 @@ function listOrdersForFileCleanup() {
 // abandoned checkouts (payment_status 'created') and failed payments never
 // show up here, though the rows themselves are kept in the database.
 function listOrders({ status, search, limit, offset } = {}) {
-  const clauses = ["payment_status = 'paid'"]
+  const clauses = ["payment_status = 'paid'", 'archived_at IS NULL']
   const params = {}
   if (status) {
     clauses.push('order_status = @status')
@@ -289,8 +290,43 @@ function listOrders({ status, search, limit, offset } = {}) {
   return db.prepare(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params)
 }
 
+// Soft-delete: move an order to the archive. It vanishes from the Orders and
+// Customers views (and BigQuery, which skips archived rows) but is kept for a
+// 30-day grace period during which it can be restored. Returns the order or
+// null if missing / already archived.
+function archiveOrder(id) {
+  const order = getOrder(id)
+  if (!order || order.archived_at) return null
+  db.prepare('UPDATE orders SET archived_at = ?, updated_at = ? WHERE id = ?').run(Date.now(), Date.now(), id)
+  return getOrder(id)
+}
+
+function restoreOrder(id) {
+  const order = getOrder(id)
+  if (!order || !order.archived_at) return null
+  db.prepare('UPDATE orders SET archived_at = NULL, updated_at = ? WHERE id = ?').run(Date.now(), id)
+  return getOrder(id)
+}
+
+function listArchivedOrders() {
+  return db.prepare('SELECT * FROM orders WHERE archived_at IS NOT NULL ORDER BY archived_at DESC').all()
+}
+
+// Archives every non-archived order for a mobile (the admin "customer" identity,
+// since the Customers view is grouped by mobile). Returns the affected rows.
+function archiveCustomerByMobile(mobile) {
+  const orders = db.prepare('SELECT * FROM orders WHERE customer_mobile = ? AND archived_at IS NULL').all(mobile)
+  const now = Date.now()
+  const tx = db.transaction(() => {
+    for (const o of orders) db.prepare('UPDATE orders SET archived_at = ?, updated_at = ? WHERE id = ?').run(now, now, o.id)
+  })
+  tx()
+  return orders
+}
+
 // Hard-deletes an order and its print jobs. Returns the order row (so the
-// caller can remove its uploaded files) or null if it didn't exist.
+// caller can remove its uploaded files) or null if it didn't exist. Used by
+// "delete permanently" and by the 30-day archive purge.
 function deleteOrder(id) {
   const order = getOrder(id)
   if (!order) return null
@@ -302,23 +338,9 @@ function deleteOrder(id) {
   return order
 }
 
-// All orders (any payment state) for a mobile — the admin "customer" identity
-// is the mobile number, since the Customers view is grouped by it.
-function listOrdersByMobile(mobile) {
-  return db.prepare('SELECT * FROM orders WHERE customer_mobile = ?').all(mobile)
-}
-
-// Hard-deletes a customer: every order for the mobile (+ their print jobs) and
-// any matching user account. Returns the deleted order rows (for file cleanup).
-function deleteCustomerByMobile(mobile) {
-  const orders = listOrdersByMobile(mobile)
-  const tx = db.transaction(() => {
-    for (const o of orders) db.prepare('DELETE FROM print_jobs WHERE order_id = ?').run(o.id)
-    db.prepare('DELETE FROM orders WHERE customer_mobile = ?').run(mobile)
-    db.prepare('DELETE FROM users WHERE mobile = ?').run(mobile)
-  })
-  tx()
-  return orders
+// Orders archived on/before `cutoff` — the 30-day purge job hard-deletes these.
+function listArchivedBefore(cutoff) {
+  return db.prepare('SELECT * FROM orders WHERE archived_at IS NOT NULL AND archived_at <= ?').all(cutoff)
 }
 
 function listOrdersForCustomer(customerId) {
@@ -339,7 +361,7 @@ function listCustomers() {
       SUM(total_amount) as total_spent,
       MAX(created_at) as last_order_at
     FROM orders
-    WHERE payment_status = 'paid'
+    WHERE payment_status = 'paid' AND archived_at IS NULL
     GROUP BY customer_mobile
     ORDER BY last_order_at DESC
   `).all()
@@ -422,9 +444,12 @@ module.exports = {
   createOrder,
   getOrder,
   updateOrder,
+  archiveOrder,
+  restoreOrder,
+  listArchivedOrders,
+  archiveCustomerByMobile,
   deleteOrder,
-  listOrdersByMobile,
-  deleteCustomerByMobile,
+  listArchivedBefore,
   listOrders,
   listOrdersForCustomer,
   listOrdersForFileCleanup,

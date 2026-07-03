@@ -30,4 +30,20 @@ function cleanupExpiredFiles() {
   return orders.length
 }
 
-module.exports = { cleanupExpiredFiles, deleteFilesForOrder }
+// Archived orders are kept for a grace period, then permanently removed.
+const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+// Hard-deletes orders that have sat in the archive longer than 30 days, along
+// with their files and print jobs. Returns how many were purged.
+function purgeExpiredArchive() {
+  const cutoff = Date.now() - ARCHIVE_RETENTION_MS
+  const orders = db.listArchivedBefore(cutoff)
+  for (const order of orders) {
+    deleteFilesForOrder(order)
+    db.deleteOrder(order.id)
+  }
+  if (orders.length) console.log(`[archive] purged ${orders.length} order(s) archived >30 days`)
+  return orders.length
+}
+
+module.exports = { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, ARCHIVE_RETENTION_MS }

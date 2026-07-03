@@ -42,7 +42,7 @@ const TABLES = [
         print_cost, delivery_charge, gst_amount, total_amount,
         razorpay_order_id, razorpay_payment_id, payment_status, order_status, failure_reason,
         created_at, updated_at, completed_at, files_deleted_at
-      FROM orders`,
+      FROM orders WHERE archived_at IS NULL`,
     schema: [
       { name: 'id', type: 'STRING' },
       { name: 'customer_id', type: 'STRING' },
@@ -82,7 +82,8 @@ const TABLES = [
   },
   {
     name: 'print_jobs',
-    query: `SELECT id, order_id, status, error_reason, created_at, updated_at FROM print_jobs`,
+    query: `SELECT id, order_id, status, error_reason, created_at, updated_at FROM print_jobs
+      WHERE order_id NOT IN (SELECT id FROM orders WHERE archived_at IS NOT NULL)`,
     schema: [
       { name: 'id', type: 'INTEGER' },
       { name: 'order_id', type: 'STRING' },
