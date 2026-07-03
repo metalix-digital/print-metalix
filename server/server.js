@@ -204,33 +204,39 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
 })
 
 // Requires the correct admin login id before anything is sent — this stops a
-// random visitor from spamming the admin inbox with reset emails. The response
-// is always the same generic message regardless of whether the id matched, so
-// the endpoint still can't be used to probe which login ids are valid. The
-// reset email destination is fixed server-side (ADMIN_RESET_EMAIL) and never
-// read from the request body.
+// Requires the correct admin login id before any email is sent — this both
+// stops a random visitor from spamming the admin inbox and gives the operator
+// clear feedback (a wrong id is rejected outright, no email). Enumeration isn't
+// a concern here: there is a single admin whose id is a known business email,
+// and the reset link only ever goes to the fixed, server-side ADMIN_RESET_EMAIL
+// (never an address from the request body), so knowing the id buys nothing.
 app.post('/api/admin/forgot-password', express.json(), async (req, res) => {
   const { username } = req.body || {}
-  const generic = { message: 'If that login ID is correct, a reset link has been sent to the registered admin email.' }
-  const admin = db.getAdminAuth()
-  const usernameOk = admin && username && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
-  if (admin && usernameOk) {
-    const rawToken = crypto.randomBytes(32).toString('hex')
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
-    db.createPasswordReset({
-      id: crypto.randomUUID(),
-      user_id: 'admin', // sentinel: distinguishes admin resets from customer resets
-      token_hash: tokenHash,
-      expires_at: Date.now() + 60 * 60 * 1000 // 1 hour
-    })
-    const resetUrl = `${req.protocol}://${req.get('host')}/admin?adminReset=${rawToken}`
-    try {
-      await mailer.sendAdminPasswordResetEmail(ADMIN_RESET_EMAIL, resetUrl)
-    } catch (err) {
-      console.error('[admin] failed to send admin reset email', err.message)
-    }
+  if (!username || !String(username).trim()) {
+    return res.status(400).json({ error: 'missing_username', message: 'Enter your Login ID first.' })
   }
-  return res.json(generic)
+  const admin = db.getAdminAuth()
+  const usernameOk = admin && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
+  if (!usernameOk) {
+    return res.status(401).json({ error: 'unknown_login_id', message: 'That Login ID is not recognized — no email was sent.' })
+  }
+
+  const rawToken = crypto.randomBytes(32).toString('hex')
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
+  db.createPasswordReset({
+    id: crypto.randomUUID(),
+    user_id: 'admin', // sentinel: distinguishes admin resets from customer resets
+    token_hash: tokenHash,
+    expires_at: Date.now() + 60 * 60 * 1000 // 1 hour
+  })
+  const resetUrl = `${req.protocol}://${req.get('host')}/admin?adminReset=${rawToken}`
+  try {
+    await mailer.sendAdminPasswordResetEmail(ADMIN_RESET_EMAIL, resetUrl)
+  } catch (err) {
+    console.error('[admin] failed to send admin reset email', err.message)
+    return res.status(500).json({ error: 'email_failed', message: 'Could not send the reset email. Please try again shortly.' })
+  }
+  return res.json({ message: 'A reset link has been sent to the registered admin email.' })
 })
 
 app.post('/api/admin/reset-password', express.json(), async (req, res) => {

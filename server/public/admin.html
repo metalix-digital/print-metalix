@@ -267,8 +267,10 @@ document.getElementById('forgotLink').addEventListener('click', async (e) => {
       body: JSON.stringify({ username })
     });
     const body = await res.json();
-    msgEl.textContent = body.message || 'If that login ID is correct, a reset link has been sent.';
+    msgEl.style.color = res.ok ? '#16A34A' : '#DC2626';
+    msgEl.textContent = body.message || (res.ok ? 'A reset link has been sent.' : 'That Login ID is not recognized.');
   } catch (err) {
+    msgEl.style.color = '#DC2626';
     msgEl.textContent = 'Could not send reset email. Please try again.';
   }
 });
