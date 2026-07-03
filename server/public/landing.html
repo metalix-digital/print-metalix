@@ -479,6 +479,23 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 <body>
 
 <!-- ================ HEADER ================ -->
+<style>
+.branch-picker{position:relative;margin-right:12px;}
+.branch-btn{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1.5px solid #E7E5E4;border-radius:999px;padding:8px 14px;font:inherit;font-size:13.5px;font-weight:600;color:#1C1917;cursor:pointer;white-space:nowrap;transition:.15s;}
+.branch-btn:hover{border-color:#FF6600;}
+.branch-btn .pin{font-size:14px;line-height:1;}
+.branch-btn .chev{color:#9a938c;font-size:11px;}
+.branch-btn.unset{border-color:#FF6600;color:#E05500;background:#FFF1E6;}
+.branch-btn .lbl{max-width:180px;overflow:hidden;text-overflow:ellipsis;}
+.branch-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:250px;max-width:300px;background:#fff;border:1px solid #E7E5E4;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.16);padding:6px;z-index:200;}
+.branch-menu.hidden{display:none;}
+.branch-opt{display:block;width:100%;text-align:left;background:none;border:none;border-radius:9px;padding:10px 12px;font:inherit;cursor:pointer;color:#1C1917;}
+.branch-opt:hover{background:#FAF7F2;}
+.branch-opt.sel{background:#FFF1E6;}
+.branch-opt .b-name{font-weight:600;font-size:13.5px;}
+.branch-opt .b-addr{font-size:12px;color:#78716C;margin-top:2px;}
+@media(max-width:760px){ .branch-btn .lbl{max-width:96px;} .branch-picker{margin-right:8px;} }
+</style>
 <header>
   <div class="header-inner">
     <a class="h-logo" href="/" onclick="showPage('home'); return false;">
@@ -493,6 +510,12 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <a href="/policies" onclick="showPage('policy'); return false;" id="nav-policy">Policies</a>
     </nav>
     <div class="h-space"></div>
+    <div class="branch-picker" id="branchPicker">
+      <button class="branch-btn unset" id="branchBtn" type="button" onclick="toggleBranchMenu(event)" aria-haspopup="listbox" aria-label="Select branch">
+        <span class="pin">📍</span><span class="lbl" id="branchLabel">Select branch</span><span class="chev">▾</span>
+      </button>
+      <div class="branch-menu hidden" id="branchMenu"></div>
+    </div>
     <div class="h-actions" id="loggedOutActions">
       <button class="btn-ghost-sm" onclick="openModal('login')">Log in</button>
       <button class="btn-orange-sm" onclick="openModal('signup')">Sign up</button>
@@ -536,7 +559,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <h1>Print anything.<br><em>Delivered fast.</em></h1>
         <p class="hero-sub">Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.</p>
         <div class="hero-actions">
-          <button class="btn-hero btn-hero-primary" onclick="window.location.href='/order'">
+          <button class="btn-hero btn-hero-primary" onclick="startOrder()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Start your order
           </button>
@@ -997,7 +1020,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <div class="si">🎉</div>
         <h3 id="successTitle">You're in!</h3>
         <p id="successMsg">Welcome to Metalix Print. Your account is ready.</p>
-        <button class="submit-btn mt-8" onclick="window.location.href='/order'">Start ordering</button>
+        <button class="submit-btn mt-8" onclick="startOrder()">Start ordering</button>
       </div>
     </div>
 
@@ -1510,6 +1533,63 @@ function showToast(msg, icon='✓'){
   } else if(location.hash){
     scrollToSection(location.hash.slice(1));
   }
+})();
+
+/* -- BRANCH / LOCATION PICKER --
+   Customer chooses a branch before starting an order. The choice is saved to
+   localStorage under 'metalix_branch' ({id,name}); the order flow reads it and
+   sends `locationId` to POST /api/orders. */
+(function(){
+  var BRANCH_KEY = 'metalix_branch';
+  var branches = [];
+  function bEsc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function getSel(){ try { return JSON.parse(localStorage.getItem(BRANCH_KEY) || 'null'); } catch(e){ return null; } }
+  function setSel(b){ if (b) localStorage.setItem(BRANCH_KEY, JSON.stringify(b)); else localStorage.removeItem(BRANCH_KEY); updateBtn(); }
+  function updateBtn(){
+    var sel = getSel(), btn = document.getElementById('branchBtn'), lbl = document.getElementById('branchLabel');
+    if (!btn) return;
+    if (sel){ lbl.textContent = sel.name; btn.classList.remove('unset'); }
+    else { lbl.textContent = 'Select branch'; btn.classList.add('unset'); }
+  }
+  window.toggleBranchMenu = function(e){ if (e) e.stopPropagation(); var m = document.getElementById('branchMenu'); if (m) m.classList.toggle('hidden'); };
+  document.addEventListener('click', function(){ var m = document.getElementById('branchMenu'); if (m) m.classList.add('hidden'); });
+  function renderMenu(){
+    var m = document.getElementById('branchMenu'); if (!m) return;
+    if (!branches.length){ m.innerHTML = '<div class="branch-opt"><span class="b-name">No branches available yet</span></div>'; return; }
+    var sel = getSel();
+    m.innerHTML = branches.map(function(b){
+      var addr = [b.address, b.city, b.pincode].filter(Boolean).join(', ');
+      return '<button type="button" class="branch-opt' + (sel && sel.id === b.id ? ' sel' : '') + '" data-id="' + bEsc(b.id) + '">' +
+        '<span class="b-name">' + bEsc(b.name) + '</span>' + (addr ? '<div class="b-addr">' + bEsc(addr) + '</div>' : '') + '</button>';
+    }).join('');
+    m.querySelectorAll('.branch-opt[data-id]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        var b = branches.filter(function(x){ return x.id === el.dataset.id; })[0];
+        if (b){ setSel({ id: b.id, name: b.name }); if (typeof showToast === 'function') showToast('Branch set: ' + b.name, '📍'); }
+        renderMenu();
+        document.getElementById('branchMenu').classList.add('hidden');
+      });
+    });
+  }
+  window.startOrder = function(){
+    var sel = getSel();
+    if (!sel){
+      if (typeof showToast === 'function') showToast('Please choose a branch to continue', '📍');
+      var m = document.getElementById('branchMenu'); if (m) m.classList.remove('hidden');
+      var btn = document.getElementById('branchBtn'); if (btn) btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    window.location.href = '/order';
+  };
+  fetch('/api/locations').then(function(r){ return r.json(); }).then(function(d){
+    branches = d.locations || [];
+    if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
+    var sel = getSel();
+    if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
+    updateBtn(); renderMenu();
+  }).catch(function(){ updateBtn(); });
+  updateBtn();
 })();
 </script>
 </body>

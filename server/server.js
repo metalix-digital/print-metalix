@@ -595,6 +595,44 @@ app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
   return res.json({ deleted: true })
 })
 
+// Public: active branches the customer can pick from (no admin-only fields).
+app.get('/api/locations', (req, res) => {
+  const active = db.getLocations().filter((l) => l.active).map((l) => ({
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || ''
+  }))
+  return res.json({ locations: active })
+})
+
+// Admin-managed branches / pickup locations (add / edit / delete / activate).
+app.get('/api/admin/locations', requireAdmin, (req, res) => {
+  return res.json({ locations: db.getLocations() })
+})
+
+app.put('/api/admin/locations', requireAdmin, express.json(), (req, res) => {
+  const { locations } = req.body || {}
+  if (!Array.isArray(locations)) return res.status(400).json({ error: 'invalid_locations' })
+  const clean = []
+  const seenId = new Set()
+  for (const l of locations) {
+    const name = String((l && l.name) || '').trim().slice(0, 100)
+    if (!name) return res.status(400).json({ error: 'invalid_location_name', message: "Branch names can't be empty." })
+    // Stable id: keep an existing one, else slugify the name (deduped).
+    let id = String((l && l.id) || '').trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'branch'
+    while (seenId.has(id)) id += '-x'
+    seenId.add(id)
+    clean.push({
+      id,
+      name,
+      address: String((l && l.address) || '').trim().slice(0, 200),
+      city: String((l && l.city) || '').trim().slice(0, 80),
+      pincode: String((l && l.pincode) || '').trim().slice(0, 12),
+      active: !!(l && l.active)
+    })
+  }
+  db.setLocations(clean)
+  return res.json({ locations: db.getLocations() })
+})
+
 // Admin-managed order workflow stages (add / delete / reorder / notify flag).
 app.get('/api/admin/stages', requireAdmin, (req, res) => {
   return res.json({ stages: db.getOrderStages() })
@@ -662,7 +700,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const {
     customerName, customerMobile, customerEmail,
     files,
-    deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode
+    deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
+    locationId
   } = req.body || {}
 
   if (!customerName || !customerMobile) {
@@ -763,6 +802,9 @@ app.post('/api/orders', express.json(), async (req, res) => {
     ? `${safeFiles[0].fileName} +${safeFiles.length - 1} more`
     : safeFiles[0].fileName
 
+  // Resolve the chosen branch server-side so the stored name is trustworthy.
+  const chosenLocation = locationId ? db.getLocations().find((l) => l.id === locationId && l.active) : null
+
   const order = db.createOrder({
     id: orderId,
     customer_id: getOptionalCustomerId(req),
@@ -785,6 +827,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
     delivery_city: deliveryCity || null,
     delivery_state: deliveryState || null,
     delivery_pincode: deliveryPincode || null,
+    location_id: chosenLocation ? chosenLocation.id : (locationId || null),
+    location_name: chosenLocation ? chosenLocation.name : null,
     print_cost: calc.printCost,
     delivery_charge: calc.deliveryCharge,
     gst_amount: calc.gstAmount,

@@ -39,6 +39,7 @@ const TABLES = [
         file_name, file_path, file_type, page_count, files_json,
         orientation, print_mode, print_side, copies, paper_size, paper_type,
         delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
+        location_id, location_name,
         print_cost, delivery_charge, gst_amount, total_amount,
         razorpay_order_id, razorpay_payment_id, payment_status, order_status, failure_reason,
         created_at, updated_at, completed_at, files_deleted_at
@@ -65,6 +66,8 @@ const TABLES = [
       { name: 'delivery_city', type: 'STRING' },
       { name: 'delivery_state', type: 'STRING' },
       { name: 'delivery_pincode', type: 'STRING' },
+      { name: 'location_id', type: 'STRING' },
+      { name: 'location_name', type: 'STRING' },
       { name: 'print_cost', type: 'INTEGER' },
       { name: 'delivery_charge', type: 'INTEGER' },
       { name: 'gst_amount', type: 'INTEGER' },

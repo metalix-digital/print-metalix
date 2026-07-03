@@ -92,6 +92,8 @@ ensureColumn('orders', 'customer_id', 'TEXT')
 ensureColumn('orders', 'completed_at', 'INTEGER')
 ensureColumn('orders', 'files_deleted_at', 'INTEGER')
 ensureColumn('orders', 'archived_at', 'INTEGER')
+ensureColumn('orders', 'location_id', 'TEXT')
+ensureColumn('orders', 'location_name', 'TEXT')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 
@@ -218,6 +220,23 @@ function setOrderStages(stages) {
     .run('order_stages', JSON.stringify(stages))
 }
 
+// Branches / pickup locations are admin-editable and stored in settings under
+// 'locations'. Each: { id, name, address, city, pincode, active }. A default
+// branch is seeded so the customer always has something to choose.
+const DEFAULT_LOCATIONS = [
+  { id: 'main', name: 'Main Branch', address: '', city: 'Gurugram', pincode: '', active: true }
+]
+
+function getLocations() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('locations')
+  return row ? JSON.parse(row.value) : DEFAULT_LOCATIONS
+}
+
+function setLocations(locations) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run('locations', JSON.stringify(locations))
+}
+
 function createOrder(order) {
   const now = order.created_at
   db.prepare(`
@@ -226,6 +245,7 @@ function createOrder(order) {
       file_name, file_path, file_type, page_count, files_json,
       orientation, print_mode, print_side, copies, paper_size, paper_type,
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
+      location_id, location_name,
       print_cost, delivery_charge, gst_amount, total_amount,
       razorpay_order_id, payment_status, order_status,
       created_at, updated_at
@@ -234,11 +254,12 @@ function createOrder(order) {
       @file_name, @file_path, @file_type, @page_count, @files_json,
       @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type,
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
+      @location_id, @location_name,
       @print_cost, @delivery_charge, @gst_amount, @total_amount,
       @razorpay_order_id, @payment_status, @order_status,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', customer_id: null, ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 
@@ -462,6 +483,8 @@ module.exports = {
   setAdminAuth,
   getOrderStages,
   setOrderStages,
+  getLocations,
+  setLocations,
   createUser,
   findUserByIdentifier,
   findUserByGoogleId,

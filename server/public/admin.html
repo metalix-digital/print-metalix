@@ -196,6 +196,16 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .modal-ok.danger:hover{background:#B91C1C;}
 .restore-btn{background:#fff;border:1.5px solid var(--ok);color:var(--ok);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
 .restore-btn:hover{background:var(--ok);color:#fff;}
+/* locations manager */
+.loc-item{border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--paper);margin-bottom:12px;}
+.loc-top{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.loc-top input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:14.5px;font-weight:600;background:#fff;}
+.loc-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:9px;}
+.loc-grid input{border:1.5px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:13.5px;background:#fff;}
+.loc-item input:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+.loc-active{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink3);white-space:nowrap;cursor:pointer;}
+.loc-active input{accent-color:var(--orange);width:16px;height:16px;}
+@media(max-width:560px){ .loc-grid{grid-template-columns:1fr;} }
 
 /* action buttons */
 .dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
@@ -271,6 +281,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="pricing">Pricing</button>
+    <button class="tab-btn" data-tab="locations">Locations</button>
     <button class="tab-btn" data-tab="stages">Stages</button>
     <button class="tab-btn" data-tab="archive">Archive</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
@@ -313,6 +324,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
     <div class="panel" id="panel-pricing">
       <div class="pricing-form" id="pricingForm">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-locations">
+      <div class="stages-wrap" id="locationsWrap">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -429,6 +446,7 @@ async function showDash(){
   loadOrders();
   loadCustomers();
   loadPricing();
+  loadLocations();
   loadStages();
   loadArchive();
   loadSettings();
@@ -798,6 +816,7 @@ function renderOrders(orders){
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="7"><div class="detail">' +
       filesDetailHtml(o) +
       '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
+      (o.location_name ? '<div><strong>Branch:</strong> ' + escHtml(o.location_name) + '</div>' : '') +
       '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
@@ -902,6 +921,77 @@ function renderOrders(orders){
       }
     });
   });
+}
+
+/* -- LOCATIONS (branches) -- */
+let locationsDraft = [];
+
+async function loadLocations(){
+  const wrap = document.getElementById('locationsWrap');
+  try {
+    const res = await adminFetch('/api/admin/locations');
+    const data = await res.json();
+    locationsDraft = (data.locations || []).map((l) => ({ id: l.id || '', name: l.name || '', address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active !== false }));
+  } catch (err) { if (err.message === 'unauthorized') return; locationsDraft = []; }
+  wrap.innerHTML =
+    '<h2>Branches / pickup locations</h2>' +
+    '<p class="hint">Add the branches customers can choose from when starting an order. Inactive branches stay saved but are hidden from customers. Changes apply after you Save.</p>' +
+    '<div id="locList"></div>' +
+    '<div class="stage-add"><button class="add-btn" id="addLocBtn" type="button">Add branch</button></div>' +
+    '<button class="save-btn" id="saveLocBtn" type="button">Save branches</button>' +
+    '<div class="toast-msg" id="locMsg"></div>';
+  renderLocList();
+  document.getElementById('addLocBtn').addEventListener('click', () => {
+    locationsDraft.push({ id: '', name: '', address: '', city: '', pincode: '', active: true });
+    renderLocList();
+  });
+  document.getElementById('saveLocBtn').addEventListener('click', saveLocations);
+}
+
+function renderLocList(){
+  const list = document.getElementById('locList');
+  if (!locationsDraft.length){ list.innerHTML = '<div class="subtle" style="margin-bottom:12px;">No branches yet — add one below.</div>'; return; }
+  list.innerHTML = locationsDraft.map((l, i) =>
+    '<div class="loc-item" data-i="' + i + '">' +
+      '<div class="loc-top">' +
+        '<input data-f="name" placeholder="Branch name (e.g. Gurugram — Sector 14)" value="' + escHtml(l.name) + '" />' +
+        '<label class="loc-active"><input type="checkbox" data-f="active"' + (l.active ? ' checked' : '') + ' /> Active</label>' +
+        '<button class="del" type="button" title="Delete branch">✕</button>' +
+      '</div>' +
+      '<div class="loc-grid">' +
+        '<input data-f="address" placeholder="Street address" value="' + escHtml(l.address) + '" />' +
+        '<input data-f="city" placeholder="City" value="' + escHtml(l.city) + '" />' +
+        '<input data-f="pincode" placeholder="PIN code" value="' + escHtml(l.pincode) + '" />' +
+      '</div>' +
+    '</div>'
+  ).join('');
+  list.querySelectorAll('.loc-item').forEach((el) => {
+    const i = Number(el.dataset.i);
+    el.querySelectorAll('[data-f]').forEach((inp) => {
+      const f = inp.dataset.f;
+      inp.addEventListener('input', () => { locationsDraft[i][f] = f === 'active' ? inp.checked : inp.value; });
+      if (f === 'active') inp.addEventListener('change', () => { locationsDraft[i].active = inp.checked; });
+    });
+    el.querySelector('.del').addEventListener('click', () => { locationsDraft.splice(i, 1); renderLocList(); });
+  });
+}
+
+function setLocMsg(msg, isErr){ const el = document.getElementById('locMsg'); if (el){ el.textContent = msg; el.style.color = isErr ? '#DC2626' : '#15803D'; } }
+
+async function saveLocations(){
+  if (locationsDraft.some((l) => !l.name.trim())){ setLocMsg('Every branch needs a name.', true); return; }
+  try {
+    const res = await adminFetch('/api/admin/locations', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locations: locationsDraft })
+    });
+    const data = await res.json();
+    if (!res.ok){ setLocMsg(data.message || 'Could not save branches.', true); return; }
+    locationsDraft = data.locations.map((l) => ({ ...l }));
+    renderLocList();
+    setLocMsg('Branches saved.', false);
+  } catch (err) {
+    if (err.message !== 'unauthorized') setLocMsg('Could not save branches.', true);
+  }
 }
 
 /* -- STAGES -- */
