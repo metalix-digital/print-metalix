@@ -506,6 +506,17 @@ app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   if (failure_reason !== undefined) updates.failure_reason = failure_reason
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   const updated = db.updateOrder(order.id, updates)
+
+  // Email the customer when their order reaches a notifiable milestone
+  // (ready for pickup / out for delivery / completed) — but only when the
+  // status actually changed. Fire-and-forget so a mail hiccup never fails the
+  // admin's update.
+  if (order.order_status !== updated.order_status && mailer.NOTIFIABLE_STATUSES.has(updated.order_status)) {
+    const trackUrl = `${req.protocol}://${req.get('host')}/track/${updated.id}`
+    mailer.sendOrderStatusEmail(updated, trackUrl).catch((err) => {
+      console.error(`[orders] failed to email status update for ${updated.id}:`, err.message)
+    })
+  }
   return res.json({ order: updated })
 })
 
