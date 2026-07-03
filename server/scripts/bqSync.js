@@ -3,10 +3,14 @@
 // deploy/metalix-bqsync.*.example) under the same service account that already
 // backs Secret Manager / Storage — so it authenticates via ADC, no keys.
 //
-// Strategy: truncate-and-reload. Each run reads every selected table in full
-// and replaces the BigQuery table (WRITE_TRUNCATE). The dataset is tiny (MVP),
-// so a full reload is simpler and more self-healing than incremental syncing —
-// a missed run just corrects itself the next day.
+// Strategy: incremental UPSERT (never full-reload). Each run loads the current
+// SQLite rows into a per-table staging table, then MERGEs them into the target
+// on `id`: new rows are INSERTed, rows that already exist are UPDATEd in place.
+// So BigQuery keeps growing with new orders AND reflects later changes (an
+// order's status/payment/completed_at update instead of freezing at first
+// capture). Nothing in the target is ever deleted by the sync. The dataset is
+// tiny (MVP), so staging every row each run is cheap; if volume grows, stage
+// only rows with updated_at past a watermark.
 //
 // Deliberately NOT exported: users.password_hash, the whole password_resets
 // table, and settings — auth secrets / ephemeral tokens / config with no
@@ -21,6 +25,7 @@ const { BigQuery } = require('@google-cloud/bigquery')
 const SQLITE_PATH = process.env.SQLITE_PATH || path.join(__dirname, '..', 'data', 'metalix.db')
 const DATASET = process.env.BQ_DATASET || 'metalix_analytics'
 const LOCATION = process.env.BQ_LOCATION || 'asia-south1'
+const STG_PREFIX = 'stg_' // staging tables are overwritten every run
 
 // One entry per BigQuery table: the SQLite query that produces its rows (with
 // secret columns left out) and the explicit BigQuery schema. Explicit schemas
@@ -114,27 +119,72 @@ async function ensureDataset(bq) {
   return dataset
 }
 
-// Loads one table via a WRITE_TRUNCATE load job from a temp NDJSON file — the
-// standard, free (no streaming-insert cost) way to fully replace a table.
-async function loadTable(dataset, db, table) {
-  const rows = db.prepare(table.query).all()
+// MERGE requires the target to already exist, so create it (empty, with the
+// explicit schema) on first run. WRITE_TRUNCATE on staging handles itself.
+async function ensureTable(dataset, table) {
+  const t = dataset.table(table.name)
+  const [exists] = await t.exists()
+  if (!exists) {
+    await dataset.createTable(table.name, { schema: { fields: table.schema }, location: LOCATION })
+    console.log(`[bqsync] created table ${DATASET}.${table.name}`)
+  }
+}
+
+// Loads the current SQLite rows into the staging table via a WRITE_TRUNCATE
+// load job — the standard, free (no streaming-insert cost) way to replace it.
+async function loadStaging(dataset, table, rows) {
+  const stgName = STG_PREFIX + table.name
   const tmpFile = path.join(os.tmpdir(), `bqsync-${table.name}-${process.pid}.ndjson`)
   // NDJSON: one JSON object per line. better-sqlite3 already returns JS values
   // of the right types (numbers / strings / null), so a plain stringify is a
   // valid BigQuery row.
   fs.writeFileSync(tmpFile, rows.map((r) => JSON.stringify(r)).join('\n'))
   try {
-    await dataset.table(table.name).load(tmpFile, {
+    await dataset.table(stgName).load(tmpFile, {
       sourceFormat: 'NEWLINE_DELIMITED_JSON',
       schema: { fields: table.schema },
       writeDisposition: 'WRITE_TRUNCATE',
       createDisposition: 'CREATE_IF_NEEDED',
       location: LOCATION
     })
-    console.log(`[bqsync] loaded ${rows.length} rows -> ${DATASET}.${table.name}`)
   } finally {
     fs.rmSync(tmpFile, { force: true })
   }
+}
+
+// Upserts staging into the target on the key column: update every matched row,
+// insert every unmatched one. Returns BigQuery's DML stats for logging.
+async function mergeStagingIntoTarget(bq, table) {
+  const key = table.key || 'id'
+  const cols = table.schema.map((f) => f.name)
+  const nonKey = cols.filter((c) => c !== key)
+  const setClause = nonKey.map((c) => `T.\`${c}\` = S.\`${c}\``).join(', ')
+  const insertCols = cols.map((c) => `\`${c}\``).join(', ')
+  const insertVals = cols.map((c) => `S.\`${c}\``).join(', ')
+  const sql = `
+    MERGE \`${DATASET}.${table.name}\` T
+    USING \`${DATASET}.${STG_PREFIX}${table.name}\` S
+    ON T.\`${key}\` = S.\`${key}\`
+    WHEN MATCHED THEN UPDATE SET ${setClause}
+    WHEN NOT MATCHED THEN INSERT (${insertCols}) VALUES (${insertVals})`
+  const [job] = await bq.createQueryJob({ query: sql, location: LOCATION })
+  await job.getQueryResults()
+  const [meta] = await job.getMetadata()
+  return (meta.statistics && meta.statistics.query && meta.statistics.query.dmlStats) || {}
+}
+
+async function syncTable(bq, dataset, db, table) {
+  await ensureTable(dataset, table)
+  const rows = db.prepare(table.query).all()
+  if (rows.length === 0) {
+    console.log(`[bqsync] ${table.name}: no source rows, nothing to merge`)
+    return
+  }
+  await loadStaging(dataset, table, rows)
+  const stats = await mergeStagingIntoTarget(bq, table)
+  const inserted = stats.insertedRowCount || 0
+  const updated = stats.updatedRowCount || 0
+  console.log(`[bqsync] ${DATASET}.${table.name}: +${inserted} inserted, ~${updated} updated (from ${rows.length} staged)`)
 }
 
 async function main() {
@@ -147,7 +197,7 @@ async function main() {
   try {
     const dataset = await ensureDataset(bq)
     for (const table of TABLES) {
-      await loadTable(dataset, db, table)
+      await syncTable(bq, dataset, db, table)
     }
     console.log('[bqsync] done')
   } finally {
