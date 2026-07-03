@@ -176,15 +176,17 @@ app.get('/api/settings', (req, res) => {
 // Website "contact us" form → emails the business inbox. Always logs the
 // submission first so a message is never lost even if email delivery fails.
 app.post('/api/contact', express.json(), async (req, res) => {
-  const name = String((req.body && req.body.name) || '').trim().slice(0, 100)
-  const contact = String((req.body && req.body.contact) || '').trim().slice(0, 120)
-  const message = String((req.body && req.body.message) || '').trim().slice(0, 5000)
-  if (!name || !contact || !message) {
-    return res.status(400).json({ error: 'missing_fields', message: 'Please fill in all fields.' })
+  const b = req.body || {}
+  const name = String(b.name || '').trim().slice(0, 100)
+  const email = String(b.email || '').trim().slice(0, 120)
+  const phone = String(b.phone || '').trim().slice(0, 20)
+  const message = String(b.message || '').trim().slice(0, 5000)
+  if (!name || !email || !phone || !message) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Please fill in name, email, phone and message.' })
   }
-  console.log(`[contact] ${name} <${contact}>: ${message.replace(/\s+/g, ' ').slice(0, 300)}`)
+  console.log(`[contact] ${name} <${email}> ${phone}: ${message.replace(/\s+/g, ' ').slice(0, 300)}`)
   try {
-    await mailer.sendContactMessageEmail({ name, contact, message })
+    await mailer.sendContactMessageEmail({ name, email, phone, message })
   } catch (err) {
     console.error('[contact] email send failed:', err.message)
     return res.status(500).json({ error: 'send_failed', message: 'Could not send right now — please WhatsApp or call us.' })

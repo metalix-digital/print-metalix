@@ -749,8 +749,12 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
             <input type="text" placeholder="Aarav Sharma" id="cName">
           </div>
           <div class="field">
-            <label>Email or mobile</label>
-            <input type="text" placeholder="you@example.com or 9876543210" id="cContact">
+            <label>Email</label>
+            <input type="email" placeholder="you@example.com" id="cEmail" autocomplete="email">
+          </div>
+          <div class="field">
+            <label>Phone number</label>
+            <input type="tel" placeholder="9876543210" id="cPhone" autocomplete="tel" maxlength="15">
           </div>
           <div class="field">
             <label>Message</label>
@@ -1501,21 +1505,24 @@ function checkStrength(inp){
 /* -- CONTACT FORM -- */
 async function sendContactForm(){
   const name = document.getElementById('cName').value.trim();
-  const contact = document.getElementById('cContact').value.trim();
+  const email = document.getElementById('cEmail').value.trim();
+  const phone = document.getElementById('cPhone').value.trim();
   const msg = document.getElementById('cMsg').value.trim();
-  if(!name||!contact||!msg){ showToast('Please fill in all fields','⚠️'); return; }
+  if(!name||!email||!phone||!msg){ showToast('Please fill in name, email, phone and message','⚠️'); return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showToast('Please enter a valid email address','⚠️'); return; }
   const btn = document.querySelector('.contact-form .submit-btn');
   if(btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
   try {
     const res = await fetch('/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, contact, message: msg })
+      body: JSON.stringify({ name, email, phone, message: msg })
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok){ showToast(data.message || 'Could not send. Please try again.','⚠️'); return; }
     document.getElementById('cName').value='';
-    document.getElementById('cContact').value='';
+    document.getElementById('cEmail').value='';
+    document.getElementById('cPhone').value='';
     document.getElementById('cMsg').value='';
     showToast('Message sent! We\'ll get back to you shortly.','✓');
   } catch(e){
