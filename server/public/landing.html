@@ -1602,14 +1602,21 @@ function showToast(msg, icon='✓'){
     }
     window.location.href = '/order';
   };
-  fetch('/api/locations').then(function(r){ return r.json(); }).then(function(d){
-    branches = d.locations || [];
-    if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
-    var sel = getSel();
-    if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
-    updateBtn(); renderMenu();
-  }).catch(function(){ updateBtn(); });
+  // Defer the branches fetch off the initial critical path — the picker shows
+  // "Select branch" instantly and populates once the browser is idle. (A user
+  // can't click through to /order in the first moments anyway.)
+  function loadBranches(){
+    fetch('/api/locations').then(function(r){ return r.json(); }).then(function(d){
+      branches = d.locations || [];
+      if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
+      var sel = getSel();
+      if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
+      updateBtn(); renderMenu();
+    }).catch(function(){ updateBtn(); });
+  }
   updateBtn();
+  if ('requestIdleCallback' in window) requestIdleCallback(loadBranches, { timeout: 3000 });
+  else window.addEventListener('load', function(){ setTimeout(loadBranches, 200); });
 })();
 </script>
 </body>
