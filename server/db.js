@@ -94,6 +94,9 @@ ensureColumn('orders', 'files_deleted_at', 'INTEGER')
 ensureColumn('orders', 'archived_at', 'INTEGER')
 ensureColumn('orders', 'location_id', 'TEXT')
 ensureColumn('orders', 'location_name', 'TEXT')
+ensureColumn('orders', 'payment_method', "TEXT DEFAULT 'online'") // 'online' | 'cod'
+ensureColumn('orders', 'payment_mode', 'TEXT')     // set on collection: 'cash' | 'upi'
+ensureColumn('orders', 'payment_collected_at', 'INTEGER')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 
@@ -247,6 +250,7 @@ function createOrder(order) {
       orientation, print_mode, print_side, copies, paper_size, paper_type,
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
       location_id, location_name,
+      payment_method,
       print_cost, delivery_charge, gst_amount, total_amount,
       razorpay_order_id, payment_status, order_status,
       created_at, updated_at
@@ -256,11 +260,12 @@ function createOrder(order) {
       @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type,
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
       @location_id, @location_name,
+      @payment_method,
       @print_cost, @delivery_charge, @gst_amount, @total_amount,
       @razorpay_order_id, @payment_status, @order_status,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 
@@ -296,7 +301,9 @@ function listOrdersForFileCleanup() {
 // abandoned checkouts (payment_status 'created') and failed payments never
 // show up here, though the rows themselves are kept in the database.
 function listOrders({ status, search, limit, offset } = {}) {
-  const clauses = ["payment_status = 'paid'", 'archived_at IS NULL']
+  // Confirmed orders = paid online OR pay-on-delivery (COD); COD isn't prepaid
+  // but is a committed order the shop must fulfil.
+  const clauses = ["(payment_status = 'paid' OR payment_method = 'cod')", 'archived_at IS NULL']
   const params = {}
   if (status) {
     clauses.push('order_status = @status')
@@ -368,7 +375,7 @@ function listArchivedBefore(cutoff) {
 function listOrdersForCustomer(customerId) {
   return db.prepare(`
     SELECT * FROM orders
-    WHERE customer_id = ? AND payment_status = 'paid'
+    WHERE customer_id = ? AND (payment_status = 'paid' OR payment_method = 'cod')
     ORDER BY created_at DESC
   `).all(customerId)
 }
@@ -383,7 +390,7 @@ function listCustomers() {
       SUM(total_amount) as total_spent,
       MAX(created_at) as last_order_at
     FROM orders
-    WHERE payment_status = 'paid' AND archived_at IS NULL
+    WHERE (payment_status = 'paid' OR payment_method = 'cod') AND archived_at IS NULL
     GROUP BY customer_mobile
     ORDER BY last_order_at DESC
   `).all()

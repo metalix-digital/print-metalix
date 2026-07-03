@@ -576,6 +576,18 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
   return res.json({ updated, emailed })
 })
 
+// Record a pay-on-delivery collection (Cash/UPI) — marks the order paid.
+app.post('/api/admin/orders/:id/collect-payment', requireAdmin, express.json(), (req, res) => {
+  const { mode } = req.body || {}
+  if (!['cash', 'upi'].includes(mode)) {
+    return res.status(400).json({ error: 'invalid_mode', message: 'Payment mode must be cash or upi.' })
+  }
+  const order = db.getOrder(req.params.id)
+  if (!order) return res.status(404).json({ error: 'not_found' })
+  const updated = db.updateOrder(order.id, { payment_status: 'paid', payment_mode: mode, payment_collected_at: Date.now() })
+  return res.json({ order: updated })
+})
+
 // Archive (soft-delete) a single order. It leaves the Orders/Customers views
 // and BigQuery immediately, but is recoverable for 30 days before the purge
 // job removes it for good.
@@ -724,8 +736,9 @@ app.post('/api/orders', express.json(), async (req, res) => {
     customerName, customerMobile, customerEmail,
     files,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
-    locationId
+    locationId, paymentMethod
   } = req.body || {}
+  const isCod = paymentMethod === 'cod'
 
   if (!customerName || !customerMobile) {
     return res.status(400).json({ error: 'missing_customer_info' })
@@ -803,22 +816,26 @@ app.post('/api/orders', express.json(), async (req, res) => {
   let razorpayOrder = null
   let simulated = true
 
-  if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
-    try {
-      const Razorpay = require('razorpay')
-      const instance = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
-      razorpayOrder = await instance.orders.create({
-        amount: calc.totalAmount * 100,
-        currency: 'INR',
-        receipt: orderId
-      })
-      simulated = false
-    } catch (err) {
-      console.error('Razorpay order creation failed', err)
-      return res.status(500).json({ error: 'payment_error' })
+  // Pay-on-delivery (Cash/UPI) skips the online gateway entirely — the order is
+  // confirmed now and payment is collected by staff at delivery/pickup.
+  if (!isCod) {
+    if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
+      try {
+        const Razorpay = require('razorpay')
+        const instance = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
+        razorpayOrder = await instance.orders.create({
+          amount: calc.totalAmount * 100,
+          currency: 'INR',
+          receipt: orderId
+        })
+        simulated = false
+      } catch (err) {
+        console.error('Razorpay order creation failed', err)
+        return res.status(500).json({ error: 'payment_error' })
+      }
+    } else {
+      razorpayOrder = { id: `SIM_${orderId}`, amount: calc.totalAmount * 100, currency: 'INR' }
     }
-  } else {
-    razorpayOrder = { id: `SIM_${orderId}`, amount: calc.totalAmount * 100, currency: 'INR' }
   }
 
   const fileNameSummary = safeFiles.length > 1
@@ -852,15 +869,26 @@ app.post('/api/orders', express.json(), async (req, res) => {
     delivery_pincode: deliveryPincode || null,
     location_id: chosenLocation ? chosenLocation.id : (locationId || null),
     location_name: chosenLocation ? chosenLocation.name : null,
+    payment_method: isCod ? 'cod' : 'online',
     print_cost: calc.printCost,
     delivery_charge: calc.deliveryCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
-    razorpay_order_id: razorpayOrder.id,
-    payment_status: 'created',
+    razorpay_order_id: isCod ? null : razorpayOrder.id,
+    payment_status: isCod ? 'pending' : 'created',
     order_status: 'Received',
     created_at: Date.now()
   })
+
+  // COD orders are confirmed immediately: queue them for printing and notify,
+  // just like a paid online order does after verify-payment.
+  if (isCod) {
+    printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
+    const fresh = db.getOrder(order.id)
+    notify.sendOrderConfirmationSms(fresh)
+    notify.sendOrderConfirmationEmail(fresh)
+    return res.json({ order: fresh, cod: true })
+  }
 
   return res.json({ order, razorpayOrder, key: RAZORPAY_KEY_ID || '', simulated })
 })

@@ -343,6 +343,15 @@
           </div>
         </div>
       </div>
+
+      <div class="opt-group">
+        <span class="opt-label">Payment</span>
+        <div class="seg">
+          <label><input type="radio" name="payment" value="online" checked><span class="pill">Pay online now</span></label>
+          <label><input type="radio" name="payment" value="cod"><span class="pill">Pay on delivery (Cash / UPI)</span></label>
+        </div>
+        <div class="delivery-note" id="paymentNote">Pay securely online now via UPI, card, or net-banking.</div>
+      </div>
     </div>
 
     <!-- RIGHT: RECEIPT -->
@@ -395,7 +404,7 @@
     <!-- SUCCESS PANEL (replaces the card content after payment) -->
     <div class="success-panel" id="successPanel" style="grid-column:1 / -1;">
       <div class="success-check"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="success-title">Payment successful</div>
+      <div class="success-title" id="successTitle">Payment successful</div>
       <div class="success-sub" id="successSub">Your order has been queued for printing.</div>
       <div class="success-details">
         <div class="sline"><span>Order ID</span><b id="successOrderId">—</b></div>
@@ -426,6 +435,7 @@
     <div class="mline" id="mPaperTypeRow"><span>Paper type</span><b id="mPaperType">—</b></div>
     <div class="mline"><span>Copies</span><b id="mCopies">—</b></div>
     <div class="mline"><span>Delivery</span><b id="mDelivery">—</b></div>
+    <div class="mline"><span>Payment</span><b id="mPayment">—</b></div>
     <div class="mline"><span>Final amount</span><b id="mTotal">—</b></div>
     <div class="mquestion">Would you like to proceed with payment?</div>
     <div class="modal-actions">
@@ -539,7 +549,8 @@ let state = {
   files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, paperType, orientation, printSide, copies, password}, ...]
   uploading: false,
   paperSize: 'a4',
-  deliveryMethod: 'pickup'
+  deliveryMethod: 'pickup',
+  paymentMethod: 'online'
 };
 
 function totalUploadedBytes(){
@@ -636,6 +647,14 @@ document.querySelectorAll('input[name=delivery]').forEach(r=> r.addEventListener
   state.deliveryMethod = e.target.value;
   deliveryAddress.classList.toggle('show', state.deliveryMethod === 'delivery');
   recalc();
+}));
+
+document.querySelectorAll('input[name=payment]').forEach(r=> r.addEventListener('change', e=>{
+  state.paymentMethod = e.target.value;
+  const note = document.getElementById('paymentNote');
+  if(note) note.textContent = state.paymentMethod === 'cod'
+    ? 'Pay in cash or by UPI when you collect or receive your order. No online payment needed now.'
+    : 'Pay securely online now via UPI, card, or net-banking.';
 }));
 
 function setFieldError(fieldId, show){
@@ -974,6 +993,8 @@ confirmBtn.addEventListener('click', ()=>{
   document.getElementById('mPaperTypeRow').style.display = state.paperSize === 'a4' ? 'flex' : 'none';
   document.getElementById('mCopies').textContent = copiesSummaryLabel();
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
+  document.getElementById('mPayment').textContent = state.paymentMethod === 'cod' ? 'Pay on delivery (Cash / UPI)' : 'Pay online now';
+  document.getElementById('modalProceed').textContent = state.paymentMethod === 'cod' ? 'Place order' : 'Yes, proceed';
   document.getElementById('mTotal').textContent = '₹' + est.totalAmount;
   confirmModal.classList.add('show');
 });
@@ -1011,7 +1032,8 @@ function buildOrderPayload(){
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,
     deliveryState: state.deliveryMethod === 'delivery' ? document.getElementById('addrState').value.trim() : undefined,
     deliveryPincode: state.deliveryMethod === 'delivery' ? document.getElementById('addrPincode').value.trim() : undefined,
-    locationId: getSelectedBranchId()
+    locationId: getSelectedBranchId(),
+    paymentMethod: state.paymentMethod
   };
 }
 
@@ -1024,9 +1046,14 @@ function getSelectedBranchId(){
 }
 
 function showSuccess(order){
+  const isCod = order.payment_method === 'cod';
+  document.getElementById('successTitle').textContent = isCod ? 'Order placed!' : 'Payment successful';
+  document.getElementById('successSub').textContent = isCod
+    ? 'Pay in cash or by UPI on delivery / at pickup. Your order has been queued for printing.'
+    : 'Your order has been queued for printing.';
   document.getElementById('successOrderId').textContent = order.id;
-  document.getElementById('successTxnId').textContent = order.razorpay_payment_id || '—';
-  document.getElementById('successAmount').textContent = '₹' + order.total_amount;
+  document.getElementById('successTxnId').textContent = isCod ? 'Pay on delivery' : (order.razorpay_payment_id || '—');
+  document.getElementById('successAmount').textContent = (isCod ? 'Due: ₹' : '₹') + order.total_amount;
   document.getElementById('successStatus').textContent = order.order_status;
   document.querySelectorAll('.card > .left, .card > .right').forEach(el => el.style.display = 'none');
   document.getElementById('successPanel').classList.add('show');
@@ -1067,6 +1094,12 @@ document.getElementById('modalProceed').addEventListener('click', async ()=>{
     const data = await res.json();
     if(!res.ok){
       showToast(data.message || data.error || 'Could not create order', true);
+      return;
+    }
+
+    if(data.cod){
+      // Pay-on-delivery: order is already confirmed and queued, no online payment.
+      showSuccess(data.order);
       return;
     }
 
