@@ -83,6 +83,16 @@ select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4p
 .save-btn:disabled{opacity:.6;cursor:default;}
 .save-message{margin-top:12px;font-size:13px;color:#16A34A;}
 .save-message.error{color:#DC2626;}
+.rate-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.rate-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--line);white-space:nowrap;}
+.rate-table td{padding:6px 8px;vertical-align:middle;border-bottom:1px solid var(--line2);}
+.rate-table input,.rate-table select{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box;}
+.rate-table .col-rate input{max-width:110px;}
+.rate-table .col-size select{min-width:96px;}
+.rate-remove{background:none;border:1.5px solid var(--line-strong,#C7C2B0);color:var(--ink3);border-radius:7px;width:30px;height:30px;font-size:15px;line-height:1;cursor:pointer;}
+.rate-remove:hover{border-color:#DC2626;color:#DC2626;}
+.rate-add{margin-top:14px;background:none;border:1.5px dashed var(--orange);color:var(--orange);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}
+.rate-add:hover{background:var(--orange);color:#fff;}
 .table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .table-scroll table{min-width:640px;}
 
@@ -703,7 +713,9 @@ function statusSelectHtml(order){
 }
 
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
-const PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
+// Seeded with the three built-in ids; merged with the live paper-type labels
+// (across every page size) once pricing loads, so order rows show real names.
+let PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
 
 function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, paperType){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
@@ -1257,27 +1269,73 @@ async function purgeArchivedOrder(id){
 }
 
 /* -- PRICING -- */
+// Selectable page sizes for the pricing table. Orders currently only use A4;
+// the other sizes are here so rates can be configured ahead of exposing them.
+const PAGE_SIZES = [
+  { id: 'a4', label: 'A4' },
+  { id: 'a3', label: 'A3' },
+  { id: 'a5', label: 'A5' },
+  { id: 'letter', label: 'Letter' },
+  { id: 'legal', label: 'Legal' }
+];
+
 function rateFieldHtml(label, key, value){
   return '<label class="field"><span>' + label + '</span>' +
     '<input type="number" step="0.5" min="0" data-key="' + key + '" value="' + value + '" /></label>';
 }
 
-function paperTypeFieldGroupHtml(label, size, type, rates){
-  return '<h2>' + label + '</h2><div class="field-grid">' +
-    rateFieldHtml('B/W · single (₹/page)', 'rates.' + size + '.' + type + '.bw.single', rates.bw.single) +
-    rateFieldHtml('B/W · double (₹/sheet)', 'rates.' + size + '.' + type + '.bw.double', rates.bw.double) +
-    rateFieldHtml('Color · single (₹/page)', 'rates.' + size + '.' + type + '.color.single', rates.color.single) +
-  '</div>';
+function pageSizeOptionsHtml(selected){
+  return PAGE_SIZES.map((s) =>
+    '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escHtml(s.label) + '</option>'
+  ).join('');
+}
+
+// One editable <tr>. data-id preserves an existing paper type's stable id so
+// renaming its label doesn't change the id stored on past orders; blank for new rows.
+function rateRowHtml(size, row){
+  row = row || { id: '', label: '', bw: {}, color: {} };
+  return '<tr class="rate-row" data-id="' + escHtml(row.id || '') + '">' +
+    '<td class="col-size"><select class="rr-size">' + pageSizeOptionsHtml(size) + '</select></td>' +
+    '<td class="col-name"><input class="rr-label" type="text" placeholder="e.g. Glossy" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="rr-bw-single" type="number" step="0.5" min="0" value="' + (row.bw && row.bw.single != null ? row.bw.single : '') + '" /></td>' +
+    '<td class="col-rate"><input class="rr-bw-double" type="number" step="0.5" min="0" value="' + (row.bw && row.bw.double != null ? row.bw.double : '') + '" /></td>' +
+    '<td class="col-rate"><input class="rr-color-single" type="number" step="0.5" min="0" value="' + (row.color && row.color.single != null ? row.color.single : '') + '" /></td>' +
+    '<td><button type="button" class="rate-remove" aria-label="Remove row">✕</button></td>' +
+  '</tr>';
+}
+
+function bindRateRowRemove(tr){
+  tr.querySelector('.rate-remove').addEventListener('click', () => tr.remove());
 }
 
 async function loadPricing(){
   const form = document.getElementById('pricingForm');
   const res = await fetch('/api/pricing');
   const p = await res.json();
+
+  // Flatten rates (keyed by page size) into rows, A4 first.
+  const rates = p.rates || {};
+  const sizeOrder = PAGE_SIZES.map((s) => s.id);
+  const rowsHtml = [];
+  Object.keys(rates)
+    .filter((size) => Array.isArray(rates[size]))
+    .sort((a, b) => sizeOrder.indexOf(a) - sizeOrder.indexOf(b))
+    .forEach((size) => {
+      rates[size].forEach((row) => {
+        rowsHtml.push(rateRowHtml(size, row));
+        // Keep the live label map fresh for order-detail rendering.
+        if (row.id) PAPER_TYPE_LABELS[row.id] = row.label;
+      });
+    });
+  if (!rowsHtml.length) rowsHtml.push(rateRowHtml('a4', null));
+
   form.innerHTML =
-    paperTypeFieldGroupHtml('A4 — Normal paper (70–75 GSM)', 'a4', 'normal', p.rates.a4.normal) +
-    paperTypeFieldGroupHtml('A4 — Bond paper (100 GSM)', 'a4', 'bond', p.rates.a4.bond) +
-    paperTypeFieldGroupHtml('A4 — Premium digital color paper', 'a4', 'premium', p.rates.a4.premium) +
+    '<h2>Print rates</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only. Customers currently order A4 only.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Page size</th><th>Paper type</th><th>B/W single (₹/page)</th><th>B/W double (₹/sheet)</th><th>Color single (₹/page)</th><th></th>' +
+    '</tr></thead><tbody id="rateRows">' + rowsHtml.join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addRateRow">+ Add paper type</button>' +
     '<h2>Other</h2><div class="field-grid">' +
       rateFieldHtml('Delivery charge (₹ flat)', 'deliveryCharge', p.deliveryCharge) +
       rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
@@ -1285,30 +1343,51 @@ async function loadPricing(){
     '<button class="save-btn" id="savePricingBtn">Save pricing</button>' +
     '<div id="pricingMessage"></div>';
 
+  form.querySelectorAll('.rate-row').forEach(bindRateRowRemove);
+  document.getElementById('addRateRow').addEventListener('click', () => {
+    const tbody = document.getElementById('rateRows');
+    tbody.insertAdjacentHTML('beforeend', rateRowHtml('a4', null));
+    bindRateRowRemove(tbody.lastElementChild);
+  });
   document.getElementById('savePricingBtn').addEventListener('click', savePricing);
 }
 
 async function savePricing(){
   const btn = document.getElementById('savePricingBtn');
   const msg = document.getElementById('pricingMessage');
-  const blankRates = () => ({ bw: {}, color: {} });
-  const pricing = {
-    rates: {
-      a4: { normal: blankRates(), bond: blankRates(), premium: blankRates() }
-    },
-    deliveryCharge: 0,
-    gstPercent: 0
-  };
-  document.querySelectorAll('#pricingForm input[data-key]').forEach((input) => {
-    const path = input.dataset.key.split('.');
-    let node = pricing;
-    for (let i = 0; i < path.length - 1; i++) node = node[path[i]];
-    node[path[path.length - 1]] = Number(input.value);
+  const numOrZero = (el) => { const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? n : 0; };
+
+  // Group editable rows back into rates keyed by page size. Rows without a
+  // paper-type name are skipped (the server also drops them defensively).
+  const rates = {};
+  let skipped = 0;
+  document.querySelectorAll('#rateRows .rate-row').forEach((tr) => {
+    const label = tr.querySelector('.rr-label').value.trim();
+    if (!label){ skipped++; return; }
+    const size = tr.querySelector('.rr-size').value;
+    (rates[size] = rates[size] || []).push({
+      id: tr.dataset.id || '',
+      label,
+      bw: { single: numOrZero(tr.querySelector('.rr-bw-single')), double: numOrZero(tr.querySelector('.rr-bw-double')) },
+      color: { single: numOrZero(tr.querySelector('.rr-color-single')) }
+    });
   });
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
+
   msg.textContent = '';
   msg.className = 'save-message';
+  if (!Array.isArray(rates.a4) || !rates.a4.length){
+    msg.textContent = 'Add at least one A4 paper type before saving.';
+    msg.className = 'save-message error';
+    return;
+  }
+
+  const pricing = {
+    rates,
+    deliveryCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryCharge"]')),
+    gstPercent: numOrZero(document.querySelector('#pricingForm input[data-key="gstPercent"]'))
+  };
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
   try {
     const res = await adminFetch('/api/admin/pricing', {
       method: 'PUT',
@@ -1316,15 +1395,21 @@ async function savePricing(){
       body: JSON.stringify(pricing)
     });
     if (!res.ok) throw new Error('save_failed');
-    msg.textContent = 'Saved — the home page now reflects these prices.';
+    await loadPricing(); // reload so new rows pick up their server-assigned ids
+    const m = document.getElementById('pricingMessage');
+    if (m){
+      m.className = 'save-message';
+      m.textContent = 'Saved — the home page now reflects these prices.' +
+        (skipped ? ' (' + skipped + ' blank row' + (skipped === 1 ? '' : 's') + ' skipped)' : '');
+    }
   } catch (err) {
     if (err.message !== 'unauthorized'){
       msg.textContent = 'Failed to save pricing.';
       msg.className = 'save-message error';
     }
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save pricing';
+    const b = document.getElementById('savePricingBtn');
+    if (b){ b.disabled = false; b.textContent = 'Save pricing'; }
   }
 }
 

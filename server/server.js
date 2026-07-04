@@ -784,7 +784,10 @@ app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res)
 
 app.put('/api/admin/pricing', requireAdmin, express.json(), (req, res) => {
   const pricing = req.body
-  if (!pricing || !pricing.rates) return res.status(400).json({ error: 'invalid_pricing' })
+  if (!pricing || !pricing.rates || !Array.isArray(pricing.rates.a4)) {
+    return res.status(400).json({ error: 'invalid_pricing' })
+  }
+  // db.setPricing normalizes the paper-type rows (ids, numeric rates) before persisting.
   db.setPricing(pricing)
   return res.json(db.getPricing())
 })
@@ -813,7 +816,11 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
-  const VALID_PAPER_TYPES = ['normal', 'bond', 'premium']
+  // Paper types are admin-managed, so the valid set comes from the live pricing
+  // config (its ids), not a hardcoded list. Unknown ids fall back to the first.
+  const paperTypeConfig = db.getPricing()
+  const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
+  const defaultPaperType = paperTypeIds[0] || 'normal'
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
@@ -826,7 +833,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
     // Colour prints are single-sided only — enforce server-side regardless of input.
     const fileSide = fileMode === 'color' ? 'single' : (VALID_SIDES.includes(f.printSide) ? f.printSide : 'single')
-    const filePaperType = VALID_PAPER_TYPES.includes(f.paperType) ? f.paperType : 'normal'
+    const filePaperType = paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {

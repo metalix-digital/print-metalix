@@ -6,10 +6,13 @@ function calculate(config, { files, deliveryMethod }) {
   let printCost = 0
   let colorPages = 0
   let bwPages = 0
+  const paperTypes = Array.isArray(config.rates.a4) ? config.rates.a4 : []
   ;(files || []).forEach((f) => {
     const side = f.printSide === 'double' ? 'double' : 'single'
-    const type = config.rates.a4[f.paperType] ? f.paperType : 'normal'
-    const rates = config.rates.a4[type]
+    // Match the file's paper type by id, falling back to the first configured
+    // type so an unknown/removed id still prices instead of crashing.
+    const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]
+    if (!rates) return
     const copies = Math.max(1, f.copies || 1)
     const c = f.colorPages || 0
     const b = f.bwPages || 0

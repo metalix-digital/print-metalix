@@ -100,28 +100,86 @@ ensureColumn('orders', 'payment_collected_at', 'INTEGER')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 
+// Paper types are an admin-managed list: each entry is
+// { id, label, bw: { single, double }, color: { single } }. The `id` is a
+// stable slug used on stored orders and in lookups; `label` is the editable
+// display name. Colour is single-sided only, so there is no color.double rate.
 const DEFAULT_PRICING = {
   rates: {
-    a4: {
-      normal: { bw: { single: 1.5, double: 2.5 }, color: { single: 6 } },
-      bond: { bw: { single: 2.5, double: 4 }, color: { single: 8 } },
-      premium: { bw: { single: 4, double: 7 }, color: { single: 12 } }
-    }
+    a4: [
+      { id: 'normal', label: 'Normal (70–75 GSM)', bw: { single: 1.5, double: 2.5 }, color: { single: 6 } },
+      { id: 'bond', label: 'Bond (100 GSM)', bw: { single: 2.5, double: 4 }, color: { single: 8 } },
+      { id: 'premium', label: 'Premium digital color', bw: { single: 4, double: 7 }, color: { single: 12 } }
+    ]
   },
   deliveryCharge: 30,
   gstPercent: 5
 }
 
-// Pre-paper-type pricing had a flat rates.a4.bw/color shape. Wrap it under
-// a 'normal' paper type and seed bond/premium as clones so the admin can tune
-// them from there, instead of breaking already-deployed settings rows.
-// (A3 support was removed — any legacy rates.a3 data in already-stored
-// settings rows is simply ignored, not migrated.)
+// Default display labels for the three built-in paper-type ids, used when
+// migrating older settings rows that stored ids without labels.
+const DEFAULT_PAPER_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM)', premium: 'Premium digital color' }
+
+function slugifyPaperType(label) {
+  return String(label || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
+function num(v, fallback = 0) {
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
+// Coerces an admin-supplied rates.a4 array into the canonical shape: every row
+// gets a unique non-empty id (slugified from its label when missing) and
+// numeric rate cells. Rows without a usable label are dropped.
+function normalizePaperTypes(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row, i) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugifyPaperType(row.id || label) || 'type'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    out.push({
+      id: unique,
+      label,
+      bw: { single: num(row.bw && row.bw.single), double: num(row.bw && row.bw.double) },
+      color: { single: num(row.color && row.color.single) }
+    })
+  })
+  return out
+}
+
+// Older settings rows stored rates.a4 as an object (keyed by paper type) or,
+// even earlier, as a flat { bw, color } with no paper types at all. Convert
+// both into the current ordered array. Already-array rows pass through
+// (normalized). (A3 support was removed — legacy rates.a3 data is ignored.)
 function migratePricing(pricing) {
-  if (!pricing.rates.a4.normal && pricing.rates.a4.bw) {
-    const normal = { bw: pricing.rates.a4.bw, color: pricing.rates.a4.color }
-    pricing.rates.a4 = { normal, bond: JSON.parse(JSON.stringify(normal)), premium: JSON.parse(JSON.stringify(normal)) }
+  const a4 = pricing.rates && pricing.rates.a4
+  if (Array.isArray(a4)) {
+    pricing.rates.a4 = normalizePaperTypes(a4)
+    return pricing
   }
+  let rows = []
+  if (a4 && a4.bw && !a4.normal) {
+    // Pre-paper-type flat shape → a single 'normal' type.
+    rows = [{ id: 'normal', label: DEFAULT_PAPER_LABELS.normal, bw: a4.bw, color: a4.color }]
+  } else if (a4 && typeof a4 === 'object') {
+    rows = Object.keys(a4)
+      .filter((id) => a4[id] && a4[id].bw)
+      .map((id) => ({ id, label: a4[id].label || DEFAULT_PAPER_LABELS[id] || id, bw: a4[id].bw, color: a4[id].color }))
+  }
+  const normalized = normalizePaperTypes(rows)
+  pricing.rates.a4 = normalized.length ? normalized : JSON.parse(JSON.stringify(DEFAULT_PRICING.rates.a4))
   return pricing
 }
 
@@ -132,7 +190,7 @@ function getPricing() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('pricing')
   if (!row) return DEFAULT_PRICING
   const pricing = JSON.parse(row.value)
-  if (!pricing.rates.a4.normal) {
+  if (!Array.isArray(pricing.rates && pricing.rates.a4)) {
     const migrated = migratePricing(pricing)
     setPricing(migrated)
     return migrated
@@ -141,6 +199,21 @@ function getPricing() {
 }
 
 function setPricing(pricing) {
+  // Normalize every page-size's paper-type list before persisting so admin
+  // edits always land in canonical shape (unique ids, numeric rates). rates is
+  // keyed by page size (a4, a3, …); each value is an array of paper-type rows.
+  if (pricing && pricing.rates && typeof pricing.rates === 'object') {
+    Object.keys(pricing.rates).forEach((size) => {
+      if (Array.isArray(pricing.rates[size])) {
+        const rows = normalizePaperTypes(pricing.rates[size])
+        if (rows.length) pricing.rates[size] = rows
+        else delete pricing.rates[size] // drop empty sizes, except A4 handled below
+      }
+    })
+    if (!Array.isArray(pricing.rates.a4) || !pricing.rates.a4.length) {
+      pricing.rates.a4 = JSON.parse(JSON.stringify(DEFAULT_PRICING.rates.a4))
+    }
+  }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('pricing', JSON.stringify(pricing))
 }

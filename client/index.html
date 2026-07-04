@@ -500,8 +500,13 @@ const rTotal = document.getElementById('rTotal');
 
 const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
-const PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
 let pricingConfig = null;
+// Paper types are admin-managed and delivered in pricingConfig.rates.a4 as an
+// ordered list of { id, label, bw, color }. These helpers read that list so the
+// order form's dropdown, labels and rates stay in sync with the admin panel.
+function a4PaperTypes(){ return (pricingConfig && Array.isArray(pricingConfig.rates.a4)) ? pricingConfig.rates.a4 : []; }
+function defaultPaperTypeId(){ const list = a4PaperTypes(); return list.length ? list[0].id : 'normal'; }
+function paperTypeLabel(id){ const t = a4PaperTypes().find((x) => x.id === id); return t ? t.label : (id || 'Normal'); }
 
 // Defaults applied to every newly uploaded file — each file's settings are
 // then fully independent (print mode, paper type, orientation, side, copies).
@@ -522,7 +527,7 @@ function totalUploadedBytes(){
 function flash(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 260); }
 
 function fetchPricing(){
-  fetch('/api/pricing').then(r => r.json()).then(cfg => { pricingConfig = cfg; recalc(); }).catch(()=>{});
+  fetch('/api/pricing').then(r => r.json()).then(cfg => { pricingConfig = cfg; renderFileList(); recalc(); }).catch(()=>{});
 }
 fetchPricing();
 
@@ -577,10 +582,10 @@ function sideSummaryLabel(){
   return [...set][0] === 'double' ? 'Double' : 'Single';
 }
 function paperTypeSummaryLabel(){
-  if(!state.files.length) return PAPER_TYPE_LABELS.normal;
-  const set = new Set(state.files.map((f) => f.paperType || 'normal'));
+  if(!state.files.length) return paperTypeLabel(defaultPaperTypeId());
+  const set = new Set(state.files.map((f) => f.paperType || defaultPaperTypeId()));
   if(set.size > 1) return 'Mixed';
-  return PAPER_TYPE_LABELS[[...set][0]] || 'Normal';
+  return paperTypeLabel([...set][0]);
 }
 
 function recalc(){
@@ -638,8 +643,8 @@ function escapeAttr(s){
 
 function fileRate(f){
   if(!pricingConfig) return null;
-  const sizeRates = pricingConfig.rates.a4;
-  return sizeRates[f.paperType] || sizeRates.normal;
+  const list = a4PaperTypes();
+  return list.find((t) => t.id === f.paperType) || list[0] || null;
 }
 
 function fileCost(f){
@@ -679,9 +684,7 @@ function renderFileList(){
         <div class="fcard-field">
           <span class="fcard-field-label">Paper type</span>
           <select class="fselect fpapertype" data-index="${i}" aria-label="Paper type for this file">
-            <option value="normal" ${f.paperType==='normal'?'selected':''}>Normal (70–75 GSM)</option>
-            <option value="bond" ${f.paperType==='bond'?'selected':''}>Bond (100 GSM)</option>
-            <option value="premium" ${f.paperType==='premium'?'selected':''}>Premium digital color</option>
+            ${a4PaperTypes().map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
           </select>
         </div>
 
@@ -853,7 +856,7 @@ async function uploadFiles(fileArray){
     uploadProgressInner.style.width = '0%';
     try{
       const json = await uploadOneFile(validFiles[i]);
-      Object.assign(json, NEW_FILE_DEFAULTS);
+      Object.assign(json, NEW_FILE_DEFAULTS, { paperType: defaultPaperTypeId() });
       state.files.push(json);
     }catch(err){
       trayError.textContent = err.message || 'Upload failed';
@@ -989,7 +992,7 @@ function buildOrderPayload(){
       printMode: f.printMode || 'bw',
       orientation: f.orientation || 'portrait',
       printSide: f.printSide || 'single',
-      paperType: f.paperType || 'normal',
+      paperType: f.paperType || defaultPaperTypeId(),
       copies: f.copies || 1,
       password: f.password || ''
     })),

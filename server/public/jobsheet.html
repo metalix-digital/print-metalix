@@ -292,7 +292,20 @@ tabBtn2.addEventListener('click', () => {
 });
 document.getElementById('printBtn').addEventListener('click', () => window.print());
 
+// Seeded with the built-in ids; merged with the live admin-managed paper-type
+// labels (across every page size) so custom types print with their real names.
 const PAPER_TYPE_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM)', premium: 'Premium digital color', mixed: 'Mixed' };
+
+async function mergePaperTypeLabels(){
+  try {
+    const res = await fetch('/api/pricing');
+    if (!res.ok) return;
+    const p = await res.json();
+    Object.keys(p.rates || {}).forEach((size) => {
+      if (Array.isArray(p.rates[size])) p.rates[size].forEach((t) => { if (t.id) PAPER_TYPE_LABELS[t.id] = t.label; });
+    });
+  } catch (err) { /* fall back to built-in labels / raw id */ }
+}
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
 const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000;
 
@@ -423,6 +436,7 @@ async function loadOrder(){
       return;
     }
     const { order } = await res.json();
+    await mergePaperTypeLabels();
     // Order ID in the page title → the browser's print/"Save as PDF" dialog
     // suggests an order-ID filename for the manual print button too.
     document.title = 'Metalix Job Sheet ' + order.id;

@@ -1043,7 +1043,9 @@ function fmtPrice(n){
 // dependency chain.
 function applyPricing(p){
   const rates = p.rates || {};
-  const a4 = (rates.a4 || {}).normal || {};
+  // rates.a4 is an admin-managed list of paper types; the first entry is the
+  // headline (cheapest/default) paper type advertised on the landing page.
+  const a4 = (Array.isArray(rates.a4) ? rates.a4[0] : null) || {};
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
 
   if (a4.bw) {
