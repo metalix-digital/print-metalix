@@ -691,7 +691,6 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <div class="pt-row"><span class="name">B/W · A4 · Single-sided</span><span class="price" id="pt-a4-bw-single">₹1.5/page</span><span class="note">Cheapest option</span></div>
         <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹2.5/sheet</span><span class="note">2 pages per sheet</span></div>
         <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
-        <div class="pt-row"><span class="name">Color · A4 · Double-sided</span><span class="price" id="pt-a4-color-double">₹10/sheet</span><span class="note">2 pages per sheet</span></div>
         <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹30 flat</span><span class="note">Within city limits</span></div>
         <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
       </div>
@@ -1060,7 +1059,6 @@ function applyPricing(p){
     set('ticket-color', `₹${fmtPrice(a4.color.single)}`);
     set('svc-color', `₹${fmtPrice(a4.color.single)}/page`);
     set('pt-a4-color-single', `₹${fmtPrice(a4.color.single)}/page`);
-    set('pt-a4-color-double', `₹${fmtPrice(a4.color.double)}/sheet`);
   }
   if (p.deliveryCharge != null) {
     set('ticket-delivery', `₹${fmtPrice(p.deliveryCharge)}`);
