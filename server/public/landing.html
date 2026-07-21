@@ -509,7 +509,10 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 .branch-btn .lbl{max-width:180px;overflow:hidden;text-overflow:ellipsis;}
 .branch-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:250px;max-width:300px;background:#fff;border:1px solid #E7E5E4;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.16);padding:6px;z-index:200;}
 .branch-menu.hidden{display:none;}
-.branch-opt{display:block;width:100%;text-align:left;background:none;border:none;border-radius:9px;padding:10px 12px;font:inherit;cursor:pointer;color:#1C1917;}
+.branch-row{display:flex;align-items:stretch;gap:2px;}
+.branch-opt{display:block;flex:1;min-width:0;text-align:left;background:none;border:none;border-radius:9px;padding:10px 12px;font:inherit;cursor:pointer;color:#1C1917;}
+.branch-maps-link{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:36px;border-radius:9px;text-decoration:none;font-size:15px;color:#78716C;}
+.branch-maps-link:hover{background:#FAF7F2;}
 .branch-opt:hover{background:#FAF7F2;}
 .branch-opt.sel{background:#FFF1E6;}
 .branch-opt .b-name{font-weight:600;font-size:13.5px;}
@@ -1731,8 +1734,12 @@ function showToast(msg, icon='✓'){
     m.innerHTML = branches.map(function(b){
       var addr = [b.address, b.city, b.pincode].filter(Boolean).join(', ');
       var closed = b.shopOpen === false;
-      return '<button type="button" class="branch-opt' + (sel && sel.id === b.id ? ' sel' : '') + (closed ? ' closed' : '') + '" data-id="' + bEsc(b.id) + '"' + (closed ? ' disabled' : '') + '>' +
-        '<span class="b-name">' + bEsc(b.name) + (closed ? '<span class="b-closed-tag">Closed</span>' : '') + '</span>' + (addr ? '<div class="b-addr">' + bEsc(addr) + '</div>' : '') + '</button>';
+      var mapsLink = b.mapsUrl ? '<a class="branch-maps-link" href="' + bEsc(b.mapsUrl) + '" target="_blank" rel="noopener" title="Get directions" onclick="event.stopPropagation()">🗺️</a>' : '';
+      return '<div class="branch-row">' +
+        '<button type="button" class="branch-opt' + (sel && sel.id === b.id ? ' sel' : '') + (closed ? ' closed' : '') + '" data-id="' + bEsc(b.id) + '"' + (closed ? ' disabled' : '') + '>' +
+          '<span class="b-name">' + bEsc(b.name) + (closed ? '<span class="b-closed-tag">Closed</span>' : '') + '</span>' + (addr ? '<div class="b-addr">' + bEsc(addr) + '</div>' : '') +
+        '</button>' + mapsLink +
+      '</div>';
     }).join('');
     m.querySelectorAll('.branch-opt[data-id]:not(.closed)').forEach(function(el){
       el.addEventListener('click', function(ev){

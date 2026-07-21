@@ -232,6 +232,10 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .loc-active{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink3);white-space:nowrap;cursor:pointer;}
 .loc-active input{accent-color:var(--orange);width:16px;height:16px;}
 @media(max-width:560px){ .loc-grid{grid-template-columns:1fr;} }
+.loc-maps-row{display:flex;gap:9px;margin-top:9px;align-items:center;}
+.loc-maps-row input{flex:1;border:1.5px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:13.5px;background:#fff;}
+.loc-maps-preview{flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--orange-d);text-decoration:none;white-space:nowrap;padding:0 4px;}
+.loc-maps-preview:hover{text-decoration:underline;}
 
 .staff-card{display:flex;align-items:center;gap:14px;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;background:var(--card);margin-bottom:10px;transition:.15s;}
 .staff-card:hover{border-color:var(--orange);box-shadow:0 4px 14px -8px rgba(255,102,0,.25);}
@@ -1089,7 +1093,7 @@ async function loadLocations(){
   try {
     const res = await adminFetch('/api/admin/locations');
     const data = await res.json();
-    locationsDraft = (data.locations || []).map((l) => ({ id: l.id || '', name: l.name || '', address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active !== false }));
+    locationsDraft = (data.locations || []).map((l) => ({ id: l.id || '', name: l.name || '', address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active !== false, mapsUrl: l.mapsUrl || '' }));
   } catch (err) { if (err.message === 'unauthorized') return; locationsDraft = []; }
   const branchFilter = document.getElementById('orderBranchFilter');
   if (branchFilter) {
@@ -1107,7 +1111,7 @@ async function loadLocations(){
     '<div class="toast-msg" id="locMsg"></div>';
   renderLocList();
   document.getElementById('addLocBtn').addEventListener('click', () => {
-    locationsDraft.push({ id: '', name: '', address: '', city: '', pincode: '', active: true });
+    locationsDraft.push({ id: '', name: '', address: '', city: '', pincode: '', active: true, mapsUrl: '' });
     renderLocList();
   });
   document.getElementById('saveLocBtn').addEventListener('click', saveLocations);
@@ -1128,6 +1132,10 @@ function renderLocList(){
         '<input data-f="address" placeholder="Street address" value="' + escHtml(l.address) + '" />' +
         '<input data-f="city" placeholder="City" value="' + escHtml(l.city) + '" />' +
         '<input data-f="pincode" placeholder="PIN code" value="' + escHtml(l.pincode) + '" />' +
+      '</div>' +
+      '<div class="loc-maps-row">' +
+        '<input data-f="mapsUrl" placeholder="🗺️ Google Maps link (optional) — e.g. https://maps.app.goo.gl/…" value="' + escHtml(l.mapsUrl || '') + '" />' +
+        (l.mapsUrl ? '<a href="' + escHtml(l.mapsUrl) + '" target="_blank" rel="noopener" class="loc-maps-preview">Open ↗</a>' : '') +
       '</div>' +
     '</div>'
   ).join('');

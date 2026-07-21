@@ -115,6 +115,7 @@ db.exec(`
     hours_weekdays TEXT,
     hours_saturday TEXT,
     hours_sunday TEXT,
+    maps_url TEXT,
     created_at INTEGER,
     updated_at INTEGER
   );
@@ -141,6 +142,7 @@ ensureColumn('orders', 'payment_mode', 'TEXT')     // set on collection: 'cash' 
 ensureColumn('orders', 'payment_collected_at', 'INTEGER')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
+ensureColumn('locations', 'maps_url', 'TEXT')
 
 // Paper types are an admin-managed list: each entry is
 // { id, label, bw: { single, double }, color: { single } }. The `id` is a
@@ -411,6 +413,7 @@ function rowToLocation(r) {
     city: r.city || '',
     pincode: r.pincode || '',
     active: !!r.active,
+    mapsUrl: r.maps_url || '',
     shopOpen: r.shop_open !== 0,
     storeTimings: {
       weekdays: r.hours_weekdays || DEFAULT_LOCATION_HOURS.weekdays,
@@ -439,12 +442,12 @@ function setLocations(locations) {
   const incomingIds = new Set(locations.map((l) => l.id))
   const tx = db.transaction(() => {
     for (const l of locations) {
-      const params = { id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active ? 1 : 0, now }
+      const params = { id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active ? 1 : 0, maps_url: l.mapsUrl || '', now }
       if (existingIds.has(l.id)) {
-        db.prepare('UPDATE locations SET name=@name, address=@address, city=@city, pincode=@pincode, active=@active, updated_at=@now WHERE id=@id').run(params)
+        db.prepare('UPDATE locations SET name=@name, address=@address, city=@city, pincode=@pincode, active=@active, maps_url=@maps_url, updated_at=@now WHERE id=@id').run(params)
       } else {
-        db.prepare(`INSERT INTO locations (id, name, address, city, pincode, active, shop_open, hours_weekdays, hours_saturday, hours_sunday, created_at, updated_at)
-          VALUES (@id, @name, @address, @city, @pincode, @active, 1, @weekdays, @saturday, @sunday, @now, @now)`)
+        db.prepare(`INSERT INTO locations (id, name, address, city, pincode, active, maps_url, shop_open, hours_weekdays, hours_saturday, hours_sunday, created_at, updated_at)
+          VALUES (@id, @name, @address, @city, @pincode, @active, @maps_url, 1, @weekdays, @saturday, @sunday, @now, @now)`)
           .run({ ...params, weekdays: DEFAULT_LOCATION_HOURS.weekdays, saturday: DEFAULT_LOCATION_HOURS.saturday, sunday: DEFAULT_LOCATION_HOURS.sunday })
       }
     }

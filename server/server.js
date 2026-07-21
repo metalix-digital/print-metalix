@@ -213,7 +213,7 @@ function maskReviewerName(name) {
 
 app.get('/api/bootstrap', (req, res) => {
   const locations = db.getLocations().filter((l) => l.active).map((l) => ({
-    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen, mapsUrl: l.mapsUrl || ''
   }))
   const testimonials = db.listPublicFeedback().map((f) => ({
     rating: f.rating, comment: f.comment, name: maskReviewerName(f.customer_name), created_at: f.created_at
@@ -801,7 +801,7 @@ app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
 // Public: active branches the customer can pick from (no admin-only fields).
 app.get('/api/locations', (req, res) => {
   const active = db.getLocations().filter((l) => l.active).map((l) => ({
-    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen, mapsUrl: l.mapsUrl || ''
   }))
   return res.json({ locations: active })
 })
@@ -823,13 +823,18 @@ app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) =>
     let id = String((l && l.id) || '').trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'branch'
     while (seenId.has(id)) id += '-x'
     seenId.add(id)
+    // Only keep http(s) links — anything else (e.g. a stray "javascript:")
+    // never reaches an href on the public site.
+    const mapsUrlRaw = String((l && l.mapsUrl) || '').trim().slice(0, 500)
+    const mapsUrl = /^https?:\/\//i.test(mapsUrlRaw) ? mapsUrlRaw : ''
     clean.push({
       id,
       name,
       address: String((l && l.address) || '').trim().slice(0, 200),
       city: String((l && l.city) || '').trim().slice(0, 80),
       pincode: String((l && l.pincode) || '').trim().slice(0, 12),
-      active: !!(l && l.active)
+      active: !!(l && l.active),
+      mapsUrl
     })
   }
   db.setLocations(clean)
