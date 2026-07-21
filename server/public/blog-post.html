@@ -184,6 +184,20 @@ function shareUrl(kind, url, title){
   return '#';
 }
 
+// Rendered twice — right under the title (visible without scrolling past a
+// multi-minute article) and again at the end — so copyLinkBtn needs a unique
+// id per instance; the click handler below wires up every instance by class.
+function shareRowHtml(url, title, idSuffix){
+  return '<div class="share-row"><span class="lbl">Share:</span>' +
+    '<a class="share-btn" href="' + shareUrl('x', url, title) + '" target="_blank" rel="noopener" title="Share on X">𝕏</a>' +
+    '<a class="share-btn" href="' + shareUrl('facebook', url, title) + '" target="_blank" rel="noopener" title="Share on Facebook">f</a>' +
+    '<a class="share-btn" href="' + shareUrl('linkedin', url, title) + '" target="_blank" rel="noopener" title="Share on LinkedIn">in</a>' +
+    '<a class="share-btn" href="' + shareUrl('whatsapp', url, title) + '" target="_blank" rel="noopener" title="Share on WhatsApp">💬</a>' +
+    '<a class="share-btn" href="mailto:?subject=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(url) + '" title="Share by email">✉️</a>' +
+    '<button class="share-btn copy-link-btn" id="copyLinkBtn-' + idSuffix + '" type="button" title="Copy link">🔗</button>' +
+  '</div>';
+}
+
 const slug = window.location.pathname.split('/').filter(Boolean).pop();
 
 fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
@@ -199,6 +213,7 @@ fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
       '<span>' + formatDate(post.publishedAt) + '</span><span class="dot"></span>' +
       '<span>' + readingTime(html.replace(/<[^>]+>/g, ' ')) + '</span>' +
     '</div>' +
+    shareRowHtml(url, post.title, 'top') +
     (post.coverImage ? ('<img class="cover-img" src="' + escHtml(post.coverImage) + '" alt="">') : '') +
     '<div class="article">' + html + '</div>' +
     (post.tags && post.tags.length ? ('<div class="tags-row">' + post.tags.map((t) => '<span class="tag-chip">#' + escHtml(t) + '</span>').join('') + '</div>') : '') +
@@ -206,18 +221,13 @@ fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
       '<div class="author-box"><div class="av">' + escHtml(initials(post.author)) + '</div>' +
       '<div><div class="name">' + escHtml(post.author || 'Metalix Team') + '</div><div class="bio">' + escHtml(post.authorBio) + '</div></div></div>'
     ) : '') +
-    '<div class="share-row"><span class="lbl">Share:</span>' +
-      '<a class="share-btn" href="' + shareUrl('x', url, post.title) + '" target="_blank" rel="noopener" title="Share on X">𝕏</a>' +
-      '<a class="share-btn" href="' + shareUrl('facebook', url, post.title) + '" target="_blank" rel="noopener" title="Share on Facebook">f</a>' +
-      '<a class="share-btn" href="' + shareUrl('linkedin', url, post.title) + '" target="_blank" rel="noopener" title="Share on LinkedIn">in</a>' +
-      '<a class="share-btn" href="' + shareUrl('whatsapp', url, post.title) + '" target="_blank" rel="noopener" title="Share on WhatsApp">💬</a>' +
-      '<a class="share-btn" href="mailto:?subject=' + encodeURIComponent(post.title) + '&body=' + encodeURIComponent(url) + '" title="Share by email">✉️</a>' +
-      '<button class="share-btn" id="copyLinkBtn" type="button" title="Copy link">🔗</button>' +
-    '</div>' +
+    shareRowHtml(url, post.title, 'bottom') +
     '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — usually within 3–4 hours.</p><a href="/order">Start your order →</a></div>';
 
-  document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
-    navigator.clipboard.writeText(url).then(() => { e.target.textContent = '✓'; setTimeout(() => { e.target.textContent = '🔗'; }, 1500); });
+  document.querySelectorAll('.copy-link-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      navigator.clipboard.writeText(url).then(() => { e.target.textContent = '✓'; setTimeout(() => { e.target.textContent = '🔗'; }, 1500); });
+    });
   });
 }).catch(() => {
   document.getElementById('postContent').innerHTML = '<div class="not-found">We couldn\'t find that post. <a href="/blog">Back to blog</a></div>';
