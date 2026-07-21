@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -17,15 +21,48 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
+            REPO=/var/www/metalix
+
             # A previous manual `npm install` on the box can leave the
             # lockfiles locally modified, which makes `git pull` refuse to
             # overwrite them. `npm ci` never rewrites the lockfile, so this
             # is just a safety net for state left over from before this
             # workflow existed.
-            sudo -u www-data git -C /var/www/metalix checkout -- server/package-lock.json client/package-lock.json || true
-            sudo -u www-data git -C /var/www/metalix pull origin main
-            sudo -u www-data npm ci --omit=dev --prefix /var/www/metalix/server
-            sudo -u www-data npm ci --prefix /var/www/metalix/client
-            sudo -u www-data npm run build --prefix /var/www/metalix/client
+            sudo -u www-data git -C "$REPO" checkout -- server/package-lock.json client/package-lock.json || true
+
+            OLD_HEAD=$(sudo -u www-data git -C "$REPO" rev-parse HEAD)
+            sudo -u www-data git -C "$REPO" pull origin main
+            NEW_HEAD=$(sudo -u www-data git -C "$REPO" rev-parse HEAD)
+
+            if [ "$OLD_HEAD" = "$NEW_HEAD" ]; then
+              echo "Nothing new to deploy."
+              exit 0
+            fi
+
+            CHANGED=$(sudo -u www-data git -C "$REPO" diff --name-only "$OLD_HEAD" "$NEW_HEAD")
+            echo "--- changed files ---"
+            echo "$CHANGED"
+
+            # `npm ci` wipes and reinstalls node_modules from scratch every
+            # time — on this small VM that's most of the deploy time. Only
+            # pay for it when the relevant lockfile actually changed.
+            if echo "$CHANGED" | grep -qE '^server/package(-lock)?\.json$'; then
+              echo "--- server deps changed, running npm ci ---"
+              sudo -u www-data npm ci --omit=dev --prefix "$REPO/server"
+            else
+              echo "--- server deps unchanged, skipping npm ci ---"
+            fi
+
+            if echo "$CHANGED" | grep -q '^client/'; then
+              if echo "$CHANGED" | grep -qE '^client/package(-lock)?\.json$'; then
+                echo "--- client deps changed, running npm ci ---"
+                sudo -u www-data npm ci --prefix "$REPO/client"
+              fi
+              echo "--- client source changed, rebuilding ---"
+              sudo -u www-data npm run build --prefix "$REPO/client"
+            else
+              echo "--- client unchanged, skipping build ---"
+            fi
+
             sudo systemctl restart metalix
             sudo systemctl status metalix --no-pager
