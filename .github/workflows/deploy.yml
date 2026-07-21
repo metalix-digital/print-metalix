@@ -1,0 +1,31 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 34.47.157.75
+          username: support
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            # A previous manual `npm install` on the box can leave the
+            # lockfiles locally modified, which makes `git pull` refuse to
+            # overwrite them. `npm ci` never rewrites the lockfile, so this
+            # is just a safety net for state left over from before this
+            # workflow existed.
+            sudo -u www-data git -C /var/www/metalix checkout -- server/package-lock.json client/package-lock.json || true
+            sudo -u www-data git -C /var/www/metalix pull origin main
+            sudo -u www-data npm ci --omit=dev --prefix /var/www/metalix/server
+            sudo -u www-data npm ci --prefix /var/www/metalix/client
+            sudo -u www-data npm run build --prefix /var/www/metalix/client
+            sudo systemctl restart metalix
+            sudo systemctl status metalix --no-pager
