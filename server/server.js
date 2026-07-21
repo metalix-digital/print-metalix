@@ -991,9 +991,16 @@ app.get('/api/orders/:id', (req, res) => {
 // returns only status/timing, never customer name, contact, or files, since
 // order IDs aren't secret enough to gate anything sensitive behind.
 const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000
+// A "confirmed" order is paid online OR pay-on-delivery — matches the
+// definition used everywhere else (db.listOrders/listMyOrders/listCustomers).
+// COD orders are queued for printing immediately on creation, so a customer
+// tracking one before it's paid at delivery is normal, not an error.
+function isConfirmedOrder(order) {
+  return !!order && (order.payment_status === 'paid' || order.payment_method === 'cod')
+}
 app.get('/api/track/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order || order.payment_status !== 'paid') return res.status(404).json({ error: 'not_found' })
+  if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
   return res.json({
     id: order.id,
     order_status: order.order_status,
@@ -1008,7 +1015,7 @@ app.get('/api/track/:id', (req, res) => {
 // and only once per order (order_feedback.order_id is uniquely indexed).
 app.post('/api/track/:id/feedback', express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order || order.payment_status !== 'paid') return res.status(404).json({ error: 'not_found' })
+  if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
   if (!order.completed_at) return res.status(400).json({ error: 'not_completed', message: 'Feedback opens once this order is marked Completed.' })
   if (db.getOrderFeedback(order.id)) return res.status(409).json({ error: 'already_submitted', message: 'Feedback was already submitted for this order.' })
 
