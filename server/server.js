@@ -1445,10 +1445,105 @@ function isShopOpen() {
   return db.getSiteSettings().shopOpen !== false
 }
 
+// Kept in sync by hand with the <details class="faq-item"> markup in
+// landing.html's #faq section — the JSON-LD must describe content that's
+// actually visible on the page, not just claims made in structured data.
+const FAQ_ITEMS = [
+  { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
+  { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
+  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is a flat ₹30 within Gurugram city limits. If your PIN code is outside our delivery zone, we’ll contact you to arrange pickup instead and refund the delivery charge.' },
+  { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
+  { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },
+  { q: 'Can I track my order?', a: 'Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.' },
+  { q: 'What if something’s wrong with my print?', a: 'Report it within 24 hours of pickup or delivery by calling or WhatsApp-ing us. If we made a mistake, we reprint it free; if the issue is with the uploaded file, we can offer a paid reprint.' }
+]
+
+function faqJsonLd() {
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQ_ITEMS.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a }
+    }))
+  })
+}
+
+// ratingValue/reviewCount are computed from every rating ever submitted
+// (db.getFeedbackStats), not just the curated 4-5★ subset shown in the
+// carousel — Google's guidelines require aggregate ratings to reflect all
+// genuine reviews, not a filtered/flattering slice. Omitted entirely when
+// there are zero ratings rather than fabricating one.
+function localBusinessJsonLd() {
+  const business = {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name: 'Metalix Print',
+    url: 'https://print.metalix.in/',
+    logo: 'https://print.metalix.in/logo.svg',
+    image: 'https://print.metalix.in/logo.svg',
+    description: 'Online document printing — upload your PDF, Word, or PPT, choose settings, and get prints delivered, usually within 3–4 hours.',
+    telephone: '+91-7042443143',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'M86/2, M3M Solitude, Sector 89',
+      addressLocality: 'Gurugram',
+      addressRegion: 'HR',
+      postalCode: '122505',
+      addressCountry: 'IN'
+    },
+    openingHours: ['Mo-Fr 09:00-21:00', 'Sa 09:00-20:00', 'Su 10:00-18:00']
+  }
+  const stats = db.getFeedbackStats()
+  if (stats.count > 0) {
+    business.aggregateRating = {
+      '@type': 'AggregateRating',
+      ratingValue: Number(stats.average.toFixed(1)),
+      reviewCount: stats.count
+    }
+  }
+  return JSON.stringify(business)
+}
+
+// landing.html is a single template shared by both routes below — each gets
+// its own title/description/keywords/canonical (previously both silently
+// used the homepage's, which told crawlers /policies was just a duplicate
+// of "/" via its canonical tag). Only "/" gets the FAQPage schema, since
+// that's the only route where the FAQ markup is actually the page's content.
+const LANDING_ROUTES = {
+  '/': {
+    title: 'Metalix Print — Upload · Print · Deliver',
+    description: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
+    keywords: 'print shop, online printing, document printing, Gurugram',
+    canonical: 'https://print.metalix.in/',
+    includeFaq: true
+  },
+  '/policies': {
+    title: 'Terms, Privacy & Delivery Policies — Metalix Print',
+    description: 'Read Metalix Print’s terms of service, privacy policy, refund & reprint policy, and delivery policy for our Gurugram print-and-deliver service.',
+    keywords: 'refund policy, delivery policy, terms of service, privacy policy, Metalix Print',
+    canonical: 'https://print.metalix.in/policies',
+    includeFaq: false
+  }
+}
+
+function renderLanding(route) {
+  const meta = LANDING_ROUTES[route]
+  const template = fs.readFileSync(path.join(publicDir, 'landing.html'), 'utf8')
+  return template
+    .split('__META_TITLE__').join(escAttr(meta.title))
+    .split('__META_DESCRIPTION__').join(escAttr(meta.description))
+    .split('__META_KEYWORDS__').join(escAttr(meta.keywords))
+    .split('__CANONICAL_URL__').join(escAttr(meta.canonical))
+    .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
+    .split('__FAQ_JSON_LD_SCRIPT__').join(meta.includeFaq ? `<script type="application/ld+json">${faqJsonLd()}</script>` : '')
+}
+
 // Marketing landing page at the root path, served ahead of the SPA catch-all below.
 app.get('/', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
-  res.sendFile(path.join(publicDir, 'landing.html'))
+  res.send(renderLanding('/'))
 })
 
 // Policies live as a view inside the landing page, but expose a real, crawlable
@@ -1456,7 +1551,7 @@ app.get('/', (req, res) => {
 // and opens the policy view; see initFromUrl() there.
 app.get('/policies', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
-  res.sendFile(path.join(publicDir, 'landing.html'))
+  res.send(renderLanding('/policies'))
 })
 
 // Blog list + article pages — the SPA-style views inside landing.html handle

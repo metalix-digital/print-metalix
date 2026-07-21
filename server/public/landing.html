@@ -3,25 +3,26 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title id="page-title">Metalix Print — Upload · Print · Deliver</title>
-<meta name="description" id="meta-description" content="Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.">
-<meta name="keywords" id="meta-keywords" content="print shop, online printing, document printing, Gurugram">
+<title id="page-title">__META_TITLE__</title>
+<meta name="description" id="meta-description" content="__META_DESCRIPTION__">
+<meta name="keywords" id="meta-keywords" content="__META_KEYWORDS__">
 <meta name="robots" content="index,follow">
-<link rel="canonical" href="https://print.metalix.in/">
+<link rel="canonical" href="__CANONICAL_URL__">
 <meta name="theme-color" content="#FF6600">
 <!-- Open Graph / Twitter for link previews and social crawlers -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Metalix Print">
-<meta property="og:title" content="Metalix Print — Upload · Print · Deliver">
-<meta property="og:description" content="Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.">
-<meta property="og:url" content="https://print.metalix.in/">
+<meta property="og:title" content="__META_TITLE__">
+<meta property="og:description" content="__META_DESCRIPTION__">
+<meta property="og:url" content="__CANONICAL_URL__">
 <meta property="og:image" content="https://print.metalix.in/logo.svg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Metalix Print — Upload · Print · Deliver">
-<meta name="twitter:description" content="Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.">
+<meta name="twitter:title" content="__META_TITLE__">
+<meta name="twitter:description" content="__META_DESCRIPTION__">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"LocalBusiness","name":"Metalix Print","url":"https://print.metalix.in/","logo":"https://print.metalix.in/logo.svg","image":"https://print.metalix.in/logo.svg","description":"Online document printing — upload your PDF, Word, or PPT, choose settings, and get prints delivered, usually within 3–4 hours.","telephone":"+91-7042443143","address":{"@type":"PostalAddress","streetAddress":"M86/2, M3M Solitude, Sector 89","addressLocality":"Gurugram","addressRegion":"HR","postalCode":"122505","addressCountry":"IN"},"openingHours":["Mo-Fr 09:00-21:00","Sa 09:00-20:00","Su 10:00-18:00"]}
+__LOCALBUSINESS_JSON_LD__
 </script>
+__FAQ_JSON_LD_SCRIPT__
 <link rel="icon" type="image/svg+xml" href="/logo.svg"/>
 <!-- Self-hosted fonts (no third-party font connection). Each file is a glyph
      subset containing only the characters this page renders, built via the
@@ -270,6 +271,13 @@ nav a.active{color:var(--orange-text);}
 .section-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--orange-text);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;}
 .section-title{font-family:'Sora',sans-serif;font-weight:700;font-size:clamp(26px,3.5vw,38px);letter-spacing:-.02em;margin-bottom:14px;}
 .section-sub{font-size:16px;color:var(--ink2);line-height:1.65;max-width:560px;}
+.faq-list{max-width:760px;margin:0 auto;}
+.faq-item{border:1px solid var(--line);border-radius:14px;margin-bottom:12px;background:var(--white);overflow:hidden;}
+.faq-item summary{padding:18px 22px;font-weight:600;font-size:15.5px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.faq-item summary::-webkit-details-marker{display:none;}
+.faq-item summary::after{content:'+';font-size:20px;color:var(--orange);flex-shrink:0;transition:transform .2s;}
+.faq-item[open] summary::after{transform:rotate(45deg);}
+.faq-item p{padding:0 22px 20px;margin:0;color:var(--ink2);font-size:14.5px;line-height:1.65;}
 
 /* -- HOW IT WORKS -- */
 .how-grid{
@@ -798,6 +806,46 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
     </div>
   </section>
 
+  <!-- FAQ: content stays in the DOM regardless of open/closed state (native
+       <details>), so it's always crawlable and matches the FAQPage JSON-LD
+       injected server-side for the home route only. -->
+  <section class="section" id="faq">
+    <div class="section-inner">
+      <div class="section-eyebrow">FAQ</div>
+      <div class="section-title">Common questions</div>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>How long does printing and delivery take?</summary>
+          <p>Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we'll give you a realistic estimate at checkout.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Which file formats can I upload?</summary>
+          <p>PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there's no need to export to PDF yourself first.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Do you deliver, or is it pickup only?</summary>
+          <p>Both. Shop pickup is free. Home delivery is a flat ₹30 within Gurugram city limits. If your PIN code is outside our delivery zone, we'll contact you to arrange pickup instead and refund the delivery charge.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What's the difference between color and black &amp; white pricing?</summary>
+          <p>Color pages cost more per page than black &amp; white. You can print a file entirely in black &amp; white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.</p>
+        </details>
+        <details class="faq-item">
+          <summary>How do I pay, and is it secure?</summary>
+          <p>All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can I track my order?</summary>
+          <p>Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What if something's wrong with my print?</summary>
+          <p>Report it within 24 hours of pickup or delivery by calling or WhatsApp-ing us. If we made a mistake, we reprint it free; if the issue is with the uploaded file, we can offer a paid reprint.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- CONTACT -->
   <section class="section section-tint" id="contact">
     <div class="section-inner">
@@ -1196,9 +1244,14 @@ function applySettings(s){
   const setHref = (id, href) => { const el = document.getElementById(id); if (el) el.href = href; };
   const setMeta = (id, content) => { const el = document.getElementById(id); if (el) el.content = content; };
 
-  if (s.seo && s.seo.metaTitle) { document.title = s.seo.metaTitle; const el = document.getElementById('page-title'); if (el) el.textContent = s.seo.metaTitle; }
-  if (s.seo && s.seo.metaDescription) setMeta('meta-description', s.seo.metaDescription);
-  if (s.seo && s.seo.keywords) setMeta('meta-keywords', s.seo.keywords);
+  // These are a single site-wide override (admin Settings tab), not
+  // per-page — only apply them on the home view, or they'd stomp on the
+  // /policies page's own server-rendered title/description/canonical.
+  if (currentPage === 'home') {
+    if (s.seo && s.seo.metaTitle) { document.title = s.seo.metaTitle; const el = document.getElementById('page-title'); if (el) el.textContent = s.seo.metaTitle; }
+    if (s.seo && s.seo.metaDescription) setMeta('meta-description', s.seo.metaDescription);
+    if (s.seo && s.seo.keywords) setMeta('meta-keywords', s.seo.keywords);
+  }
 
   if (s.headOfficeAddress) {
     set('ci-address', s.headOfficeAddress);
@@ -1332,7 +1385,9 @@ if ('requestIdleCallback' in window) {
 }
 
 /* -- PAGE ROUTING -- */
+let currentPage = 'home';
 function showPage(id){
+  currentPage = id;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});

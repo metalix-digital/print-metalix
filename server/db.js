@@ -838,6 +838,15 @@ function listPublicFeedback(limit = 20) {
   `).all(limit)
 }
 
+// The true average across every rating ever submitted (unlike
+// listPublicFeedback's curated 4-5★-with-comment subset) — this is the
+// number that goes into the homepage's AggregateRating structured data, so
+// it has to reflect all ratings or the markup would be misleading.
+function getFeedbackStats() {
+  const row = db.prepare('SELECT COUNT(*) AS count, AVG(rating) AS average FROM order_feedback').get()
+  return { count: row.count || 0, average: row.average || 0 }
+}
+
 function createUser({ id, name, email, mobile, password_hash, google_id }) {
   const now = Date.now()
   db.prepare(`
@@ -917,6 +926,7 @@ module.exports = {
   createOrderFeedback,
   listOrderFeedback,
   listPublicFeedback,
+  getFeedbackStats,
   getSiteSettings,
   setSiteSettings,
   getAdminAuth,
