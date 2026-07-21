@@ -110,12 +110,24 @@ function heroIcon(status, attention, done){
   return '🕐';
 }
 
-function renderTimeline(stages, stageIndex){
+// A stage name that's clearly about the *other* fulfilment path — "Awaiting
+// Customer Pickup" on a home-delivery order, or "Out For Delivery" on a
+// shop-pickup order — never applies to this order, so it's excluded rather
+// than shown as a step that will never happen.
+function isWrongFulfilmentStage(name, deliveryMethod){
+  const s = String(name || '').toLowerCase();
+  if (deliveryMethod === 'delivery' && (s.includes('pickup') || s.includes('collect'))) return true;
+  if (deliveryMethod === 'pickup' && s.includes('deliver')) return true;
+  return false;
+}
+
+function renderTimeline(stages, stageIndex, deliveryMethod){
   if (!stages || !stages.length || stageIndex < 0) return '';
   // Exception stages (Failed / Manual Intervention / Cancelled) are outcomes,
   // not steps on the happy path — never show them as an "upcoming" step.
+  // Also drop whichever fulfilment-path stage doesn't apply to this order.
   const currentName = stages[stageIndex];
-  const happyStages = stages.filter((name) => !isAttentionStatus(name));
+  const happyStages = stages.filter((name) => !isAttentionStatus(name) && !isWrongFulfilmentStage(name, deliveryMethod));
   const happyIndex = happyStages.indexOf(currentName);
   if (happyIndex < 0) return '';
   stages = happyStages;
@@ -229,7 +241,7 @@ async function loadStatus(){
       '</div>' +
     '</div>';
 
-    if (!attention) html += renderTimeline(data.stages, data.stage_index);
+    if (!attention) html += renderTimeline(data.stages, data.stage_index, data.delivery_method);
 
     content.innerHTML = html;
 

@@ -18,6 +18,9 @@ function getJwtSecret() {
   return process.env.ADMIN_JWT_SECRET || 'dev-only-insecure-secret'
 }
 
+// Admin tokens carry adminRole ('super_admin' | 'branch_admin') and locationId
+// (null for super_admin) alongside the base role:'admin' claim — req.admin is
+// populated here for every downstream handler to read.
 function requireAdmin(req, res, next) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
@@ -25,10 +28,32 @@ function requireAdmin(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret())
     if (decoded.role !== 'admin') return res.status(401).json({ error: 'unauthorized' })
+    req.admin = { id: decoded.sub, adminRole: decoded.adminRole || 'super_admin', locationId: decoded.locationId || null }
     next()
   } catch (err) {
     return res.status(401).json({ error: 'unauthorized' })
   }
+}
+
+// Locations/pricing/stages/site settings/staff management stay super-admin-only.
+function requireSuperAdmin(req, res, next) {
+  requireAdmin(req, res, () => {
+    if (req.admin.adminRole !== 'super_admin') return res.status(403).json({ error: 'forbidden', message: 'Super admin only.' })
+    next()
+  })
+}
+
+// null (no filter — super admin sees everything) or the branch admin's
+// locationId, for threading into db.js's location-scoped list functions.
+function scopeLocation(req) {
+  return req.admin.adminRole === 'branch_admin' ? req.admin.locationId : null
+}
+
+// For single-order routes: super admin owns everything; a branch admin only
+// owns orders placed at their own location. Callers 404 (not 403) on a
+// mismatch so a branch admin can't tell another branch's order even exists.
+function ownsOrder(req, order) {
+  return !!order && (req.admin.adminRole === 'super_admin' || order.location_id === req.admin.locationId)
 }
 
 function requireCustomer(req, res, next) {
@@ -188,7 +213,7 @@ function maskReviewerName(name) {
 
 app.get('/api/bootstrap', (req, res) => {
   const locations = db.getLocations().filter((l) => l.active).map((l) => ({
-    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || ''
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen
   }))
   const testimonials = db.listPublicFeedback().map((f) => ({
     rating: f.rating, comment: f.comment, name: maskReviewerName(f.customer_name), created_at: f.created_at
@@ -217,7 +242,7 @@ app.post('/api/contact', express.json(), async (req, res) => {
   return res.json({ message: 'Message sent.' })
 })
 
-app.put('/api/admin/settings', requireAdmin, express.json(), (req, res) => {
+app.put('/api/admin/settings', requireSuperAdmin, express.json(), (req, res) => {
   const settings = req.body
   if (!settings || !settings.legal || !settings.social || !settings.seo) {
     return res.status(400).json({ error: 'invalid_settings' })
@@ -239,30 +264,36 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   if (!username || !password) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
   }
-  const admin = db.getAdminAuth()
-  const usernameOk = admin && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
-  if (!admin || !usernameOk || !(await bcrypt.compare(password, admin.password_hash))) {
+  const admin = db.getAdminUserByUsername(username)
+  if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
   }
-  const token = jwt.sign({ role: 'admin' }, getJwtSecret(), { expiresIn: '12h' })
+  const token = jwt.sign({ role: 'admin', sub: admin.id, adminRole: admin.role, locationId: admin.location_id || null }, getJwtSecret(), { expiresIn: '12h' })
   return res.json({ token })
 })
 
-// Requires the correct admin login id before anything is sent — this stops a
+app.get('/api/admin/me', requireAdmin, (req, res) => {
+  const admin = db.getAdminUserById(req.admin.id)
+  if (!admin) return res.status(404).json({ error: 'not_found' })
+  const location = admin.location_id ? db.getLocationById(admin.location_id) : null
+  return res.json({ username: admin.username, role: admin.role, locationId: admin.location_id || null, locationName: location ? location.name : null })
+})
+
 // Requires the correct admin login id before any email is sent — this both
 // stops a random visitor from spamming the admin inbox and gives the operator
-// clear feedback (a wrong id is rejected outright, no email). Enumeration isn't
-// a concern here: there is a single admin whose id is a known business email,
-// and the reset link only ever goes to the fixed, server-side ADMIN_RESET_EMAIL
-// (never an address from the request body), so knowing the id buys nothing.
+// clear feedback (a wrong id is rejected outright, no email). Only super
+// admins get the self-service email flow — branch admin passwords are set/
+// reset by the super admin directly from the Staff panel (no per-branch email
+// infra needed for v1). The reset link only ever goes to the fixed,
+// server-side ADMIN_RESET_EMAIL (never an address from the request body), so
+// knowing the login id buys an attacker nothing.
 app.post('/api/admin/forgot-password', express.json(), async (req, res) => {
   const { username } = req.body || {}
   if (!username || !String(username).trim()) {
     return res.status(400).json({ error: 'missing_username', message: 'Enter your Login ID first.' })
   }
-  const admin = db.getAdminAuth()
-  const usernameOk = admin && String(username).trim().toLowerCase() === String(admin.username).trim().toLowerCase()
-  if (!usernameOk) {
+  const admin = db.getAdminUserByUsername(username)
+  if (!admin || admin.role !== 'super_admin') {
     return res.status(401).json({ error: 'unknown_login_id', message: 'That Login ID is not recognized — no email was sent.' })
   }
 
@@ -270,7 +301,7 @@ app.post('/api/admin/forgot-password', express.json(), async (req, res) => {
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
   db.createPasswordReset({
     id: crypto.randomUUID(),
-    user_id: 'admin', // sentinel: distinguishes admin resets from customer resets
+    user_id: `admin:${admin.id}`, // prefix distinguishes admin resets from customer resets
     token_hash: tokenHash,
     expires_at: Date.now() + 60 * 60 * 1000 // 1 hour
   })
@@ -291,13 +322,60 @@ app.post('/api/admin/reset-password', express.json(), async (req, res) => {
 
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const reset = db.findValidPasswordReset(tokenHash)
-  if (!reset || reset.user_id !== 'admin') return res.status(400).json({ error: 'invalid_or_expired_token' })
+  if (!reset || !String(reset.user_id).startsWith('admin:')) return res.status(400).json({ error: 'invalid_or_expired_token' })
 
-  const admin = db.getAdminAuth()
+  const adminId = reset.user_id.slice('admin:'.length)
   const password_hash = await bcrypt.hash(newPassword, 10)
-  db.setAdminAuth({ username: admin ? admin.username : (process.env.ADMIN_USERNAME || 'support@metalix.in'), password_hash })
+  db.updateAdminUser(adminId, { password_hash })
   db.markPasswordResetUsed(reset.id)
   return res.json({ message: 'Admin password updated — you can now log in.' })
+})
+
+// --- Staff management (super admin only) ----------------------------------
+// Branch admin accounts are created/reset directly by the super admin here —
+// deliberately no self-service signup for branch logins.
+app.get('/api/admin/staff', requireSuperAdmin, (req, res) => {
+  return res.json({ staff: db.listAdminUsers() })
+})
+
+app.post('/api/admin/staff', requireSuperAdmin, express.json(), async (req, res) => {
+  const { username, password, locationId } = req.body || {}
+  if (!username || !String(username).trim() || !password || !locationId) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Username, password, and a branch are all required.' })
+  }
+  if (password.length < 8) return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' })
+  if (db.getAdminUserByUsername(username)) {
+    return res.status(409).json({ error: 'already_exists', message: 'That login ID is already taken.' })
+  }
+  if (!db.getLocationById(locationId)) return res.status(400).json({ error: 'invalid_location' })
+  const password_hash = await bcrypt.hash(password, 10)
+  const staffUser = db.createAdminUser({ id: crypto.randomUUID(), username: String(username).trim(), password_hash, role: 'branch_admin', location_id: locationId })
+  return res.json({ staff: { id: staffUser.id, username: staffUser.username, role: staffUser.role, location_id: staffUser.location_id } })
+})
+
+app.put('/api/admin/staff/:id', requireSuperAdmin, express.json(), async (req, res) => {
+  const staffUser = db.getAdminUserById(req.params.id)
+  if (!staffUser || staffUser.role !== 'branch_admin') return res.status(404).json({ error: 'not_found' })
+  const { password, locationId } = req.body || {}
+  const updates = {}
+  if (password !== undefined) {
+    if (password.length < 8) return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' })
+    updates.password_hash = await bcrypt.hash(password, 10)
+  }
+  if (locationId !== undefined) {
+    if (!db.getLocationById(locationId)) return res.status(400).json({ error: 'invalid_location' })
+    updates.location_id = locationId
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
+  db.updateAdminUser(staffUser.id, updates)
+  return res.json({ updated: true })
+})
+
+app.delete('/api/admin/staff/:id', requireSuperAdmin, (req, res) => {
+  const staffUser = db.getAdminUserById(req.params.id)
+  if (!staffUser || staffUser.role !== 'branch_admin') return res.status(404).json({ error: 'not_found' })
+  db.deleteAdminUser(staffUser.id)
+  return res.json({ deleted: true })
 })
 
 function publicUser(user) {
@@ -371,9 +449,9 @@ app.post('/api/auth/reset-password', express.json(), async (req, res) => {
 
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const reset = db.findValidPasswordReset(tokenHash)
-  // reset.user_id === 'admin' is an admin reset token — it must go through
-  // /api/admin/reset-password, never this customer endpoint.
-  if (!reset || reset.user_id === 'admin') return res.status(400).json({ error: 'invalid_or_expired_token' })
+  // A user_id starting with 'admin:' is an admin reset token — it must go
+  // through /api/admin/reset-password, never this customer endpoint.
+  if (!reset || String(reset.user_id).startsWith('admin:')) return res.status(400).json({ error: 'invalid_or_expired_token' })
 
   const password_hash = await bcrypt.hash(newPassword, 10)
   db.updateUserPassword(reset.user_id, password_hash)
@@ -451,12 +529,16 @@ app.post('/api/auth/google', express.json(), async (req, res) => {
 })
 
 app.get('/api/admin/orders', requireAdmin, (req, res) => {
-  const { status, search, limit, offset } = req.query
+  const { status, search, limit, offset, location } = req.query
+  // A branch admin's own scope always wins; a super admin may optionally
+  // filter to one branch via ?location=, or omit it to see every branch.
+  const locationId = scopeLocation(req) || (location || undefined)
   const orders = db.listOrders({
     status: status || undefined,
     search: search || undefined,
     limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined
+    offset: offset ? Number(offset) : undefined,
+    locationId
   })
   return res.json({ orders })
 })
@@ -466,7 +548,7 @@ app.get('/api/admin/orders', requireAdmin, (req, res) => {
 // this is gated behind requireAdmin.
 app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   return res.json({ order })
 })
 
@@ -477,7 +559,7 @@ app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
 const A4_PT = { width: 595.28, height: 841.89 }
 app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const { coverImage, backImage } = req.body || {}
   if (!coverImage || !backImage) return res.status(400).json({ error: 'missing_images' })
   if (order.files_deleted_at) {
@@ -573,7 +655,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) =>
 
 app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const { order_status, failure_reason } = req.body || {}
   const updates = {}
   if (order_status !== undefined) updates.order_status = order_status
@@ -640,7 +722,7 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
   let emailed = 0
   for (const id of ids) {
     const order = db.getOrder(id)
-    if (!order || order.order_status === order_status) continue
+    if (!ownsOrder(req, order) || order.order_status === order_status) continue
     const u = db.updateOrder(id, { order_status })
     updated++
     printQueue.syncPrintJobStatus(u.id, u.order_status)
@@ -659,7 +741,7 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, express.json(), 
     return res.status(400).json({ error: 'invalid_mode', message: 'Payment mode must be cash or upi.' })
   }
   const order = db.getOrder(req.params.id)
-  if (!order) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const updated = db.updateOrder(order.id, { payment_status: 'paid', payment_mode: mode, payment_collected_at: Date.now() })
   return res.json({ order: updated })
 })
@@ -668,6 +750,7 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, express.json(), 
 // and BigQuery immediately, but is recoverable for 30 days before the purge
 // job removes it for good.
 app.delete('/api/admin/orders/:id', requireAdmin, (req, res) => {
+  if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.archiveOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   return res.json({ archived: true })
@@ -678,32 +761,37 @@ app.post('/api/admin/orders/bulk-delete', requireAdmin, express.json(), (req, re
   const { ids } = req.body || {}
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order.' })
   let archived = 0
-  for (const id of ids) { if (db.archiveOrder(id)) archived++ }
+  for (const id of ids) {
+    if (!ownsOrder(req, db.getOrder(id))) continue
+    if (db.archiveOrder(id)) archived++
+  }
   return res.json({ archived })
 })
 
 // Archive a customer (identified by mobile) — archives all their orders.
 app.delete('/api/admin/customers/:mobile', requireAdmin, (req, res) => {
-  const orders = db.archiveCustomerByMobile(req.params.mobile)
+  const orders = db.archiveCustomerByMobile(req.params.mobile, scopeLocation(req))
   return res.json({ archived: true, archivedOrders: orders.length })
 })
 
 // Archive management: list, restore, or permanently delete now.
 app.get('/api/admin/archive', requireAdmin, (req, res) => {
-  return res.json({ orders: db.listArchivedOrders(), retentionDays: 30 })
+  return res.json({ orders: db.listArchivedOrders(scopeLocation(req)), retentionDays: 30 })
 })
 
 app.get('/api/admin/feedback', requireAdmin, (req, res) => {
-  return res.json({ feedback: db.listOrderFeedback() })
+  return res.json({ feedback: db.listOrderFeedback(scopeLocation(req)) })
 })
 
 app.post('/api/admin/orders/:id/restore', requireAdmin, (req, res) => {
+  if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.restoreOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   return res.json({ restored: true })
 })
 
 app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
+  if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.deleteOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   try { deleteFilesForOrder(order) } catch (err) { console.error('[archive] file cleanup on purge failed:', err.message) }
@@ -713,17 +801,17 @@ app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
 // Public: active branches the customer can pick from (no admin-only fields).
 app.get('/api/locations', (req, res) => {
   const active = db.getLocations().filter((l) => l.active).map((l) => ({
-    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || ''
+    id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen
   }))
   return res.json({ locations: active })
 })
 
 // Admin-managed branches / pickup locations (add / edit / delete / activate).
-app.get('/api/admin/locations', requireAdmin, (req, res) => {
+app.get('/api/admin/locations', requireSuperAdmin, (req, res) => {
   return res.json({ locations: db.getLocations() })
 })
 
-app.put('/api/admin/locations', requireAdmin, express.json(), (req, res) => {
+app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) => {
   const { locations } = req.body || {}
   if (!Array.isArray(locations)) return res.status(400).json({ error: 'invalid_locations' })
   const clean = []
@@ -745,15 +833,45 @@ app.put('/api/admin/locations', requireAdmin, express.json(), (req, res) => {
     })
   }
   db.setLocations(clean)
+  // Identity fields (above) and operating info (shopOpen/hours) are separate
+  // updates in db.js so a branch admin's own PUT (below) can never touch
+  // identity fields — but the super admin's single request here can include
+  // both, so apply any operating-info fields per location too.
+  for (const l of locations) {
+    if (l && l.id && (l.shopOpen !== undefined || l.storeTimings)) {
+      db.updateLocationOperatingInfo(l.id, { shopOpen: l.shopOpen, storeTimings: l.storeTimings })
+    }
+  }
   return res.json({ locations: db.getLocations() })
 })
 
+// A branch admin's self-serve view of their own branch — shop open/closed +
+// hours only, never identity fields (name/address/etc. stay super-admin-only
+// via /api/admin/locations). Super admins have no "my location" — they use
+// the full locations list instead.
+app.get('/api/admin/my-location', requireAdmin, (req, res) => {
+  if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
+  const location = db.getLocationById(req.admin.locationId)
+  if (!location) return res.status(404).json({ error: 'not_found' })
+  return res.json({ location })
+})
+
+app.put('/api/admin/my-location', requireAdmin, express.json(), (req, res) => {
+  if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
+  const { shopOpen, storeTimings } = req.body || {}
+  const location = db.updateLocationOperatingInfo(req.admin.locationId, { shopOpen, storeTimings })
+  if (!location) return res.status(404).json({ error: 'not_found' })
+  return res.json({ location })
+})
+
 // Admin-managed order workflow stages (add / delete / reorder / notify flag).
+// Readable by any admin (branch admins need the real stage names for their
+// order status dropdown) — editing the shared stage list stays super-admin-only.
 app.get('/api/admin/stages', requireAdmin, (req, res) => {
   return res.json({ stages: db.getOrderStages() })
 })
 
-app.put('/api/admin/stages', requireAdmin, express.json(), (req, res) => {
+app.put('/api/admin/stages', requireSuperAdmin, express.json(), (req, res) => {
   const { stages } = req.body || {}
   if (!Array.isArray(stages) || !stages.length) {
     return res.status(400).json({ error: 'invalid_stages', message: 'Keep at least one stage.' })
@@ -773,12 +891,12 @@ app.put('/api/admin/stages', requireAdmin, express.json(), (req, res) => {
 })
 
 app.get('/api/admin/customers', requireAdmin, (req, res) => {
-  return res.json({ customers: db.listCustomers() })
+  return res.json({ customers: db.listCustomers(scopeLocation(req)) })
 })
 
 app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res) => {
   const order = db.getOrder(req.params.id)
-  if (!order) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
 
   const safeFileId = path.basename(req.params.fileId)
   let files = []
@@ -799,7 +917,7 @@ app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res)
   return res.download(filePath, fileName || safeFileId)
 })
 
-app.put('/api/admin/pricing', requireAdmin, express.json(), (req, res) => {
+app.put('/api/admin/pricing', requireSuperAdmin, express.json(), (req, res) => {
   const pricing = req.body
   if (!pricing || !pricing.rates || !Array.isArray(pricing.rates.a4)) {
     return res.status(400).json({ error: 'invalid_pricing' })
@@ -1221,13 +1339,23 @@ if (fs.existsSync(clientDist)) {
 // Seed the DB-backed admin credential once, from env, if it doesn't exist yet.
 // After this the login id / password are managed entirely from the web (change
 // or reset), so ADMIN_PASSWORD in .env only matters for the very first boot.
+// Ensures at least one super_admin row exists in admin_users. On an install
+// that already had the legacy single-admin credential (settings.admin_auth),
+// migrates it in as-is (same password hash, so the existing login keeps
+// working). On a genuinely fresh install, seeds from env like before.
 async function seedAdminAuth() {
-  if (db.getAdminAuth()) return
+  if (db.countAdminUsers() > 0) return
+  const legacy = db.getAdminAuth()
+  if (legacy) {
+    db.createAdminUser({ id: crypto.randomUUID(), username: legacy.username, password_hash: legacy.password_hash, role: 'super_admin', location_id: null })
+    console.log(`[admin] migrated legacy admin credential into admin_users (login id: ${legacy.username})`)
+    return
+  }
   const username = process.env.ADMIN_USERNAME || 'support@metalix.in'
   const password = process.env.ADMIN_PASSWORD || 'metalix-admin'
   const password_hash = await bcrypt.hash(password, 10)
-  db.setAdminAuth({ username, password_hash })
-  console.log(`[admin] seeded initial admin credential (login id: ${username})`)
+  db.createAdminUser({ id: crypto.randomUUID(), username, password_hash, role: 'super_admin', location_id: null })
+  console.log(`[admin] seeded initial super admin credential (login id: ${username})`)
 }
 
 const { loadSecretsIntoEnv } = require('./secrets')

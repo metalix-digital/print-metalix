@@ -140,6 +140,7 @@ body{background:var(--bg);}
 .dash-header{position:sticky;top:0;z-index:40;padding:15px 28px;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);}
 .dash-header h1{font-family:'Syne',sans-serif;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;}
 .dash-header h1::before{content:"";width:11px;height:11px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px var(--orange-soft);}
+.dash-branch-tag{font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--orange);background:var(--orange-soft);border-radius:999px;padding:4px 11px;margin-left:4px;}
 .logout-btn{border-radius:9px;font-weight:600;transition:.15s;}
 .tabs{position:sticky;top:57px;z-index:39;gap:2px;padding:8px 28px;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);}
 .tab-btn{border-radius:9px;border-bottom:none;padding:8px 15px;transition:.15s;}
@@ -177,6 +178,8 @@ select.status-select:focus{outline:none;box-shadow:0 0 0 3px rgba(255,102,0,.18)
 
 /* payment badge */
 .pay-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;text-transform:capitalize;background:var(--slate-bg);color:var(--slate);}
+.branch-chip{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--orange-soft);color:var(--orange);}
+.is-branch-admin .branch-col{display:none;}
 .pay-badge.paid{background:var(--ok-bg);color:var(--ok);}
 .pay-badge.failed{background:var(--err-bg);color:var(--err);}
 .pay-badge.cod{background:var(--warn-bg);color:var(--warn);}
@@ -229,6 +232,21 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .loc-active{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink3);white-space:nowrap;cursor:pointer;}
 .loc-active input{accent-color:var(--orange);width:16px;height:16px;}
 @media(max-width:560px){ .loc-grid{grid-template-columns:1fr;} }
+
+.staff-card{display:flex;align-items:center;gap:14px;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;background:var(--card);margin-bottom:10px;transition:.15s;}
+.staff-card:hover{border-color:var(--orange);box-shadow:0 4px 14px -8px rgba(255,102,0,.25);}
+.staff-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;font-family:'Syne',sans-serif;}
+.staff-info{flex:1;min-width:0;}
+.staff-username{font-weight:700;font-size:14.5px;color:var(--ink);}
+.staff-branch-pill{display:inline-block;margin-top:4px;font-size:11.5px;font-weight:600;color:var(--orange-d);background:var(--orange-soft);border-radius:999px;padding:3px 10px;}
+.staff-del{flex-shrink:0;width:30px;height:30px;border-radius:50%;border:none;background:var(--line2);color:var(--ink3);cursor:pointer;font-size:13px;transition:.15s;}
+.staff-del:hover{background:#FBE7E7;color:#C0392B;}
+.staff-empty{padding:24px 16px;text-align:center;color:var(--ink3);font-size:13.5px;border:1.5px dashed var(--line);border-radius:12px;margin-bottom:16px;}
+.staff-add-box{border:1.5px dashed var(--line);border-radius:12px;padding:18px;margin-top:8px;background:var(--bg);}
+.staff-add-box h3{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em;}
+.staff-add-box .stage-add{margin-bottom:0;}
+.staff-add-box input, .staff-add-box select{border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13.5px;background:#fff;}
+.staff-add-box input:focus, .staff-add-box select:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
 
 /* action buttons */
 .dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
@@ -296,18 +314,20 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
 <div class="hidden" id="dashWrap">
   <div class="dash-header">
-    <h1>Metalix Admin</h1>
+    <h1>Metalix Admin<span class="dash-branch-tag hidden" id="dashBranchTag"></span></h1>
     <button class="logout-btn" id="logoutBtn">Log out</button>
   </div>
   <nav class="tabs">
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
-    <button class="tab-btn" data-tab="pricing">Pricing</button>
-    <button class="tab-btn" data-tab="locations">Locations</button>
-    <button class="tab-btn" data-tab="stages">Stages</button>
+    <button class="tab-btn" data-tab="pricing" data-super-only>Pricing</button>
+    <button class="tab-btn" data-tab="locations" data-super-only>Locations</button>
+    <button class="tab-btn" data-tab="stages" data-super-only>Stages</button>
     <button class="tab-btn" data-tab="archive">Archive</button>
     <button class="tab-btn" data-tab="feedback">Feedback</button>
-    <button class="tab-btn" data-tab="settings">Settings</button>
+    <button class="tab-btn hidden" data-tab="mybranch" id="tabMyBranch">My Branch</button>
+    <button class="tab-btn" data-tab="staff" data-super-only>Staff</button>
+    <button class="tab-btn" data-tab="settings" data-super-only>Settings</button>
   </nav>
   <div class="content">
 
@@ -316,6 +336,9 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <input type="text" id="orderSearch" placeholder="Search by name, mobile, or order ID" />
         <select id="orderStatusFilter">
           <option value="">All statuses</option>
+        </select>
+        <select id="orderBranchFilter" class="branch-col" data-super-only>
+          <option value="">All branches</option>
         </select>
       </div>
       <div class="bulk-bar hidden" id="bulkBar">
@@ -329,9 +352,9 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <table>
           <thead><tr>
             <th class="cbcol"><input type="checkbox" class="cb" id="selectAll" title="Select all" /></th>
-            <th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th>
+            <th>Order</th><th>Customer</th><th class="branch-col">Branch</th><th>Total</th><th>Payment</th><th>Status</th><th>Placed</th>
           </tr></thead>
-          <tbody id="ordersBody"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
+          <tbody id="ordersBody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -380,6 +403,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <thead><tr><th>Order</th><th>Customer</th><th>Rating</th><th>Comment</th><th>Submitted</th></tr></thead>
           <tbody id="feedbackBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-mybranch">
+      <div class="settings-form" id="myBranchForm">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-staff">
+      <div class="stages-wrap" id="staffWrap">
+        <div class="loading">Loading…</div>
       </div>
     </div>
 
@@ -472,18 +507,44 @@ function showLogin(){
   document.getElementById('loginWrap').classList.remove('hidden');
   document.getElementById('dashWrap').classList.add('hidden');
 }
+let currentAdmin = null;
+
 async function showDash(){
   document.getElementById('loginWrap').classList.add('hidden');
   document.getElementById('dashWrap').classList.remove('hidden');
+
+  const meRes = await fetch('/api/admin/me', { headers: { Authorization: 'Bearer ' + getToken() } });
+  if (meRes.status === 401) { clearToken(); showLogin(); return; }
+  currentAdmin = await meRes.json();
+  const isBranch = currentAdmin.role === 'branch_admin';
+  document.body.classList.toggle('is-branch-admin', isBranch);
+
+  const branchTag = document.getElementById('dashBranchTag');
+  branchTag.classList.toggle('hidden', !isBranch);
+  if (isBranch) branchTag.textContent = currentAdmin.locationName;
+  document.querySelectorAll('.tab-btn[data-super-only]').forEach((btn) => btn.classList.toggle('hidden', isBranch));
+  document.getElementById('tabMyBranch').classList.toggle('hidden', !isBranch);
+  // If a super-only tab was left active from a previous session, fall back to Orders.
+  if (isBranch && document.querySelector('.tab-btn.active[data-super-only]')) {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    document.querySelector('[data-tab="orders"]').classList.add('active');
+    document.getElementById('panel-orders').classList.add('active');
+  }
+
   await loadStagesConfig();   // stages drive the status dropdowns, so load first
   await loadFeedback();       // order rows show each order's rating inline, so load before orders
   loadOrders();
   loadCustomers();
-  loadPricing();
-  loadLocations();
-  loadStages();
   loadArchive();
-  loadSettings();
+  if (isBranch) {
+    loadMyBranch();
+  } else {
+    loadPricing();
+    loadLocations();
+    loadStages();
+    loadSettings();
+  }
 }
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -713,17 +774,21 @@ async function loadOrders(){
   const body = document.getElementById('ordersBody');
   const search = document.getElementById('orderSearch').value.trim();
   const status = document.getElementById('orderStatusFilter').value;
+  const branchFilter = document.getElementById('orderBranchFilter');
+  const location = branchFilter ? branchFilter.value : '';
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (status) params.set('status', status);
+  if (location) params.set('location', location);
   try {
     const res = await adminFetch('/api/admin/orders?' + params.toString());
     const data = await res.json();
     renderOrders(data.orders || []);
   } catch (err) {
-    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load orders</td></tr>';
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="8" class="empty">Failed to load orders</td></tr>';
   }
 }
+document.getElementById('orderBranchFilter').addEventListener('change', loadOrders);
 
 function statusSelectHtml(order){
   const statuses = getStatusesForOrder(order);
@@ -872,7 +937,7 @@ function renderOrders(orders){
   orders.forEach((o) => { ordersById[o.id] = o; });
   clearSelection();
   if (!orders.length){
-    body.innerHTML = '<tr><td colspan="7" class="empty">No orders found</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">No orders found</td></tr>';
     return;
   }
   body.innerHTML = orders.map((o) => (
@@ -880,12 +945,13 @@ function renderOrders(orders){
       '<td class="cbcol"><input type="checkbox" class="cb row-cb" data-order="' + escHtml(o.id) + '"></td>' +
       '<td><span class="order-id">' + escHtml(o.id) + '</span></td>' +
       '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
+      '<td class="branch-col"><span class="branch-chip">' + escHtml(o.location_name || '—') + '</span></td>' +
       '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
       '<td>' + paymentBadgeHtml(o) + '</td>' +
       '<td>' + statusSelectHtml(o) + '</td>' +
       '<td><span class="placed">' + (o.created_at ? escHtml(new Date(o.created_at).toLocaleString()) : '—') + '</span></td>' +
     '</tr>' +
-    '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="7"><div class="detail">' +
+    '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
       filesDetailHtml(o) +
       '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
       (o.location_name ? '<div><strong>Branch:</strong> ' + escHtml(o.location_name) + '</div>' : '') +
@@ -1025,6 +1091,13 @@ async function loadLocations(){
     const data = await res.json();
     locationsDraft = (data.locations || []).map((l) => ({ id: l.id || '', name: l.name || '', address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active !== false }));
   } catch (err) { if (err.message === 'unauthorized') return; locationsDraft = []; }
+  const branchFilter = document.getElementById('orderBranchFilter');
+  if (branchFilter) {
+    const cur = branchFilter.value;
+    branchFilter.innerHTML = '<option value="">All branches</option>' +
+      locationsDraft.filter((l) => l.id).map((l) => '<option value="' + escHtml(l.id) + '">' + escHtml(l.name) + '</option>').join('');
+    branchFilter.value = cur;
+  }
   wrap.innerHTML =
     '<h2>Branches / pickup locations</h2>' +
     '<p class="hint">Add the branches customers can choose from when starting an order. Inactive branches stay saved but are hidden from customers. Changes apply after you Save.</p>' +
@@ -1038,6 +1111,7 @@ async function loadLocations(){
     renderLocList();
   });
   document.getElementById('saveLocBtn').addEventListener('click', saveLocations);
+  loadStaff();
 }
 
 function renderLocList(){
@@ -1081,10 +1155,85 @@ async function saveLocations(){
     locationsDraft = data.locations.map((l) => ({ ...l }));
     renderLocList();
     setLocMsg('Branches saved.', false);
+    loadStaff();
   } catch (err) {
     if (err.message !== 'unauthorized') setLocMsg('Could not save branches.', true);
   }
 }
+
+/* -- STAFF (branch admin logins, super admin only) -- */
+async function loadStaff(){
+  const wrap = document.getElementById('staffWrap');
+  if (!wrap) return;
+  let staff = [];
+  try {
+    const res = await adminFetch('/api/admin/staff');
+    const data = await res.json();
+    staff = (data.staff || []).filter((s) => s.role === 'branch_admin');
+  } catch (err) { if (err.message === 'unauthorized') return; }
+
+  const locByName = {};
+  locationsDraft.forEach((l) => { if (l.id) locByName[l.id] = l.name; });
+  const locOptions = locationsDraft.filter((l) => l.id).map((l) => '<option value="' + escHtml(l.id) + '">' + escHtml(l.name) + '</option>').join('');
+
+  wrap.innerHTML =
+    '<h2>Branch staff logins</h2>' +
+    '<p class="hint">Give a branch its own login, scoped to only that branch\'s orders/customers/archive/feedback — they never see other branches, pricing, or site settings.</p>' +
+    '<div id="staffList"></div>' +
+    '<div class="staff-add-box">' +
+      '<h3>Add a branch login</h3>' +
+      '<div class="stage-add" style="flex-wrap:wrap;">' +
+        '<input type="text" id="newStaffUsername" placeholder="Login ID (e.g. sector14@metalix.in)" style="flex:1.4;min-width:220px;" />' +
+        '<input type="password" id="newStaffPassword" placeholder="Password (min 8 chars)" style="flex:1;min-width:160px;" />' +
+        '<select id="newStaffLocation" style="flex:1;min-width:160px;"><option value="" disabled selected>Assign branch…</option>' + locOptions + '</select>' +
+        '<button class="add-btn" id="addStaffBtn" type="button">Add staff</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="toast-msg" id="staffMsg"></div>';
+
+  const list = document.getElementById('staffList');
+  list.innerHTML = !staff.length
+    ? '<div class="staff-empty">No branch logins yet — add one below.</div>'
+    : staff.map((s) => {
+        const initials = s.username.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '??';
+        return '<div class="staff-card" data-id="' + escHtml(s.id) + '">' +
+          '<div class="staff-avatar">' + escHtml(initials) + '</div>' +
+          '<div class="staff-info">' +
+            '<div class="staff-username">' + escHtml(s.username) + '</div>' +
+            '<span class="staff-branch-pill">📍 ' + escHtml(locByName[s.location_id] || 'Unknown branch') + '</span>' +
+          '</div>' +
+          '<button class="staff-del" type="button" title="Remove staff login">✕</button>' +
+        '</div>';
+      }).join('');
+  list.querySelectorAll('.staff-card').forEach((el) => {
+    el.querySelector('.staff-del').addEventListener('click', async () => {
+      if (!confirm('Remove this staff login? They will no longer be able to log in.')) return;
+      try {
+        const res = await adminFetch('/api/admin/staff/' + encodeURIComponent(el.dataset.id), { method: 'DELETE' });
+        if (!res.ok) { setStaffMsg('Could not remove staff login.', true); return; }
+        loadStaff();
+      } catch (err) { if (err.message !== 'unauthorized') setStaffMsg('Could not remove staff login.', true); }
+    });
+  });
+
+  document.getElementById('addStaffBtn').addEventListener('click', async () => {
+    const username = document.getElementById('newStaffUsername').value.trim();
+    const password = document.getElementById('newStaffPassword').value;
+    const locationId = document.getElementById('newStaffLocation').value;
+    if (!username || !password || !locationId) { setStaffMsg('Login ID, password, and a branch are all required.', true); return; }
+    try {
+      const res = await adminFetch('/api/admin/staff', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, locationId })
+      });
+      const data = await res.json();
+      if (!res.ok) { setStaffMsg(data.message || 'Could not create staff login.', true); return; }
+      setStaffMsg('Staff login created.', false);
+      loadStaff();
+    } catch (err) { if (err.message !== 'unauthorized') setStaffMsg('Could not create staff login.', true); }
+  });
+}
+
+function setStaffMsg(msg, isErr){ const el = document.getElementById('staffMsg'); if (el){ el.textContent = msg; el.style.color = isErr ? '#DC2626' : '#15803D'; } }
 
 /* -- STAGES -- */
 // Edits happen on a draft copy so unsaved tweaks don't leak into the Orders
@@ -1475,6 +1624,63 @@ function textFieldHtml(label, key, value, isTextarea){
   const inner = isTextarea ? (value || '') : '';
   return '<label class="field"><span>' + label + '</span>' +
     '<' + tag + ' data-key="' + key + '"' + valueAttr + '>' + inner + '</' + tag + '></label>';
+}
+
+/* -- MY BRANCH (branch admin only) -- */
+async function loadMyBranch(){
+  const form = document.getElementById('myBranchForm');
+  if (!form) return;
+  const res = await adminFetch('/api/admin/my-location');
+  const data = await res.json();
+  const loc = data.location;
+  const shopOpen = loc.shopOpen !== false;
+  form.innerHTML =
+    '<div class="shop-toggle-box' + (shopOpen ? '' : ' closed') + '" id="branchToggleBox">' +
+      '<div><div class="stb-label">' + escHtml(loc.name) + ' is ' + (shopOpen ? 'Open' : 'Closed') + '</div>' +
+      '<div class="stb-sub">' + (shopOpen ? 'Customers can pick this branch at checkout.' : 'Customers see this branch as closed and can\'t select it.') + '</div></div>' +
+      '<label class="shop-switch"><input type="checkbox" id="branchOpenToggle"' + (shopOpen ? ' checked' : '') + '><span class="slider"></span></label>' +
+    '</div>' +
+    '<h2>Branch hours</h2><div class="field-grid">' +
+      textFieldHtml('Mon–Fri', 'weekdays', loc.storeTimings.weekdays) +
+      textFieldHtml('Saturday', 'saturday', loc.storeTimings.saturday) +
+      textFieldHtml('Sunday', 'sunday', loc.storeTimings.sunday) +
+    '</div>' +
+    '<button class="save-btn" id="saveMyBranchBtn">Save hours</button>' +
+    '<div id="myBranchMessage"></div>';
+
+  document.getElementById('saveMyBranchBtn').addEventListener('click', saveMyBranch);
+  document.getElementById('branchOpenToggle').addEventListener('change', (e) => {
+    const box = document.getElementById('branchToggleBox');
+    box.classList.toggle('closed', !e.target.checked);
+    box.querySelector('.stb-label').textContent = escHtml(loc.name) + ' is ' + (e.target.checked ? 'Open' : 'Closed');
+    box.querySelector('.stb-sub').textContent = e.target.checked
+      ? 'Customers can pick this branch at checkout.'
+      : 'Customers see this branch as closed and can\'t select it.';
+    saveMyBranch();
+  });
+}
+
+async function saveMyBranch(){
+  const btn = document.getElementById('saveMyBranchBtn');
+  const msg = document.getElementById('myBranchMessage');
+  const storeTimings = {};
+  document.querySelectorAll('#myBranchForm input[data-key]').forEach((input) => { storeTimings[input.dataset.key] = input.value; });
+  const shopOpen = document.getElementById('branchOpenToggle').checked;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (msg) { msg.textContent = ''; msg.className = 'save-message'; }
+  try {
+    const res = await adminFetch('/api/admin/my-location', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shopOpen, storeTimings })
+    });
+    if (!res.ok) throw new Error('save_failed');
+    if (msg) msg.textContent = 'Saved.';
+  } catch (err) {
+    if (err.message !== 'unauthorized' && msg){ msg.textContent = 'Failed to save.'; msg.className = 'save-message error'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save hours'; }
+  }
 }
 
 async function loadSettings(){

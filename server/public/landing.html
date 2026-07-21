@@ -279,6 +279,13 @@ nav a.active{color:var(--orange-text);}
   margin-top:46px;background:#fff;border-radius:18px;border:1px solid var(--line);
   overflow:hidden;box-shadow:var(--shadow);
 }
+.orders-filters{display:flex;gap:10px;margin-top:28px;flex-wrap:wrap;}
+.orders-filters input, .orders-filters select{
+  font-family:inherit;font-size:13.5px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);
+}
+.orders-filters input{flex:1;min-width:200px;}
+.orders-filters select{min-width:160px;}
+.orders-empty{padding:32px 28px;text-align:center;color:var(--ink2);font-size:13.5px;}
 .pt-head{
   display:grid;grid-template-columns:2fr 1fr 1fr;
   background:var(--ink);color:#fff;padding:16px 28px;
@@ -507,6 +514,9 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
 .branch-opt.sel{background:#FFF1E6;}
 .branch-opt .b-name{font-weight:600;font-size:13.5px;}
 .branch-opt .b-addr{font-size:12px;color:#78716C;margin-top:2px;}
+.branch-opt.closed{cursor:default;opacity:.55;}
+.branch-opt.closed:hover{background:none;}
+.branch-opt .b-closed-tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#DC2626;background:#FCEBEB;border-radius:999px;padding:2px 7px;vertical-align:middle;}
 @media(max-width:760px){ .branch-btn .lbl{max-width:96px;} .branch-picker{margin-right:8px;} }
 </style>
 <header>
@@ -810,7 +820,11 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <p style="margin-bottom:16px;color:var(--ink2);">Log in to see your order history.</p>
       <button class="btn-hero btn-hero-primary" onclick="openModal('login')">Log in</button>
     </div>
-    <div class="pricing-table" id="ordersTable" style="margin-top:24px;"></div>
+    <div class="orders-filters hidden" id="ordersFilters">
+      <input type="text" id="ordersSearch" placeholder="Search by order ID or file name" />
+      <select id="ordersStatusFilter"><option value="">All statuses</option></select>
+    </div>
+    <div class="pricing-table" id="ordersTable" style="margin-top:16px;"></div>
   </div>
 </div>
 
@@ -1257,12 +1271,45 @@ function showPage(id){
 }
 
 const ORDER_MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
+let myOrdersAll = [];
+
+function renderMyOrders(){
+  const table = document.getElementById('ordersTable');
+  const search = (document.getElementById('ordersSearch').value || '').trim().toLowerCase();
+  const status = document.getElementById('ordersStatusFilter').value;
+  const orders = myOrdersAll.filter((o) => {
+    if(status && o.order_status !== status) return false;
+    if(search){
+      const haystack = (o.id + ' ' + o.fileNames.join(' ')).toLowerCase();
+      if(!haystack.includes(search)) return false;
+    }
+    return true;
+  });
+  if(!orders.length){
+    table.innerHTML = '<div class="orders-empty">' + (myOrdersAll.length ? 'No orders match your filters.' : 'No orders yet — place your first order to see it here.') + '</div>';
+    return;
+  }
+  table.innerHTML =
+    '<div class="pt-head"><span>Order</span><span>Status</span><span>Amount</span></div>' +
+    orders.map((o) => {
+      const itemSummary = o.fileNames.length > 1
+        ? `${o.fileNames[0]} +${o.fileNames.length - 1} more`
+        : (o.fileNames[0] || '—');
+      const dateStr = new Date(o.created_at).toLocaleDateString();
+      const isCompleted = o.order_status === 'Completed';
+      const ratePill = isCompleted ? '<br><span class="rate-pill">★ View & rate this order</span>' : '';
+      return '<a class="pt-row" href="/track/' + encodeURIComponent(o.id) + '"><span class="name">' + o.id + '<br><span class="note">' + itemSummary + ' · ' + dateStr + ' · ' + (ORDER_MODE_LABELS[o.print_mode] || o.print_mode) + '</span>' + ratePill + '</span><span>' + o.order_status + '</span><span class="price">₹' + o.total_amount + '</span></a>';
+    }).join('');
+}
+
 function loadMyOrders(){
   const token = getCustomerToken();
   const table = document.getElementById('ordersTable');
   const loggedOut = document.getElementById('ordersLoggedOut');
+  const filters = document.getElementById('ordersFilters');
   if(!token){
     loggedOut.classList.remove('hidden');
+    filters.classList.add('hidden');
     table.innerHTML = '';
     return;
   }
@@ -1271,28 +1318,26 @@ function loadMyOrders(){
   fetch('/api/my/orders', { headers: { Authorization: 'Bearer ' + token } })
     .then(r => { if(!r.ok) throw new Error('unauthorized'); return r.json(); })
     .then(data => {
-      const orders = data.orders || [];
-      if(!orders.length){
-        table.innerHTML = '<div class="pt-row"><span class="name">No orders yet — place your first order to see it here.</span></div>';
+      myOrdersAll = data.orders || [];
+      if(!myOrdersAll.length){
+        filters.classList.add('hidden');
+        table.innerHTML = '<div class="orders-empty">No orders yet — place your first order to see it here.</div>';
         return;
       }
-      table.innerHTML =
-        '<div class="pt-head"><span>Order</span><span>Status</span><span>Amount</span></div>' +
-        orders.map((o) => {
-          const itemSummary = o.fileNames.length > 1
-            ? `${o.fileNames[0]} +${o.fileNames.length - 1} more`
-            : (o.fileNames[0] || '—');
-          const dateStr = new Date(o.created_at).toLocaleDateString();
-          const isCompleted = o.order_status === 'Completed';
-          const ratePill = isCompleted ? '<br><span class="rate-pill">★ View & rate this order</span>' : '';
-          return '<a class="pt-row" href="/track/' + encodeURIComponent(o.id) + '"><span class="name">' + o.id + '<br><span class="note">' + itemSummary + ' · ' + dateStr + ' · ' + (ORDER_MODE_LABELS[o.print_mode] || o.print_mode) + '</span>' + ratePill + '</span><span>' + o.order_status + '</span><span class="price">₹' + o.total_amount + '</span></a>';
-        }).join('');
+      filters.classList.remove('hidden');
+      const statuses = Array.from(new Set(myOrdersAll.map((o) => o.order_status)));
+      const statusSelect = document.getElementById('ordersStatusFilter');
+      statusSelect.innerHTML = '<option value="">All statuses</option>' + statuses.map((s) => '<option value="' + s + '">' + s + '</option>').join('');
+      renderMyOrders();
     })
     .catch(() => {
       loggedOut.classList.remove('hidden');
+      filters.classList.add('hidden');
       table.innerHTML = '';
     });
 }
+document.getElementById('ordersSearch').addEventListener('input', renderMyOrders);
+document.getElementById('ordersStatusFilter').addEventListener('change', renderMyOrders);
 
 function scrollToSection(id){
   setTimeout(()=>{
@@ -1685,10 +1730,11 @@ function showToast(msg, icon='✓'){
     var sel = getSel();
     m.innerHTML = branches.map(function(b){
       var addr = [b.address, b.city, b.pincode].filter(Boolean).join(', ');
-      return '<button type="button" class="branch-opt' + (sel && sel.id === b.id ? ' sel' : '') + '" data-id="' + bEsc(b.id) + '">' +
-        '<span class="b-name">' + bEsc(b.name) + '</span>' + (addr ? '<div class="b-addr">' + bEsc(addr) + '</div>' : '') + '</button>';
+      var closed = b.shopOpen === false;
+      return '<button type="button" class="branch-opt' + (sel && sel.id === b.id ? ' sel' : '') + (closed ? ' closed' : '') + '" data-id="' + bEsc(b.id) + '"' + (closed ? ' disabled' : '') + '>' +
+        '<span class="b-name">' + bEsc(b.name) + (closed ? '<span class="b-closed-tag">Closed</span>' : '') + '</span>' + (addr ? '<div class="b-addr">' + bEsc(addr) + '</div>' : '') + '</button>';
     }).join('');
-    m.querySelectorAll('.branch-opt[data-id]').forEach(function(el){
+    m.querySelectorAll('.branch-opt[data-id]:not(.closed)').forEach(function(el){
       el.addEventListener('click', function(ev){
         ev.stopPropagation();
         var b = branches.filter(function(x){ return x.id === el.dataset.id; })[0];
@@ -1700,8 +1746,9 @@ function showToast(msg, icon='✓'){
   }
   window.startOrder = function(){
     var sel = getSel();
-    if (!sel){
-      if (typeof showToast === 'function') showToast('Please choose a branch to continue', '📍');
+    var selBranch = sel && branches.filter(function(b){ return b.id === sel.id; })[0];
+    if (!sel || (selBranch && selBranch.shopOpen === false)){
+      if (typeof showToast === 'function') showToast(sel ? 'That branch is currently closed — pick another' : 'Please choose a branch to continue', '📍');
       var m = document.getElementById('branchMenu'); if (m) m.classList.remove('hidden');
       var btn = document.getElementById('branchBtn'); if (btn) btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
       return;
@@ -1713,7 +1760,8 @@ function showToast(msg, icon='✓'){
   // "Select branch" instantly and populates when idle.
   window.__applyBranches = function(list){
     branches = list || [];
-    if (branches.length === 1 && !getSel()) setSel({ id: branches[0].id, name: branches[0].name });
+    var openBranches = branches.filter(function(b){ return b.shopOpen !== false; });
+    if (openBranches.length === 1 && !getSel()) setSel({ id: openBranches[0].id, name: openBranches[0].name });
     var sel = getSel();
     if (sel && !branches.some(function(b){ return b.id === sel.id; })) setSel(null);
     updateBtn(); renderMenu();

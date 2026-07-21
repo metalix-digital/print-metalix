@@ -85,6 +85,39 @@ db.exec(`
     created_at INTEGER
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_order_feedback_order_id ON order_feedback(order_id);
+
+  -- Multi-branch admin access: a 'super_admin' sees every location; a
+  -- 'branch_admin' is scoped to exactly one location_id (see requireAdmin /
+  -- scopeLocation in server.js). The legacy single admin_auth settings row is
+  -- migrated into this table as the first super_admin (see seedAdminAuth).
+  CREATE TABLE IF NOT EXISTS admin_users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'super_admin',
+    location_id TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users(username);
+
+  -- Branches/pickup locations, promoted from a settings-JSON blob to a real
+  -- table so each can own its admin_users, its own open/closed toggle, and
+  -- its own hours independent of the site-wide shopOpen kill switch.
+  CREATE TABLE IF NOT EXISTS locations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    address TEXT,
+    city TEXT,
+    pincode TEXT,
+    active INTEGER DEFAULT 1,
+    shop_open INTEGER DEFAULT 1,
+    hours_weekdays TEXT,
+    hours_saturday TEXT,
+    hours_sunday TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -297,6 +330,47 @@ function setAdminAuth({ username, password_hash }) {
     .run('admin_auth', JSON.stringify({ username, password_hash }))
 }
 
+// Multi-admin accounts (super_admin sees every location; branch_admin is
+// scoped to one location_id). getAdminAuth/setAdminAuth above stay in place
+// purely as the migration source — see seedAdminAuth in server.js, which
+// ensures the first super_admin row always exists on boot.
+function countAdminUsers() {
+  return db.prepare('SELECT COUNT(*) as n FROM admin_users').get().n
+}
+
+function createAdminUser({ id, username, password_hash, role, location_id }) {
+  const now = Date.now()
+  db.prepare(`INSERT INTO admin_users (id, username, password_hash, role, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, username, password_hash, role, location_id || null, now, now)
+  return getAdminUserById(id)
+}
+
+function getAdminUserById(id) {
+  return db.prepare('SELECT * FROM admin_users WHERE id = ?').get(id) || null
+}
+
+function getAdminUserByUsername(username) {
+  return db.prepare('SELECT * FROM admin_users WHERE LOWER(username) = LOWER(?)').get(String(username || '').trim()) || null
+}
+
+// Omits password_hash — this backs the Staff management list, never a login check.
+function listAdminUsers() {
+  return db.prepare('SELECT id, username, role, location_id, created_at, updated_at FROM admin_users ORDER BY created_at ASC').all()
+}
+
+function updateAdminUser(id, updates) {
+  const fields = Object.keys(updates)
+  if (!fields.length) return getAdminUserById(id)
+  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  db.prepare(`UPDATE admin_users SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...updates, id, updated_at: Date.now() })
+  return getAdminUserById(id)
+}
+
+function deleteAdminUser(id) {
+  db.prepare('DELETE FROM admin_users WHERE id = ?').run(id)
+}
+
 // Order workflow stages are admin-editable (add/delete/reorder) and stored in
 // settings under 'order_stages'. Each stage carries a `notify` flag deciding
 // whether reaching it emails the customer. These defaults reproduce the
@@ -321,22 +395,93 @@ function setOrderStages(stages) {
     .run('order_stages', JSON.stringify(stages))
 }
 
-// Branches / pickup locations are admin-editable and stored in settings under
-// 'locations'. Each: { id, name, address, city, pincode, active }. A default
-// branch is seeded so the customer always has something to choose.
+// Branches / pickup locations live in the `locations` table (promoted from a
+// settings-JSON blob — see migrateLocations below). Each row also carries its
+// own shop_open + hours, independent of the site-wide shopOpen kill switch.
 const DEFAULT_LOCATIONS = [
   { id: 'main', name: 'Main Branch', address: '', city: 'Gurugram', pincode: '', active: true }
 ]
+const DEFAULT_LOCATION_HOURS = { weekdays: '9:00 AM – 9:00 PM', saturday: '9:00 AM – 8:00 PM', sunday: '10:00 AM – 6:00 PM' }
+
+function rowToLocation(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    address: r.address || '',
+    city: r.city || '',
+    pincode: r.pincode || '',
+    active: !!r.active,
+    shopOpen: r.shop_open !== 0,
+    storeTimings: {
+      weekdays: r.hours_weekdays || DEFAULT_LOCATION_HOURS.weekdays,
+      saturday: r.hours_saturday || DEFAULT_LOCATION_HOURS.saturday,
+      sunday: r.hours_sunday || DEFAULT_LOCATION_HOURS.sunday
+    }
+  }
+}
 
 function getLocations() {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('locations')
-  return row ? JSON.parse(row.value) : DEFAULT_LOCATIONS
+  return db.prepare('SELECT * FROM locations ORDER BY created_at ASC').all().map(rowToLocation)
 }
 
-function setLocations(locations) {
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-    .run('locations', JSON.stringify(locations))
+function getLocationById(id) {
+  const r = db.prepare('SELECT * FROM locations WHERE id = ?').get(id)
+  return r ? rowToLocation(r) : null
 }
+
+// Identity fields only (name/address/city/pincode/active) — upserts by id and
+// deletes rows no longer present in `locations`, matching the admin Locations
+// tab's "send the whole list back" editing pattern. Deliberately never
+// touches shop_open/hours here; see updateLocationOperatingInfo for those.
+function setLocations(locations) {
+  const now = Date.now()
+  const existingIds = new Set(db.prepare('SELECT id FROM locations').all().map((r) => r.id))
+  const incomingIds = new Set(locations.map((l) => l.id))
+  const tx = db.transaction(() => {
+    for (const l of locations) {
+      const params = { id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active ? 1 : 0, now }
+      if (existingIds.has(l.id)) {
+        db.prepare('UPDATE locations SET name=@name, address=@address, city=@city, pincode=@pincode, active=@active, updated_at=@now WHERE id=@id').run(params)
+      } else {
+        db.prepare(`INSERT INTO locations (id, name, address, city, pincode, active, shop_open, hours_weekdays, hours_saturday, hours_sunday, created_at, updated_at)
+          VALUES (@id, @name, @address, @city, @pincode, @active, 1, @weekdays, @saturday, @sunday, @now, @now)`)
+          .run({ ...params, weekdays: DEFAULT_LOCATION_HOURS.weekdays, saturday: DEFAULT_LOCATION_HOURS.saturday, sunday: DEFAULT_LOCATION_HOURS.sunday })
+      }
+    }
+    for (const id of existingIds) {
+      if (!incomingIds.has(id)) db.prepare('DELETE FROM locations WHERE id = ?').run(id)
+    }
+  })
+  tx()
+}
+
+// Used by both the super admin's fuller location edit and a branch admin's
+// self-serve "my branch" panel — only ever touches shop_open/hours, never
+// identity fields, so a branch admin can't rename/relocate their own branch.
+function updateLocationOperatingInfo(id, { shopOpen, storeTimings } = {}) {
+  const sets = []
+  const params = { id, updated_at: Date.now() }
+  if (shopOpen !== undefined) { sets.push('shop_open = @shop_open'); params.shop_open = shopOpen ? 1 : 0 }
+  if (storeTimings) {
+    if (storeTimings.weekdays !== undefined) { sets.push('hours_weekdays = @hours_weekdays'); params.hours_weekdays = storeTimings.weekdays }
+    if (storeTimings.saturday !== undefined) { sets.push('hours_saturday = @hours_saturday'); params.hours_saturday = storeTimings.saturday }
+    if (storeTimings.sunday !== undefined) { sets.push('hours_sunday = @hours_sunday'); params.hours_sunday = storeTimings.sunday }
+  }
+  if (!sets.length) return getLocationById(id)
+  db.prepare(`UPDATE locations SET ${sets.join(', ')}, updated_at = @updated_at WHERE id = @id`).run(params)
+  return getLocationById(id)
+}
+
+// One-time migration: import the legacy settings-JSON locations (or the
+// single default branch) into the new table so existing installs keep their
+// branch list with zero manual steps.
+;(function migrateLocations() {
+  const count = db.prepare('SELECT COUNT(*) as n FROM locations').get().n
+  if (count > 0) return
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'locations'").get()
+  const legacy = row ? JSON.parse(row.value) : DEFAULT_LOCATIONS
+  setLocations(legacy)
+})()
 
 function createOrder(order) {
   const now = order.created_at
@@ -397,7 +542,9 @@ function listOrdersForFileCleanup() {
 // Order history only ever shows orders that actually received payment —
 // abandoned checkouts (payment_status 'created') and failed payments never
 // show up here, though the rows themselves are kept in the database.
-function listOrders({ status, search, limit, offset } = {}) {
+// locationId: pass a branch admin's scoped location to filter to only their
+// branch's orders; omit (or null) for a super admin's unfiltered view.
+function listOrders({ status, search, limit, offset, locationId } = {}) {
   // Confirmed orders = paid online OR pay-on-delivery (COD); COD isn't prepaid
   // but is a committed order the shop must fulfil.
   const clauses = ["(payment_status = 'paid' OR payment_method = 'cod')", 'archived_at IS NULL']
@@ -409,6 +556,10 @@ function listOrders({ status, search, limit, offset } = {}) {
   if (search) {
     clauses.push('(customer_name LIKE @search OR customer_mobile LIKE @search OR id LIKE @search)')
     params.search = `%${search}%`
+  }
+  if (locationId) {
+    clauses.push('location_id = @locationId')
+    params.locationId = locationId
   }
   const where = `WHERE ${clauses.join(' AND ')}`
   params.limit = limit || 50
@@ -434,14 +585,21 @@ function restoreOrder(id) {
   return getOrder(id)
 }
 
-function listArchivedOrders() {
+function listArchivedOrders(locationId) {
+  if (locationId) {
+    return db.prepare('SELECT * FROM orders WHERE archived_at IS NOT NULL AND location_id = ? ORDER BY archived_at DESC').all(locationId)
+  }
   return db.prepare('SELECT * FROM orders WHERE archived_at IS NOT NULL ORDER BY archived_at DESC').all()
 }
 
 // Archives every non-archived order for a mobile (the admin "customer" identity,
 // since the Customers view is grouped by mobile). Returns the affected rows.
-function archiveCustomerByMobile(mobile) {
-  const orders = db.prepare('SELECT * FROM orders WHERE customer_mobile = ? AND archived_at IS NULL').all(mobile)
+// locationId: a branch admin only archives this customer's orders placed at
+// their own branch, never a same-mobile order placed at a different branch.
+function archiveCustomerByMobile(mobile, locationId) {
+  const orders = locationId
+    ? db.prepare('SELECT * FROM orders WHERE customer_mobile = ? AND archived_at IS NULL AND location_id = ?').all(mobile, locationId)
+    : db.prepare('SELECT * FROM orders WHERE customer_mobile = ? AND archived_at IS NULL').all(mobile)
   const now = Date.now()
   const tx = db.transaction(() => {
     for (const o of orders) db.prepare('UPDATE orders SET archived_at = ?, updated_at = ? WHERE id = ?').run(now, now, o.id)
@@ -477,7 +635,10 @@ function listOrdersForCustomer(customerId) {
   `).all(customerId)
 }
 
-function listCustomers() {
+function listCustomers(locationId) {
+  const clauses = ["(payment_status = 'paid' OR payment_method = 'cod')", 'archived_at IS NULL']
+  const params = []
+  if (locationId) { clauses.push('location_id = ?'); params.push(locationId) }
   return db.prepare(`
     SELECT
       customer_mobile,
@@ -487,10 +648,10 @@ function listCustomers() {
       SUM(total_amount) as total_spent,
       MAX(created_at) as last_order_at
     FROM orders
-    WHERE (payment_status = 'paid' OR payment_method = 'cod') AND archived_at IS NULL
+    WHERE ${clauses.join(' AND ')}
     GROUP BY customer_mobile
     ORDER BY last_order_at DESC
-  `).all()
+  `).all(params)
 }
 
 function createPrintJob(orderId) {
@@ -525,13 +686,15 @@ function createOrderFeedback({ order_id, rating, comment }) {
   return db.prepare('SELECT * FROM order_feedback WHERE id = ?').get(info.lastInsertRowid)
 }
 
-function listOrderFeedback() {
+function listOrderFeedback(locationId) {
+  const where = locationId ? 'WHERE orders.location_id = ?' : ''
   return db.prepare(`
     SELECT order_feedback.*, orders.customer_name, orders.customer_mobile
     FROM order_feedback
     JOIN orders ON orders.id = order_feedback.order_id
+    ${where}
     ORDER BY order_feedback.created_at DESC
-  `).all()
+  `).all(locationId ? [locationId] : [])
 }
 
 // Feeds the landing page's reviews carousel — 4-5 star only (this is a
@@ -631,10 +794,19 @@ module.exports = {
   setSiteSettings,
   getAdminAuth,
   setAdminAuth,
+  countAdminUsers,
+  createAdminUser,
+  getAdminUserById,
+  getAdminUserByUsername,
+  listAdminUsers,
+  updateAdminUser,
+  deleteAdminUser,
   getOrderStages,
   setOrderStages,
   getLocations,
+  getLocationById,
   setLocations,
+  updateLocationOperatingInfo,
   createUser,
   findUserByIdentifier,
   findUserByGoogleId,
