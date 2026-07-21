@@ -987,9 +987,11 @@ app.get('/api/orders/:id', (req, res) => {
   return res.json({ order })
 })
 
-// Minimal public tracking lookup behind the job sheet's QR code — deliberately
-// returns only status/timing, never customer name, contact, or files, since
-// order IDs aren't secret enough to gate anything sensitive behind.
+// Public tracking lookup behind the job sheet's QR code — deliberately never
+// returns customer name, contact, or files, since order IDs aren't secret
+// enough to gate anything sensitive behind. Order-level context (status,
+// payment, pricing, progress) is fine to expose — it's what a package
+// tracking page normally shows.
 const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000
 // A "confirmed" order is paid online OR pay-on-delivery — matches the
 // definition used everywhere else (db.listOrders/listMyOrders/listCustomers).
@@ -1001,12 +1003,21 @@ function isConfirmedOrder(order) {
 app.get('/api/track/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
+  const stages = db.getOrderStages().map((s) => s.name)
   return res.json({
     id: order.id,
     order_status: order.order_status,
+    stages,
+    stage_index: stages.indexOf(order.order_status),
     ready_by: (order.updated_at || order.created_at) + READY_BY_WINDOW_MS,
+    created_at: order.created_at,
     completed: !!order.completed_at,
-    feedback_submitted: !!db.getOrderFeedback(order.id)
+    feedback_submitted: !!db.getOrderFeedback(order.id),
+    payment_status: order.payment_status,
+    payment_method: order.payment_method,
+    delivery_method: order.delivery_method,
+    page_count: order.page_count,
+    total_amount: order.total_amount
   })
 })
 

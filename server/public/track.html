@@ -7,21 +7,59 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{ --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF; }
+  :root{
+    --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF;
+    --muted:#8893A2; --body:#5B6472; --green:#15803D; --green-bg:#E7F6EC; --red:#DC2626; --red-bg:#FCEBEB;
+  }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
-  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .card{ background:var(--white); border-radius:16px; max-width:360px; width:100%; padding:28px 24px; text-align:center; box-shadow:0 12px 32px -16px rgba(26,35,50,.25); }
-  .logo{ font-size:20px; font-weight:800; }
-  .logo .dot{ color:var(--orange); }
-  .status-badge{ display:inline-block; margin-top:18px; background:var(--steel); color:var(--white); border-radius:999px; padding:8px 18px; font-size:14px; font-weight:700; }
-  .row{ margin-top:16px; display:flex; justify-content:space-between; font-size:13px; padding:8px 0; border-bottom:1px solid var(--mist); }
-  .row span:first-child{ color:#8893A2; font-weight:600; }
-  .row span:last-child{ font-weight:700; }
-  .footer{ margin-top:18px; font-size:11px; color:#8893A2; }
-  .error{ color:#5B6472; font-size:14px; margin-top:14px; }
+  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:32px 16px 60px; }
+  .wrap{ max-width:420px; width:100%; }
+  .brand{ text-align:center; font-size:19px; font-weight:800; margin-bottom:18px; }
+  .brand .dot{ color:var(--orange); }
 
-  .feedback{ margin-top:22px; padding-top:18px; border-top:1px solid var(--mist); text-align:left; }
+  .card{ background:var(--white); border-radius:18px; box-shadow:0 16px 40px -20px rgba(26,35,50,.25); overflow:hidden; margin-bottom:14px; }
+
+  /* Hero status banner */
+  .hero{ padding:26px 24px 22px; text-align:center; color:#fff; transition:background .2s ease; }
+  .hero.st-progress{ background:linear-gradient(135deg,#2B3A55,var(--steel)); }
+  .hero.st-attention{ background:linear-gradient(135deg,#B91C1C,var(--red)); }
+  .hero.st-done{ background:linear-gradient(135deg,#0F6B37,var(--green)); }
+  .hero-icon{ width:52px; height:52px; border-radius:50%; background:rgba(255,255,255,.15); display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-size:24px; }
+  .hero-status{ font-size:19px; font-weight:800; margin-bottom:4px; }
+  .hero-sub{ font-size:12.5px; opacity:.85; }
+
+  /* Meta rows */
+  .meta{ padding:18px 22px 6px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; padding:11px 0; border-bottom:1px solid var(--mist); }
+  .row:last-child{ border-bottom:none; }
+  .row .k{ color:var(--muted); font-weight:600; }
+  .row .v{ font-weight:700; text-align:right; }
+  .pay-pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:700; }
+  .pay-pill.paid{ background:var(--green-bg); color:var(--green); }
+  .pay-pill.pending{ background:#FFF1E6; color:#B45309; }
+
+  /* Progress timeline */
+  .timeline{ padding:20px 24px 22px; }
+  .timeline-title{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:16px; }
+  .steps{ display:flex; flex-direction:column; }
+  .step{ display:flex; gap:12px; position:relative; }
+  .step-marker{ display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+  .step-dot{ width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; border:2px solid var(--silver); color:var(--muted); background:#fff; flex-shrink:0; }
+  .step-line{ width:2px; flex:1; background:var(--silver); min-height:20px; }
+  .step.done .step-dot{ background:var(--green); border-color:var(--green); color:#fff; }
+  .step.done .step-line{ background:var(--green); }
+  .step.current .step-dot{ background:var(--orange); border-color:var(--orange); color:#fff; box-shadow:0 0 0 4px #FFE7DC; }
+  .step-body{ padding-bottom:22px; padding-top:1px; }
+  .step:last-child .step-body{ padding-bottom:0; }
+  .step-label{ font-size:13.5px; font-weight:700; color:var(--muted); }
+  .step.done .step-label, .step.current .step-label{ color:var(--steel); }
+  .step-now-tag{ display:inline-block; margin-left:8px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--orange); }
+
+  .footer{ text-align:center; margin-top:6px; font-size:11px; color:var(--muted); }
+  .error{ color:var(--body); font-size:14px; text-align:center; padding:40px 20px; }
+
+  .feedback{ padding:20px 22px 22px; border-top:1px solid var(--mist); }
   .feedback h3{ margin:0 0 12px; font-size:13.5px; font-weight:700; text-align:center; }
   .stars{ display:flex; justify-content:center; gap:6px; margin-bottom:12px; }
   .stars button{ background:none; border:none; padding:0; font-size:28px; line-height:1; cursor:pointer; color:var(--silver); }
@@ -29,16 +67,16 @@
   .feedback textarea{ width:100%; min-height:64px; resize:vertical; border:1.5px solid var(--silver); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:13px; color:var(--steel); }
   .feedback-submit{ margin-top:10px; width:100%; background:var(--orange); color:var(--white); border:none; border-radius:8px; padding:10px; font-weight:700; font-size:13.5px; cursor:pointer; }
   .feedback-submit:disabled{ opacity:.55; cursor:default; }
-  .feedback-note{ margin-top:8px; font-size:11.5px; color:#8893A2; text-align:center; }
-  .feedback-thanks{ margin-top:22px; padding-top:18px; border-top:1px solid var(--mist); font-size:13.5px; font-weight:600; color:var(--steel); }
+  .feedback-note{ margin-top:8px; font-size:11.5px; color:var(--muted); text-align:center; }
+  .feedback-thanks{ padding:18px 22px; border-top:1px solid var(--mist); font-size:13.5px; font-weight:600; color:var(--steel); text-align:center; }
 </style>
 </head>
 <body>
 
-<div class="card">
-  <div class="logo">Metalix<span class="dot">.</span>Print</div>
+<div class="wrap">
+  <div class="brand">Metalix<span class="dot">.</span>Print</div>
   <div id="content">
-    <p class="error">Loading…</p>
+    <div class="card"><p class="error">Loading…</p></div>
   </div>
   <div class="footer">print.metalix.in</div>
 </div>
@@ -55,9 +93,64 @@ function formatDateTime(ms){
   return `${day} ${month} · ${h}:${m} ${ampm}`;
 }
 
+// Exception stages (failed / needs manual attention / cancelled) get a red
+// hero instead of being slotted into the normal step-by-step timeline.
+function isAttentionStatus(status){
+  const s = String(status || '').toLowerCase();
+  return s.includes('fail') || s.includes('manual') || s.includes('cancel');
+}
+
+function heroIcon(status, attention, done){
+  if (attention) return '⚠️';
+  if (done) return '✅';
+  const s = String(status || '').toLowerCase();
+  if (s.includes('print')) return '🖨️';
+  if (s.includes('deliver')) return '🚚';
+  if (s.includes('pickup') || s.includes('ready')) return '📦';
+  return '🕐';
+}
+
+function renderTimeline(stages, stageIndex){
+  if (!stages || !stages.length || stageIndex < 0) return '';
+  // Exception stages (Failed / Manual Intervention / Cancelled) are outcomes,
+  // not steps on the happy path — never show them as an "upcoming" step.
+  const currentName = stages[stageIndex];
+  const happyStages = stages.filter((name) => !isAttentionStatus(name));
+  const happyIndex = happyStages.indexOf(currentName);
+  if (happyIndex < 0) return '';
+  stages = happyStages;
+  stageIndex = happyIndex;
+  const steps = stages.map((name, i) => {
+    const cls = i < stageIndex ? 'done' : (i === stageIndex ? 'current' : '');
+    const dotContent = i < stageIndex ? '✓' : (i + 1);
+    const isLast = i === stages.length - 1;
+    return (
+      '<div class="step ' + cls + '">' +
+        '<div class="step-marker">' +
+          '<div class="step-dot">' + dotContent + '</div>' +
+          (isLast ? '' : '<div class="step-line"></div>') +
+        '</div>' +
+        '<div class="step-body">' +
+          '<span class="step-label">' + name + '</span>' +
+          (i === stageIndex ? '<span class="step-now-tag">Now</span>' : '') +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+  return '<div class="card"><div class="timeline"><div class="timeline-title">Order progress</div><div class="steps">' + steps + '</div></div></div>';
+}
+
+function renderPaymentPill(data){
+  const isCod = data.payment_method === 'cod';
+  const isPaid = data.payment_status === 'paid';
+  if (isPaid) return '<span class="pay-pill paid">✓ Paid' + (isCod ? ' on delivery' : ' online') + '</span>';
+  if (isCod) return '<span class="pay-pill pending">Pay ' + (data.total_amount != null ? '₹' + data.total_amount + ' ' : '') + 'on delivery</span>';
+  return '<span class="pay-pill pending">Pending</span>';
+}
+
 function renderFeedbackForm(orderId){
   const wrap = document.createElement('div');
-  wrap.className = 'feedback';
+  wrap.className = 'card feedback';
   wrap.innerHTML =
     '<h3>How was your order?</h3>' +
     '<div class="stars" id="fbStars"></div>' +
@@ -96,7 +189,7 @@ function renderFeedbackForm(orderId){
         submitBtn.disabled = false;
         return;
       }
-      wrap.outerHTML = '<div class="feedback-thanks">Thanks for your feedback! 🙌</div>';
+      wrap.outerHTML = '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>';
     } catch (err) {
       note.textContent = 'Could not submit feedback — check your connection and try again.';
       submitBtn.disabled = false;
@@ -112,24 +205,43 @@ async function loadStatus(){
   try {
     const res = await fetch('/api/track/' + encodeURIComponent(orderId));
     if (!res.ok) {
-      content.innerHTML = '<p class="error">We couldn\'t find that order.</p>';
+      content.innerHTML = '<div class="card"><p class="error">We couldn\'t find that order.</p></div>';
       return;
     }
     const data = await res.json();
-    content.innerHTML =
-      '<div class="status-badge">' + data.order_status + '</div>' +
-      '<div class="row"><span>Order ID</span><span>#' + data.id + '</span></div>' +
-      '<div class="row"><span>Ready By</span><span>' + formatDateTime(data.ready_by) + '</span></div>';
+    const attention = isAttentionStatus(data.order_status);
+    const done = !!data.completed;
+    const heroClass = attention ? 'st-attention' : (done ? 'st-done' : 'st-progress');
+
+    let html = '<div class="card">' +
+      '<div class="hero ' + heroClass + '">' +
+        '<div class="hero-icon">' + heroIcon(data.order_status, attention, done) + '</div>' +
+        '<div class="hero-status">' + data.order_status + '</div>' +
+        '<div class="hero-sub">Order #' + data.id + '</div>' +
+      '</div>' +
+      '<div class="meta">' +
+        '<div class="row"><span class="k">Payment</span><span class="v">' + renderPaymentPill(data) + '</span></div>' +
+        (data.page_count != null ? '<div class="row"><span class="k">Pages</span><span class="v">' + data.page_count + '</span></div>' : '') +
+        '<div class="row"><span class="k">Delivery</span><span class="v">' + (data.delivery_method === 'delivery' ? 'Home delivery' : 'Shop pickup') + '</span></div>' +
+        (data.total_amount != null ? '<div class="row"><span class="k">Total</span><span class="v">₹' + data.total_amount + '</span></div>' : '') +
+        '<div class="row"><span class="k">Placed</span><span class="v">' + formatDateTime(data.created_at) + '</span></div>' +
+        '<div class="row"><span class="k">Ready by</span><span class="v">' + formatDateTime(data.ready_by) + '</span></div>' +
+      '</div>' +
+    '</div>';
+
+    if (!attention) html += renderTimeline(data.stages, data.stage_index);
+
+    content.innerHTML = html;
 
     if (data.completed) {
       if (data.feedback_submitted) {
-        content.insertAdjacentHTML('beforeend', '<div class="feedback-thanks">Thanks for your feedback! 🙌</div>');
+        content.insertAdjacentHTML('beforeend', '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>');
       } else {
         content.appendChild(renderFeedbackForm(data.id));
       }
     }
   } catch (err) {
-    content.innerHTML = '<p class="error">Could not load order status.</p>';
+    content.innerHTML = '<div class="card"><p class="error">Could not load order status.</p></div>';
   }
 }
 loadStatus();
