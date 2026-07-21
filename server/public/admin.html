@@ -469,6 +469,9 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     </div>
 
     <div class="panel" id="panel-customers">
+      <div class="filters">
+        <input type="text" id="customerSearch" placeholder="Search by name, mobile, or email" />
+      </div>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th></th></tr></thead>
@@ -1624,30 +1627,52 @@ async function saveStages(){
 }
 
 /* -- CUSTOMERS -- */
+let allCustomers = [];
+
+function renderCustomers(customers){
+  const body = document.getElementById('customersBody');
+  if (!customers.length){
+    body.innerHTML = '<tr><td colspan="7" class="empty">' + (allCustomers.length ? 'No customers match your search' : 'No customers yet') + '</td></tr>';
+    return;
+  }
+  body.innerHTML = customers.map((c) => (
+    '<tr>' +
+      '<td>' + escHtml(c.customer_name || '—') + '</td>' +
+      '<td>' + escHtml(c.customer_mobile || '—') + '</td>' +
+      '<td>' + escHtml(c.customer_email || '—') + '</td>' +
+      '<td>' + escHtml(c.order_count) + '</td>' +
+      '<td>₹' + escHtml(c.total_spent) + '</td>' +
+      '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
+      '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
+    '</tr>'
+  )).join('');
+  body.querySelectorAll('.del-cust-btn').forEach((btn) => {
+    btn.addEventListener('click', () => deleteCustomer(btn.dataset.mobile, btn.dataset.name, btn.dataset.count));
+  });
+}
+
+function filterCustomers(){
+  const q = document.getElementById('customerSearch').value.trim().toLowerCase();
+  if (!q) return renderCustomers(allCustomers);
+  renderCustomers(allCustomers.filter((c) =>
+    (c.customer_name || '').toLowerCase().includes(q) ||
+    (c.customer_mobile || '').toLowerCase().includes(q) ||
+    (c.customer_email || '').toLowerCase().includes(q)
+  ));
+}
+let customerSearchTimer = null;
+document.getElementById('customerSearch').addEventListener('input', () => {
+  clearTimeout(customerSearchTimer);
+  customerSearchTimer = setTimeout(filterCustomers, 200);
+});
+
 async function loadCustomers(){
   const body = document.getElementById('customersBody');
   try {
     const res = await adminFetch('/api/admin/customers');
     const data = await res.json();
-    const customers = data.customers || [];
-    if (!customers.length){
-      body.innerHTML = '<tr><td colspan="7" class="empty">No customers yet</td></tr>';
-      return;
-    }
-    body.innerHTML = customers.map((c) => (
-      '<tr>' +
-        '<td>' + escHtml(c.customer_name || '—') + '</td>' +
-        '<td>' + escHtml(c.customer_mobile || '—') + '</td>' +
-        '<td>' + escHtml(c.customer_email || '—') + '</td>' +
-        '<td>' + escHtml(c.order_count) + '</td>' +
-        '<td>₹' + escHtml(c.total_spent) + '</td>' +
-        '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
-        '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
-      '</tr>'
-    )).join('');
-    body.querySelectorAll('.del-cust-btn').forEach((btn) => {
-      btn.addEventListener('click', () => deleteCustomer(btn.dataset.mobile, btn.dataset.name, btn.dataset.count));
-    });
+    allCustomers = data.customers || [];
+    filterCustomers();
   } catch (err) {
     if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load customers</td></tr>';
   }
