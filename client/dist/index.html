@@ -28,6 +28,22 @@
   .badge .pulse::after{content:''; position:absolute; inset:-3px; border-radius:50%; border:1px solid var(--green); animation:pulse 2s ease-out infinite;}
   @keyframes pulse{0%{transform:scale(.6);opacity:.8;}100%{transform:scale(1.8);opacity:0;}}
 
+  .profile-wrap{ position:relative; }
+  .profile-trigger{ display:flex; align-items:center; gap:8px; }
+  .profile-avatar{ width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg,var(--orange),var(--magenta)); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .profile-caret{ font-size:10px; color:var(--ink-soft); transition:transform .15s ease; }
+  .profile-trigger[aria-expanded="true"] .profile-caret{ transform:rotate(180deg); }
+  .profile-menu{ position:absolute; top:calc(100% + 8px); right:0; min-width:220px; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:8px; display:none; z-index:30; }
+  .profile-menu.show{ display:block; }
+  .profile-menu-head{ padding:10px 12px 12px; border-bottom:1px solid var(--paper-dim); margin-bottom:6px; }
+  .profile-menu-head .pm-name{ font-size:13.5px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile-menu-head .pm-sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
+  .profile-menu-section{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); padding:6px 12px 4px; }
+  .profile-menu-item{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:9px 12px; border-radius:9px; border:none; background:none; color:var(--ink); font-size:13.5px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; text-decoration:none; }
+  .profile-menu-item:hover{ background:var(--paper-dim); }
+  .profile-menu-item.danger{ color:var(--red); }
+  .profile-menu-item.danger:hover{ background:#FEECEC; }
+
 
   .card{ background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow: var(--shadow); padding:44px; display:grid; grid-template-columns: 1.15fr 1fr; gap:48px; transition: box-shadow .3s ease; }
   .card:hover{ box-shadow: 0 1px 2px rgba(26,34,56,.04), 0 24px 48px -20px rgba(26,34,56,.22); }
@@ -217,9 +233,21 @@
       <div class="badge"><span class="pulse"></span> Shop open</div>
       <div class="badge">⚡ Ready in 3–4 hrs</div>
     </div>
-    <div class="header-actions hidden" id="headerActions" style="display:none; align-items:center; gap:8px;">
-      <a class="btn btn-ghost" href="/?page=orders" style="text-decoration:none; padding:9px 14px; font-size:13px;">My Orders</a>
-      <button class="btn btn-ghost" type="button" id="headerLogoutBtn" style="padding:9px 14px; font-size:13px;">Log out</button>
+    <div class="header-actions profile-wrap hidden" id="headerActions" style="display:none; align-items:center; gap:8px;">
+      <button class="btn btn-ghost profile-trigger" type="button" id="profileTrigger" aria-haspopup="true" aria-expanded="false" style="padding:9px 14px; font-size:13px;">
+        <span class="profile-avatar" id="profileAvatar">•</span>
+        <span>Profile</span>
+        <span class="profile-caret">▾</span>
+      </button>
+      <div class="profile-menu" id="profileMenu">
+        <div class="profile-menu-head">
+          <div class="pm-name" id="pmName">—</div>
+          <div class="pm-sub" id="pmSub">—</div>
+        </div>
+        <div class="profile-menu-section">Account</div>
+        <a class="profile-menu-item" href="/?page=orders">📦 My Orders</a>
+        <button class="profile-menu-item danger" type="button" id="headerLogoutBtn">↪ Log out</button>
+      </div>
     </div>
   </header>
 
@@ -461,12 +489,35 @@ const oaChangeBtn = document.getElementById('oaChangeBtn');
 
 const headerActions = document.getElementById('headerActions');
 const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+const profileTrigger = document.getElementById('profileTrigger');
+const profileMenu = document.getElementById('profileMenu');
+const profileAvatar = document.getElementById('profileAvatar');
+const pmName = document.getElementById('pmName');
+const pmSub = document.getElementById('pmSub');
+
+function closeProfileMenu(){
+  profileMenu.classList.remove('show');
+  profileTrigger.setAttribute('aria-expanded', 'false');
+}
+profileTrigger.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = profileMenu.classList.toggle('show');
+  profileTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+document.addEventListener('click', (e) => {
+  if(!profileMenu.contains(e.target) && e.target !== profileTrigger) closeProfileMenu();
+});
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeProfileMenu(); });
 
 function showOrderingAs(user){
   document.getElementById('customerName').value = user.name || '';
   document.getElementById('customerMobile').value = user.mobile || '';
   document.getElementById('customerEmail').value = user.email || '';
   headerActions.style.display = 'flex';
+  const displayName = user.name || 'there';
+  pmName.textContent = displayName;
+  pmSub.textContent = user.mobile || user.email || '';
+  profileAvatar.textContent = displayName.trim().charAt(0).toUpperCase() || '•';
 
   // The "ordering as" shortcut hides the editable mobile field — only safe to
   // show it when we actually have a valid mobile on file. Accounts created via
@@ -493,7 +544,7 @@ oaChangeBtn.addEventListener('click', () => {
 });
 headerLogoutBtn.addEventListener('click', () => {
   localStorage.removeItem(CUSTOMER_TOKEN_KEY);
-  window.location.reload();
+  window.location.href = '/';
 });
 
 (function checkCustomerSession(){
