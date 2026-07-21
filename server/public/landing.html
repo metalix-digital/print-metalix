@@ -294,6 +294,8 @@ nav a.active{color:var(--orange-text);}
 .pt-row .name{font-weight:600;}
 .pt-row .price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--orange-text);}
 .pt-row .note{font-size:12px;color:var(--ink3);}
+a.pt-row{color:inherit;text-decoration:none;cursor:pointer;}
+.pt-row .rate-pill{display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:var(--orange-text);background:var(--orange-l);border-radius:999px;padding:3px 9px;}
 @media(max-width:600px){
   .pt-head,.pt-row{grid-template-columns:1fr 1fr;gap:4px;}
   .pt-row .note{display:none;}
@@ -1281,7 +1283,9 @@ function loadMyOrders(){
             ? `${o.fileNames[0]} +${o.fileNames.length - 1} more`
             : (o.fileNames[0] || '—');
           const dateStr = new Date(o.created_at).toLocaleDateString();
-          return '<div class="pt-row"><span class="name">' + o.id + '<br><span class="note">' + itemSummary + ' · ' + dateStr + ' · ' + (ORDER_MODE_LABELS[o.print_mode] || o.print_mode) + '</span></span><span>' + o.order_status + '</span><span class="price">₹' + o.total_amount + '</span></div>';
+          const isCompleted = o.order_status === 'Completed';
+          const ratePill = isCompleted ? '<br><span class="rate-pill">★ View & rate this order</span>' : '';
+          return '<a class="pt-row" href="/track/' + encodeURIComponent(o.id) + '"><span class="name">' + o.id + '<br><span class="note">' + itemSummary + ' · ' + dateStr + ' · ' + (ORDER_MODE_LABELS[o.print_mode] || o.print_mode) + '</span>' + ratePill + '</span><span>' + o.order_status + '</span><span class="price">₹' + o.total_amount + '</span></a>';
         }).join('');
     })
     .catch(() => {

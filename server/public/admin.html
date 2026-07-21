@@ -476,13 +476,13 @@ async function showDash(){
   document.getElementById('loginWrap').classList.add('hidden');
   document.getElementById('dashWrap').classList.remove('hidden');
   await loadStagesConfig();   // stages drive the status dropdowns, so load first
+  await loadFeedback();       // order rows show each order's rating inline, so load before orders
   loadOrders();
   loadCustomers();
   loadPricing();
   loadLocations();
   loadStages();
   loadArchive();
-  loadFeedback();
   loadSettings();
 }
 
@@ -790,6 +790,7 @@ async function downloadOrderFile(orderId, fileId, fileName){
 }
 
 let ordersById = {};
+let feedbackByOrderId = {};
 
 function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -892,6 +893,11 @@ function renderOrders(orders){
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
       (o.customer_email ? '<div><strong>Email:</strong> ' + escHtml(o.customer_email) + '</div>' : '') +
+      (o.order_status === 'Completed' ? (
+        feedbackByOrderId[o.id]
+          ? '<div><strong>Rating:</strong> <span style="color:var(--orange);letter-spacing:1px;">' + '★'.repeat(feedbackByOrderId[o.id].rating) + '☆'.repeat(5 - feedbackByOrderId[o.id].rating) + '</span>' + (feedbackByOrderId[o.id].comment ? ' — "' + escHtml(feedbackByOrderId[o.id].comment) + '"' : '') + '</div>'
+          : '<div><strong>Rating:</strong> <span class="subtle">Not rated yet</span></div>'
+      ) : '') +
       '<div><strong>Payment:</strong> ' + (o.payment_method === 'cod' ? 'Pay on delivery (Cash / UPI)' : 'Online') +
         (String(o.payment_status).toLowerCase() === 'paid'
           ? ' — Paid' + (o.payment_mode ? ' via ' + escHtml(String(o.payment_mode).toUpperCase()) : '')
@@ -1269,6 +1275,8 @@ async function loadFeedback(){
     const res = await adminFetch('/api/admin/feedback');
     const data = await res.json();
     const feedback = data.feedback || [];
+    feedbackByOrderId = {};
+    feedback.forEach((f) => { feedbackByOrderId[f.order_id] = f; });
     if (!feedback.length){ body.innerHTML = '<tr><td colspan="5" class="empty">No feedback yet</td></tr>'; return; }
     body.innerHTML = feedback.map((f) => {
       const stars = '★'.repeat(f.rating) + '☆'.repeat(5 - f.rating);
