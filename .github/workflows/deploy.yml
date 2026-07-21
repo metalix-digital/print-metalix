@@ -38,6 +38,15 @@ jobs:
           echo "--- changed files ---"
           echo "$CHANGED"
 
+          # Stop the service *before* touching node_modules. `npm ci` wipes
+          # and reinstalls from scratch, which briefly deletes the compiled
+          # better-sqlite3 native binding — with the service left running,
+          # systemd's Restart=always kept retrying node every couple seconds
+          # against that half-rebuilt node_modules, crash-looping for the
+          # full ~2 minutes npm ci/node-gyp took (see the 2026-07-22 sitemap
+          # incident). Stopping first turns that into one clean restart.
+          sudo systemctl stop metalix
+
           # `npm ci` wipes and reinstalls node_modules from scratch every
           # time — on this small VM that's most of the deploy time. Only
           # pay for it when the relevant lockfile actually changed.
@@ -59,5 +68,5 @@ jobs:
             echo "--- client unchanged, skipping build ---"
           fi
 
-          sudo systemctl restart metalix
+          sudo systemctl start metalix
           sudo systemctl status metalix --no-pager
