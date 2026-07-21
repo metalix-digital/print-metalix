@@ -105,13 +105,13 @@ header{
   border-bottom:1px solid var(--line);
 }
 .header-inner{
-  max-width:1140px;margin:0 auto;padding:0 24px;
+  max-width:1220px;margin:0 auto;padding:0 24px;
   display:flex;align-items:center;gap:8px;height:64px;
 }
-.h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;}
+.h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex-shrink:0;}
 .h-logo img{width:34px;height:34px;border-radius:50%;}
-.h-logo span{font-family:'Sora',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;}
-nav{display:flex;align-items:center;gap:2px;margin-left:32px;}
+.h-logo span{font-family:'Sora',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;white-space:nowrap;}
+nav{display:flex;align-items:center;gap:2px;margin-left:32px;flex-shrink:0;}
 nav a{
   font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;
   padding:8px 14px;border-radius:8px;transition:all .15s;cursor:pointer;
@@ -140,7 +140,7 @@ nav a.active{color:var(--orange-text);}
 .hi-text{font-size:14px;font-weight:600;color:var(--ink2);}
 .hamburger{display:none;background:none;border:none;cursor:pointer;padding:6px;}
 .mobile-menu{display:none;}
-@media(max-width:768px){
+@media(max-width:1200px){
   nav{display:none;}
   .h-actions{display:none;}
   .hamburger{display:flex;flex-direction:column;gap:5px;}
@@ -161,7 +161,7 @@ nav a.active{color:var(--orange-text);}
   .mobile-menu .mm-actions button{flex:1;}
 }
 @media(max-width:420px){
-  .header-inner{padding:0 16px;}
+  .header-inner{padding:0 16px;gap:4px;}
   .h-logo span{font-size:16px;}
 }
 
@@ -570,12 +570,14 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
 .branch-opt.closed:hover{background:none;}
 .branch-opt .b-closed-tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--red);background:var(--red-tint);border-radius:999px;padding:2px 7px;vertical-align:middle;}
 @media(max-width:760px){ .branch-btn .lbl{max-width:96px;} .branch-picker{margin-right:8px;} }
+@media(max-width:420px){ .branch-btn .lbl{max-width:56px;} .branch-picker{margin-right:2px;} .branch-btn{padding:7px 10px;gap:5px;} }
+@media(max-width:340px){ .logo-sub{display:none;} .branch-btn .lbl{max-width:34px;} .theme-toggle{width:32px;height:32px;} }
 </style>
 <header>
   <div class="header-inner">
     <a class="h-logo" href="/" onclick="showPage('home'); return false;">
       <img src="/logo.svg" alt="Metalix Print">
-      <span>Metalix Print</span>
+      <span>Metalix<span class="logo-sub"> Print</span></span>
     </a>
     <nav>
       <a href="/" onclick="showPage('home'); return false;" class="active" id="nav-home">Home</a>

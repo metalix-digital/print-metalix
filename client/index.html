@@ -97,6 +97,12 @@
   .preview-nav .pv-page{ font-size:12.5px; font-weight:700; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; min-width:90px; text-align:center; }
   .fcard-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
   @media (max-width:420px){ .fcard-grid{grid-template-columns:1fr;} }
+  /* Above 880px the outer .card grid splits into two columns, which roughly
+     halves this file card's available width — enough to truncate "Normal
+     (70-75 GSM)" in the paper-type select. Stack back to one column for
+     just that squeeze range; by ~1050px the left column is wide enough
+     again for two. */
+  @media (min-width:880px) and (max-width:1050px){ .fcard-grid{grid-template-columns:1fr;} }
   .fcard-field{ display:flex; flex-direction:column; gap:5px; }
   .fcard-field-label{ font-size:10px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; }
   .fseg2{ display:flex; background:var(--paper-dim); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px; }
