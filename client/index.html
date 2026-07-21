@@ -58,6 +58,23 @@
   .file-card .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:1px;}
   .file-card .fremove{ margin-left:0; flex-shrink:0; width:26px; height:26px; border-radius:50%; border:none; background:var(--paper-dim); color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
   .file-card .fremove:hover{ background:var(--red); color:#fff; transform:scale(1.08); }
+  .file-card .fpreview{ flex-shrink:0; border:1.5px solid var(--line-strong); background:#fff; color:var(--ink); font-size:12px; font-weight:700; padding:6px 12px; border-radius:999px; cursor:pointer; transition:all .15s ease; }
+  .file-card .fpreview:hover{ border-color:var(--orange); color:var(--orange-deep); }
+
+  /* Document preview modal */
+  .preview-modal{ background:#fff; border-radius:20px; padding:0; max-width:560px; width:100%; max-height:92vh; box-shadow:0 30px 60px -20px rgba(26,34,56,.4); animation: pop-in .25s cubic-bezier(.2,.8,.3,1.2) both; display:flex; flex-direction:column; overflow:hidden; }
+  .preview-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 18px; border-bottom:1px solid var(--paper-dim); flex-shrink:0; }
+  .preview-head .pv-title{ font-size:13.5px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .preview-head .pv-close{ flex-shrink:0; width:28px; height:28px; border-radius:50%; border:none; background:var(--paper-dim); color:var(--ink-soft); cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
+  .preview-head .pv-close:hover{ background:var(--red); color:#fff; }
+  .preview-body{ flex:1; overflow-y:auto; background:var(--paper-dim); display:flex; align-items:center; justify-content:center; padding:18px; min-height:0; }
+  .preview-body img{ max-width:100%; max-height:70vh; box-shadow:0 4px 16px -8px rgba(26,34,56,.3); background:#fff; }
+  .preview-truncated-note{ font-size:11.5px; color:var(--ink-soft); text-align:center; padding:8px 18px 0; }
+  .preview-nav{ display:flex; align-items:center; justify-content:center; gap:16px; padding:14px 18px; border-top:1px solid var(--paper-dim); flex-shrink:0; }
+  .preview-nav button{ width:34px; height:34px; border-radius:50%; border:1.5px solid var(--line-strong); background:#fff; color:var(--ink); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .preview-nav button:hover:not(:disabled){ border-color:var(--orange); color:var(--orange-deep); }
+  .preview-nav button:disabled{ opacity:.35; cursor:default; }
+  .preview-nav .pv-page{ font-size:12.5px; font-weight:700; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; min-width:90px; text-align:center; }
   .fcard-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
   @media (max-width:420px){ .fcard-grid{grid-template-columns:1fr;} }
   .fcard-field{ display:flex; flex-direction:column; gap:5px; }
@@ -407,6 +424,25 @@
   </div>
 </div>
 
+<!-- Document preview modal -->
+<div class="modal-overlay" id="previewModal">
+  <div class="preview-modal">
+    <div class="preview-head">
+      <div class="pv-title" id="pvTitle">—</div>
+      <button class="pv-close" id="pvClose" type="button" aria-label="Close preview">✕</button>
+    </div>
+    <div class="preview-body">
+      <img id="pvImg" src="" alt="Document page preview" />
+    </div>
+    <div class="preview-truncated-note" id="pvTruncatedNote" style="display:none;">Preview shown for the first 60 pages only.</div>
+    <div class="preview-nav">
+      <button id="pvPrev" type="button" aria-label="Previous page">‹</button>
+      <span class="pv-page" id="pvPageLabel">Page 1 of 1</span>
+      <button id="pvNext" type="button" aria-label="Next page">›</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   const logoImg = document.querySelector('.logo img');
@@ -670,6 +706,7 @@ function renderFileList(){
           <div class="fname">${f.fileName}</div>
           <div class="fmeta">${f.pageCount} page${f.pageCount===1?'':'s'} · ${(f.fileSize/1024/1024).toFixed(2)} MB</div>
         </div>
+        ${f.pageThumbnails && f.pageThumbnails.length ? `<button class="fpreview" type="button" data-index="${i}">Preview</button>` : ''}
         <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
       </div>
 
@@ -729,6 +766,12 @@ function renderFileList(){
       removeFile(Number(btn.dataset.index));
     });
   });
+  fileList.querySelectorAll('.fpreview').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPreview(Number(btn.dataset.index));
+    });
+  });
   fileList.querySelectorAll('.fmode').forEach((sel) => {
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', (e) => {
@@ -786,6 +829,52 @@ function renderFileList(){
     });
   });
 }
+
+/* -- Document preview modal -- */
+const previewModal = document.getElementById('previewModal');
+const pvImg = document.getElementById('pvImg');
+const pvTitle = document.getElementById('pvTitle');
+const pvPageLabel = document.getElementById('pvPageLabel');
+const pvPrev = document.getElementById('pvPrev');
+const pvNext = document.getElementById('pvNext');
+const pvTruncatedNote = document.getElementById('pvTruncatedNote');
+const previewState = { fileIndex: -1, page: 0 };
+
+function renderPreviewPage(){
+  const f = state.files[previewState.fileIndex];
+  if(!f || !f.pageThumbnails || !f.pageThumbnails.length) return;
+  const total = f.pageThumbnails.length;
+  previewState.page = Math.max(0, Math.min(total - 1, previewState.page));
+  pvImg.src = f.pageThumbnails[previewState.page];
+  pvPageLabel.textContent = `Page ${previewState.page + 1} of ${f.pageCount}`;
+  pvPrev.disabled = previewState.page === 0;
+  pvNext.disabled = previewState.page === total - 1;
+  pvTruncatedNote.style.display = f.previewTruncated ? '' : 'none';
+}
+
+function openPreview(index){
+  const f = state.files[index];
+  if(!f || !f.pageThumbnails || !f.pageThumbnails.length) return;
+  previewState.fileIndex = index;
+  previewState.page = 0;
+  pvTitle.textContent = f.fileName;
+  renderPreviewPage();
+  previewModal.classList.add('show');
+}
+function closePreview(){
+  previewModal.classList.remove('show');
+  previewState.fileIndex = -1;
+}
+pvPrev.addEventListener('click', () => { previewState.page--; renderPreviewPage(); });
+pvNext.addEventListener('click', () => { previewState.page++; renderPreviewPage(); });
+document.getElementById('pvClose').addEventListener('click', closePreview);
+previewModal.addEventListener('click', (e) => { if(e.target === previewModal) closePreview(); });
+document.addEventListener('keydown', (e) => {
+  if(!previewModal.classList.contains('show')) return;
+  if(e.key === 'Escape') closePreview();
+  if(e.key === 'ArrowLeft' && !pvPrev.disabled) { previewState.page--; renderPreviewPage(); }
+  if(e.key === 'ArrowRight' && !pvNext.disabled) { previewState.page++; renderPreviewPage(); }
+});
 
 function removeFile(index){
   state.files.splice(index, 1);

@@ -150,7 +150,9 @@ app.post('/api/upload', (req, res) => {
         pageCount: analysis.pageCount,
         colorCount: analysis.colorCount,
         colorFlags: analysis.colorFlags,
-        thumbnail: analysis.thumbnail
+        thumbnail: analysis.thumbnail,
+        pageThumbnails: analysis.pageThumbnails,
+        previewTruncated: analysis.previewTruncated
       })
     } catch (err) {
       console.error('upload analysis error', err)

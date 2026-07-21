@@ -3,6 +3,12 @@ const pdfjsLib = require('pdfjs-dist/legacy/build/pdf')
 
 const STANDARD_FONT_DATA_URL = path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts') + path.sep
 
+// Every page still gets rendered (needed for the color-detection pass below)
+// regardless of this cap — this only limits how many of those renders we keep
+// as preview images, so a 200-page bulk order doesn't balloon the upload
+// response or the server's memory. Page count/pricing are unaffected.
+const MAX_PREVIEW_PAGES = 60
+
 function NodeCanvasFactory(createCanvas) {
   this.createCanvas = createCanvas
 }
@@ -47,6 +53,7 @@ async function analyzePdfBuffer(buffer) {
   const n = doc.numPages
 
   const flags = []
+  const pageThumbnails = []
   let thumbnail = null
   const canvasFactory = new NodeCanvasFactory(createCanvas)
 
@@ -59,9 +66,12 @@ async function analyzePdfBuffer(buffer) {
     const canvasAndContext = canvasFactory.create(Math.floor(vp.width), Math.floor(vp.height))
     await page.render({ canvasContext: canvasAndContext.context, viewport: vp, canvasFactory }).promise
 
-    if (i === 1) {
-      thumbnail = canvasAndContext.canvas.toDataURL('image/png')
-    }
+    // Already rendering every page for the color-detection pass below, so
+    // keeping each page's image too (for the customer-facing preview) is
+    // free CPU-wise — only cost is response payload size, capped above.
+    const pageImg = i <= MAX_PREVIEW_PAGES ? canvasAndContext.canvas.toDataURL('image/png') : null
+    if (pageImg) pageThumbnails.push(pageImg)
+    if (i === 1) thumbnail = pageImg
 
     const imgData = canvasAndContext.context.getImageData(0, 0, canvasAndContext.width, canvasAndContext.height)
     const dataArr = imgData.data
@@ -80,7 +90,7 @@ async function analyzePdfBuffer(buffer) {
   }
 
   const colorCount = flags.filter(Boolean).length
-  return { pageCount: n, colorCount, colorFlags: flags, thumbnail }
+  return { pageCount: n, colorCount, colorFlags: flags, thumbnail, pageThumbnails, previewTruncated: n > MAX_PREVIEW_PAGES }
 }
 
 module.exports = { analyzePdfBuffer }
