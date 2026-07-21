@@ -169,7 +169,11 @@ function orderStatusTemplate(order, trackUrl, opts) {
   const name = order.customer_name ? String(order.customer_name).split(' ')[0] : 'there'
   const pill = `<span style="display:inline-block;padding:5px 12px;border-radius:999px;background:${copy.accent};color:#ffffff;font-size:12px;font-weight:700;letter-spacing:.02em;">${order.order_status}</span>`
   const total = (order.total_amount === 0 || order.total_amount) ? `₹${order.total_amount}` : '—'
-  const trackBtn = trackUrl ? `<tr><td style="padding:4px 40px 8px 40px;">${button('Track your order', trackUrl, copy.accent)}</td></tr>` : ''
+  // Once completed, "Track your order" is moot — the tracking page shows a
+  // rating form instead, so point the button there.
+  const isCompleted = order.order_status === 'Completed'
+  const trackBtnLabel = isCompleted ? 'Rate your order' : 'Track your order'
+  const trackBtn = trackUrl ? `<tr><td style="padding:4px 40px 8px 40px;">${button(trackBtnLabel, trackUrl, copy.accent)}</td></tr>` : ''
 
   const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr><td style="padding:34px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;">
@@ -190,7 +194,7 @@ function orderStatusTemplate(order, trackUrl, opts) {
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
   const html = renderEmailShell({ preheader: `${copy.title} — order ${order.id}`, accent: copy.accent, cardHtml, footerHtml })
 
-  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}${invoiceLine}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\nTrack your order: ${trackUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
+  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}${invoiceLine}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\n${trackBtnLabel}: ${trackUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
   return { html, text, subject: `Order ${order.id}: ${order.order_status}` }
 }
 

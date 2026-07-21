@@ -1491,6 +1491,11 @@ async function loadSettings(){
       textFieldHtml('Head office address', 'headOfficeAddress', s.headOfficeAddress, true) +
       textFieldHtml('Pickup address', 'pickupAddress', s.pickupAddress, true) +
     '</div>' +
+    '<h2>Store hours</h2><div class="field-grid">' +
+      textFieldHtml('Mon–Fri', 'storeTimings.weekdays', (s.storeTimings || {}).weekdays || '') +
+      textFieldHtml('Saturday', 'storeTimings.saturday', (s.storeTimings || {}).saturday || '') +
+      textFieldHtml('Sunday', 'storeTimings.sunday', (s.storeTimings || {}).sunday || '') +
+    '</div>' +
     '<h2>Social media</h2><div class="field-grid">' +
       textFieldHtml('Facebook URL', 'social.facebook', s.social.facebook) +
       textFieldHtml('Instagram URL', 'social.instagram', s.social.instagram) +
@@ -1526,7 +1531,7 @@ async function loadSettings(){
 async function saveSettings(){
   const btn = document.getElementById('saveSettingsBtn');
   const msg = document.getElementById('settingsMessage');
-  const settings = { legal: {}, social: {}, seo: {}, shopOpen: document.getElementById('shopOpenToggle').checked };
+  const settings = { legal: {}, social: {}, seo: {}, storeTimings: {}, shopOpen: document.getElementById('shopOpenToggle').checked };
   document.querySelectorAll('#settingsForm input[data-key], #settingsForm textarea[data-key]').forEach((input) => {
     const path = input.dataset.key.split('.');
     let node = settings;

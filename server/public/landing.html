@@ -765,9 +765,9 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
             <div>
               <div class="ci-title">Shop hours</div>
               <div class="hours-grid">
-                <span class="day">Mon–Fri</span><span>9:00 AM – 9:00 PM</span>
-                <span class="day">Saturday</span><span>9:00 AM – 8:00 PM</span>
-                <span class="day">Sunday</span><span>10:00 AM – 6:00 PM</span>
+                <span class="day">Mon–Fri</span><span id="hours-weekdays">9:00 AM – 9:00 PM</span>
+                <span class="day">Saturday</span><span id="hours-saturday">9:00 AM – 8:00 PM</span>
+                <span class="day">Sunday</span><span id="hours-sunday">10:00 AM – 6:00 PM</span>
               </div>
             </div>
           </div>
@@ -943,7 +943,7 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
       <div class="fcontact">📞 <a href="tel:+917042443143" id="footer-phone-link">+91 70424 43143</a></div>
       <div class="fcontact">💬 <a href="https://wa.me/917042443143" target="_blank" id="footer-whatsapp-link2">WhatsApp us</a></div>
       <div class="fcontact">✉️ <a href="mailto:hello@metalix.in" id="footer-email-link2">hello@metalix.in</a></div>
-      <div class="fcontact" style="margin-top:8px;">🕐 <span>Mon–Sat 9AM–9PM · Sun 10AM–6PM</span></div>
+      <div class="fcontact" style="margin-top:8px;">🕐 <span id="footer-hours">Mon–Fri 9:00 AM – 9:00 PM · Sat 9:00 AM – 8:00 PM · Sun 10:00 AM – 6:00 PM</span></div>
     </div>
   </div>
   <div class="footer-bottom" style="max-width:100%;border-top:1px solid rgba(255,255,255,.08);padding:20px 24px;">
@@ -1134,6 +1134,16 @@ function applySettings(s){
     set('footer-email-link2', s.email);
     setHref('footer-email-link2', mailHref);
     setHref('footer-email-link', mailHref);
+  }
+
+  if (s.storeTimings) {
+    const t = s.storeTimings;
+    if (t.weekdays) set('hours-weekdays', t.weekdays);
+    if (t.saturday) set('hours-saturday', t.saturday);
+    if (t.sunday) set('hours-sunday', t.sunday);
+    if (t.weekdays && t.saturday && t.sunday) {
+      set('footer-hours', `Mon–Fri ${t.weekdays} · Sat ${t.saturday} · Sun ${t.sunday}`);
+    }
   }
 
   if (s.social) {

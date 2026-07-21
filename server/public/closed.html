@@ -24,6 +24,11 @@
   .contact-item .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; }
   .contact-item .ct-value{ font-size:14px; font-weight:700; }
   .footer-note{ margin-top:26px; font-size:11.5px; color:#8893A2; }
+  .hours-box{ margin-top:14px; border:1.5px solid var(--silver); border-radius:12px; padding:12px 14px; text-align:left; }
+  .hours-box .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; margin-bottom:6px; }
+  .hours-row{ display:flex; justify-content:space-between; font-size:13px; padding:2px 0; }
+  .hours-row .day{ font-weight:700; color:var(--steel); }
+  .hours-row .time{ color:#5B6472; }
 </style>
 </head>
 <body>
@@ -34,6 +39,10 @@
   <h1>We're closed right now</h1>
   <p class="sub">We're not accepting orders at the moment — we'll be open again shortly. Thanks for your patience! In the meantime, feel free to reach out below.</p>
   <div class="contact-list" id="contactList"></div>
+  <div class="hours-box" id="hoursBox" style="display:none;">
+    <div class="ct-label">Store hours</div>
+    <div id="hoursRows"></div>
+  </div>
   <div class="footer-note">print.metalix.in</div>
 </div>
 
@@ -58,6 +67,15 @@ async function loadContact(){
         '<span class="ct"><span class="ct-label">' + it.label + '</span><span class="ct-value">' + it.value + '</span></span>' +
       '</a>'
     ).join('');
+
+    const t = s.storeTimings;
+    if (t && t.weekdays && t.saturday && t.sunday) {
+      document.getElementById('hoursBox').style.display = '';
+      document.getElementById('hoursRows').innerHTML =
+        '<div class="hours-row"><span class="day">Mon–Fri</span><span class="time">' + t.weekdays + '</span></div>' +
+        '<div class="hours-row"><span class="day">Saturday</span><span class="time">' + t.saturday + '</span></div>' +
+        '<div class="hours-row"><span class="day">Sunday</span><span class="time">' + t.sunday + '</span></div>';
+    }
   } catch (err) {
     list.innerHTML = '<p class="sub" style="margin:0;">Could not load contact details — please try again shortly.</p>';
   }

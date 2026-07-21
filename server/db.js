@@ -236,6 +236,11 @@ const DEFAULT_SITE_SETTINGS = {
   gstin: '09AHOPH6696N2Z8',
   headOfficeAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
   pickupAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
+  storeTimings: {
+    weekdays: '9:00 AM – 9:00 PM',
+    saturday: '9:00 AM – 8:00 PM',
+    sunday: '10:00 AM – 6:00 PM'
+  },
   legal: {
     privacyPolicy: '',
     refundPolicy: '',
@@ -258,9 +263,18 @@ const DEFAULT_SITE_SETTINGS = {
 const seedSiteSettings = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
 seedSiteSettings.run('site', JSON.stringify(DEFAULT_SITE_SETTINGS))
 
+// Shallow-merged with defaults so fields added after an install's 'site' row
+// was first seeded (shopOpen, storeTimings) show sensible values instead of
+// undefined until an admin explicitly overrides them.
 function getSiteSettings() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('site')
-  return row ? JSON.parse(row.value) : DEFAULT_SITE_SETTINGS
+  if (!row) return DEFAULT_SITE_SETTINGS
+  const stored = JSON.parse(row.value)
+  return {
+    ...DEFAULT_SITE_SETTINGS,
+    ...stored,
+    storeTimings: { ...DEFAULT_SITE_SETTINGS.storeTimings, ...(stored.storeTimings || {}) }
+  }
 }
 
 function setSiteSettings(settings) {
