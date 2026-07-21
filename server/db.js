@@ -361,7 +361,7 @@ function updateOrder(id, updates) {
 }
 
 function listOrdersForFileCleanup() {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000
   return db.prepare(`
     SELECT * FROM orders
     WHERE completed_at IS NOT NULL AND completed_at <= ?

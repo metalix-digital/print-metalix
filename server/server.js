@@ -468,7 +468,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) =>
   const { coverImage, backImage } = req.body || {}
   if (!coverImage || !backImage) return res.status(400).json({ error: 'missing_images' })
   if (order.files_deleted_at) {
-    return res.status(410).json({ error: 'files_deleted', message: 'The original files for this order were already auto-deleted (7 days after completion) — only the job sheet cover/back pages can be generated, not the merged document.' })
+    return res.status(410).json({ error: 'files_deleted', message: 'The original files for this order were already auto-deleted (3 days after completion) — only the job sheet cover/back pages can be generated, not the merged document.' })
   }
 
   let files = []
@@ -777,7 +777,7 @@ app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res)
 
   const filePath = path.join(uploadsDir, safeFileId)
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'file_not_found', message: 'This file has been auto-deleted (files are removed 7 days after order completion).' })
+    return res.status(404).json({ error: 'file_not_found', message: 'This file has been auto-deleted (files are removed 3 days after order completion).' })
   }
   return res.download(filePath, fileName || safeFileId)
 })

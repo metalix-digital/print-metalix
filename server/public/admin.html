@@ -726,7 +726,7 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
   const copiesText = copies != null ? ' · ' + copies + ' cop' + (copies === 1 ? 'y' : 'ies') : '';
   const passwordText = password ? '<div class="subtle">🔒 Password: <strong>' + password.replace(/</g, '&lt;') + '</strong></div>' : '';
   const action = deleted
-    ? '<span class="subtle">File auto-deleted after 7 days</span>'
+    ? '<span class="subtle">File auto-deleted after 3 days</span>'
     : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
   return '<li><span>' + fileName + meta + modeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> ' + action + '</li>';
 }

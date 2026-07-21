@@ -18,9 +18,9 @@ function deleteFilesForOrder(order) {
   }
 }
 
-// Deletes the on-disk file for any order that finished 7+ days ago, leaving
+// Deletes the on-disk file for any order that finished 3+ days ago, leaving
 // all order metadata (filenames, page counts, amounts, status) untouched —
-// matches the privacy policy's "deleted 7 days after order completion" promise.
+// matches the privacy policy's "deleted 3 days after order completion" promise.
 function cleanupExpiredFiles() {
   const orders = db.listOrdersForFileCleanup()
   for (const order of orders) {
