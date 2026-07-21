@@ -119,6 +119,29 @@ db.exec(`
     created_at INTEGER,
     updated_at INTEGER
   );
+
+  -- SEO blog posts, managed from the admin Blog tab and published at /blog.
+  -- tags is a JSON array; body is Markdown, rendered to HTML on read.
+  CREATE TABLE IF NOT EXISTS blog_posts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    author TEXT,
+    excerpt TEXT,
+    cover_image TEXT,
+    category TEXT,
+    tags TEXT,
+    author_bio TEXT,
+    body TEXT,
+    meta_title TEXT,
+    meta_description TEXT,
+    meta_keywords TEXT,
+    published INTEGER DEFAULT 0,
+    created_at INTEGER,
+    updated_at INTEGER,
+    published_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_blog_posts_slug ON blog_posts(slug);
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -143,6 +166,9 @@ ensureColumn('orders', 'payment_collected_at', 'INTEGER')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
+// NULL/empty means "all tabs" (every existing branch_admin keeps full access
+// to their existing tab set — this is additive, not a default lockdown).
+ensureColumn('admin_users', 'allowed_tabs', 'TEXT')
 
 // Paper types are an admin-managed list: each entry is
 // { id, label, bw: { single, double }, color: { single } }. The `id` is a
@@ -340,24 +366,41 @@ function countAdminUsers() {
   return db.prepare('SELECT COUNT(*) as n FROM admin_users').get().n
 }
 
-function createAdminUser({ id, username, password_hash, role, location_id }) {
+// null means "every tab" (a fresh branch_admin, or any super_admin, is never
+// restricted by default) — only an explicit array locks them down.
+function parseAllowedTabs(raw) {
+  if (!raw) return null
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : null
+  } catch (err) {
+    return null
+  }
+}
+
+function createAdminUser({ id, username, password_hash, role, location_id, allowed_tabs }) {
   const now = Date.now()
-  db.prepare(`INSERT INTO admin_users (id, username, password_hash, role, location_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, username, password_hash, role, location_id || null, now, now)
+  db.prepare(`INSERT INTO admin_users (id, username, password_hash, role, location_id, allowed_tabs, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, username, password_hash, role, location_id || null, allowed_tabs ? JSON.stringify(allowed_tabs) : null, now, now)
   return getAdminUserById(id)
 }
 
 function getAdminUserById(id) {
-  return db.prepare('SELECT * FROM admin_users WHERE id = ?').get(id) || null
+  const row = db.prepare('SELECT * FROM admin_users WHERE id = ?').get(id)
+  if (!row) return null
+  return { ...row, allowed_tabs: parseAllowedTabs(row.allowed_tabs) }
 }
 
 function getAdminUserByUsername(username) {
-  return db.prepare('SELECT * FROM admin_users WHERE LOWER(username) = LOWER(?)').get(String(username || '').trim()) || null
+  const row = db.prepare('SELECT * FROM admin_users WHERE LOWER(username) = LOWER(?)').get(String(username || '').trim())
+  if (!row) return null
+  return { ...row, allowed_tabs: parseAllowedTabs(row.allowed_tabs) }
 }
 
 // Omits password_hash — this backs the Staff management list, never a login check.
 function listAdminUsers() {
-  return db.prepare('SELECT id, username, role, location_id, created_at, updated_at FROM admin_users ORDER BY created_at ASC').all()
+  return db.prepare('SELECT id, username, role, location_id, allowed_tabs, created_at, updated_at FROM admin_users ORDER BY created_at ASC').all()
+    .map((r) => ({ ...r, allowed_tabs: parseAllowedTabs(r.allowed_tabs) }))
 }
 
 function updateAdminUser(id, updates) {
@@ -371,6 +414,87 @@ function updateAdminUser(id, updates) {
 
 function deleteAdminUser(id) {
   db.prepare('DELETE FROM admin_users WHERE id = ?').run(id)
+}
+
+// Blog posts (admin Blog tab + public /blog). tags is stored as a JSON array
+// and parsed back out on every read, mirroring the allowed_tabs pattern above.
+function parseTags(raw) {
+  if (!raw) return []
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch (err) {
+    return []
+  }
+}
+
+function hydrateBlogPost(row) {
+  if (!row) return null
+  return { ...row, tags: parseTags(row.tags), published: !!row.published }
+}
+
+function createBlogPost({ id, title, slug, author, excerpt, cover_image, category, tags, author_bio, body, meta_title, meta_description, meta_keywords, published }) {
+  const now = Date.now()
+  db.prepare(`INSERT INTO blog_posts
+    (id, title, slug, author, excerpt, cover_image, category, tags, author_bio, body, meta_title, meta_description, meta_keywords, published, created_at, updated_at, published_at)
+    VALUES (@id, @title, @slug, @author, @excerpt, @cover_image, @category, @tags, @author_bio, @body, @meta_title, @meta_description, @meta_keywords, @published, @created_at, @updated_at, @published_at)`)
+    .run({
+      id, title, slug,
+      author: author || null,
+      excerpt: excerpt || null,
+      cover_image: cover_image || null,
+      category: category || null,
+      tags: JSON.stringify(tags || []),
+      author_bio: author_bio || null,
+      body: body || '',
+      meta_title: meta_title || null,
+      meta_description: meta_description || null,
+      meta_keywords: meta_keywords || null,
+      published: published ? 1 : 0,
+      created_at: now,
+      updated_at: now,
+      published_at: published ? now : null
+    })
+  return getBlogPostById(id)
+}
+
+function getBlogPostById(id) {
+  return hydrateBlogPost(db.prepare('SELECT * FROM blog_posts WHERE id = ?').get(id))
+}
+
+function getBlogPostBySlug(slug) {
+  return hydrateBlogPost(db.prepare('SELECT * FROM blog_posts WHERE slug = ?').get(slug))
+}
+
+function listBlogPosts({ includeUnpublished } = {}) {
+  const rows = includeUnpublished
+    ? db.prepare('SELECT * FROM blog_posts ORDER BY created_at DESC').all()
+    : db.prepare('SELECT * FROM blog_posts WHERE published = 1 ORDER BY published_at DESC').all()
+  return rows.map(hydrateBlogPost)
+}
+
+function updateBlogPost(id, updates) {
+  const existing = getBlogPostById(id)
+  if (!existing) return null
+  const patch = { ...updates }
+  if ('tags' in patch) patch.tags = JSON.stringify(patch.tags || [])
+  if ('published' in patch) {
+    const wasPublished = !!existing.published
+    const nowPublished = !!patch.published
+    patch.published = nowPublished ? 1 : 0
+    if (nowPublished && !wasPublished) patch.published_at = Date.now()
+    if (!nowPublished) patch.published_at = null
+  }
+  const fields = Object.keys(patch)
+  if (!fields.length) return existing
+  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  db.prepare(`UPDATE blog_posts SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...patch, id, updated_at: Date.now() })
+  return getBlogPostById(id)
+}
+
+function deleteBlogPost(id) {
+  db.prepare('DELETE FROM blog_posts WHERE id = ?').run(id)
 }
 
 // Order workflow stages are admin-editable (add/delete/reorder) and stored in
@@ -804,6 +928,12 @@ module.exports = {
   listAdminUsers,
   updateAdminUser,
   deleteAdminUser,
+  createBlogPost,
+  getBlogPostById,
+  getBlogPostBySlug,
+  listBlogPosts,
+  updateBlogPost,
+  deleteBlogPost,
   getOrderStages,
   setOrderStages,
   getLocations,

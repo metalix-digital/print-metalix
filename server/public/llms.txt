@@ -8,6 +8,7 @@ Metalix Print is a self-serve online printing service. Customers upload document
 
 - [Home](https://print.metalix.in/): Service overview, how it works, pricing, and contact details.
 - [Place an order](https://print.metalix.in/order): Upload files, choose print settings, see live pricing, and pay.
+- [Blog](https://print.metalix.in/blog): Printing tips, guides, and updates from Metalix Print.
 - [Policies](https://print.metalix.in/policies): Refund & reprint policy, delivery policy, terms of service, and privacy policy.
 
 ## Services

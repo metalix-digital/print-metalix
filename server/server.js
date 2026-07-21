@@ -18,9 +18,11 @@ function getJwtSecret() {
   return process.env.ADMIN_JWT_SECRET || 'dev-only-insecure-secret'
 }
 
-// Admin tokens carry adminRole ('super_admin' | 'branch_admin') and locationId
-// (null for super_admin) alongside the base role:'admin' claim — req.admin is
-// populated here for every downstream handler to read.
+// The JWT only proves *identity* (decoded.sub); role/location/tab-permissions
+// are re-read from the DB on every request rather than trusted from the
+// token. That means revoking a staff login, changing their branch, or
+// narrowing their allowed tabs takes effect on their very next request
+// instead of waiting up to 12h for the token to expire.
 function requireAdmin(req, res, next) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
@@ -28,7 +30,9 @@ function requireAdmin(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret())
     if (decoded.role !== 'admin') return res.status(401).json({ error: 'unauthorized' })
-    req.admin = { id: decoded.sub, adminRole: decoded.adminRole || 'super_admin', locationId: decoded.locationId || null }
+    const admin = db.getAdminUserById(decoded.sub)
+    if (!admin) return res.status(401).json({ error: 'unauthorized' })
+    req.admin = { id: admin.id, adminRole: admin.role, locationId: admin.location_id || null, allowedTabs: admin.allowed_tabs }
     next()
   } catch (err) {
     return res.status(401).json({ error: 'unauthorized' })
@@ -41,6 +45,25 @@ function requireSuperAdmin(req, res, next) {
     if (req.admin.adminRole !== 'super_admin') return res.status(403).json({ error: 'forbidden', message: 'Super admin only.' })
     next()
   })
+}
+
+// The only tabs a branch_admin can ever see, restricted or not — Pricing/
+// Locations/Stages/Settings/Staff stay super-admin-only regardless (enforced
+// separately by requireSuperAdmin), so they're never part of this list.
+const BRANCH_TABS = ['orders', 'customers', 'archive', 'feedback', 'mybranch']
+
+// Gates one admin-panel "tab" worth of routes. Super admin is never
+// restricted; a branch admin with allowedTabs === null (the default — no
+// restriction configured) also passes everything. Only an explicit array
+// that omits tabKey blocks access.
+function requireTab(tabKey) {
+  return (req, res, next) => {
+    if (req.admin.adminRole === 'super_admin') return next()
+    if (Array.isArray(req.admin.allowedTabs) && !req.admin.allowedTabs.includes(tabKey)) {
+      return res.status(403).json({ error: 'forbidden', message: 'You do not have access to this section.' })
+    }
+    next()
+  }
 }
 
 // null (no filter — super admin sees everything) or the branch admin's
@@ -86,6 +109,7 @@ function getOptionalCustomerId(req) {
 
 const multer = require('multer')
 const bcrypt = require('bcryptjs')
+const { marked } = require('marked')
 const db = require('./db')
 const printQueue = require('./printQueue')
 const notify = require('./notify')
@@ -138,6 +162,35 @@ const upload = multer({
     cb(Object.assign(new Error('unsupported_file_type'), { code: 'unsupported_file_type' }))
   }
 })
+
+// Blog cover images are public (served straight to article pages), unlike the
+// private customer uploads above — kept in their own dir under server/public.
+const blogUploadsDir = path.join(__dirname, 'public', 'blog-uploads')
+if (!fs.existsSync(blogUploadsDir)) fs.mkdirSync(blogUploadsDir, { recursive: true })
+const BLOG_IMAGE_EXTENSIONS = { '.jpg': true, '.jpeg': true, '.png': true, '.webp': true, '.gif': true }
+const blogImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, blogUploadsDir),
+    filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`)
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (BLOG_IMAGE_EXTENSIONS[ext]) return cb(null, true)
+    cb(Object.assign(new Error('unsupported_image_type'), { code: 'unsupported_image_type' }))
+  }
+})
+app.use('/blog-uploads', express.static(blogUploadsDir, { maxAge: '30d' }))
+
+// Turns a title (or a user-typed slug) into a clean URL segment.
+function slugify(input) {
+  return String(input || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+}
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' })
@@ -276,7 +329,14 @@ app.get('/api/admin/me', requireAdmin, (req, res) => {
   const admin = db.getAdminUserById(req.admin.id)
   if (!admin) return res.status(404).json({ error: 'not_found' })
   const location = admin.location_id ? db.getLocationById(admin.location_id) : null
-  return res.json({ username: admin.username, role: admin.role, locationId: admin.location_id || null, locationName: location ? location.name : null })
+  return res.json({
+    username: admin.username,
+    role: admin.role,
+    locationId: admin.location_id || null,
+    locationName: location ? location.name : null,
+    // null = every tab (no restriction configured for this staff member).
+    allowedTabs: admin.allowed_tabs
+  })
 })
 
 // Requires the correct admin login id before any email is sent — this both
@@ -338,8 +398,18 @@ app.get('/api/admin/staff', requireSuperAdmin, (req, res) => {
   return res.json({ staff: db.listAdminUsers() })
 })
 
+// undefined/null = no restriction (every branch tab); otherwise must be a
+// subset of BRANCH_TABS. Invalid entries are silently dropped rather than
+// erroring, so a stale client sending an old tab key can't break the request.
+function cleanAllowedTabs(allowedTabs) {
+  if (allowedTabs === undefined || allowedTabs === null) return null
+  if (!Array.isArray(allowedTabs)) return null
+  const clean = allowedTabs.filter((t) => BRANCH_TABS.includes(t))
+  return clean.length ? clean : null
+}
+
 app.post('/api/admin/staff', requireSuperAdmin, express.json(), async (req, res) => {
-  const { username, password, locationId } = req.body || {}
+  const { username, password, locationId, allowedTabs } = req.body || {}
   if (!username || !String(username).trim() || !password || !locationId) {
     return res.status(400).json({ error: 'missing_fields', message: 'Username, password, and a branch are all required.' })
   }
@@ -349,14 +419,17 @@ app.post('/api/admin/staff', requireSuperAdmin, express.json(), async (req, res)
   }
   if (!db.getLocationById(locationId)) return res.status(400).json({ error: 'invalid_location' })
   const password_hash = await bcrypt.hash(password, 10)
-  const staffUser = db.createAdminUser({ id: crypto.randomUUID(), username: String(username).trim(), password_hash, role: 'branch_admin', location_id: locationId })
-  return res.json({ staff: { id: staffUser.id, username: staffUser.username, role: staffUser.role, location_id: staffUser.location_id } })
+  const staffUser = db.createAdminUser({
+    id: crypto.randomUUID(), username: String(username).trim(), password_hash, role: 'branch_admin', location_id: locationId,
+    allowed_tabs: cleanAllowedTabs(allowedTabs)
+  })
+  return res.json({ staff: { id: staffUser.id, username: staffUser.username, role: staffUser.role, location_id: staffUser.location_id, allowed_tabs: staffUser.allowed_tabs } })
 })
 
 app.put('/api/admin/staff/:id', requireSuperAdmin, express.json(), async (req, res) => {
   const staffUser = db.getAdminUserById(req.params.id)
   if (!staffUser || staffUser.role !== 'branch_admin') return res.status(404).json({ error: 'not_found' })
-  const { password, locationId } = req.body || {}
+  const { password, locationId, allowedTabs } = req.body || {}
   const updates = {}
   if (password !== undefined) {
     if (password.length < 8) return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' })
@@ -365,6 +438,10 @@ app.put('/api/admin/staff/:id', requireSuperAdmin, express.json(), async (req, r
   if (locationId !== undefined) {
     if (!db.getLocationById(locationId)) return res.status(400).json({ error: 'invalid_location' })
     updates.location_id = locationId
+  }
+  if (allowedTabs !== undefined) {
+    const clean = cleanAllowedTabs(allowedTabs)
+    updates.allowed_tabs = clean ? JSON.stringify(clean) : null
   }
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   db.updateAdminUser(staffUser.id, updates)
@@ -376,6 +453,69 @@ app.delete('/api/admin/staff/:id', requireSuperAdmin, (req, res) => {
   if (!staffUser || staffUser.role !== 'branch_admin') return res.status(404).json({ error: 'not_found' })
   db.deleteAdminUser(staffUser.id)
   return res.json({ deleted: true })
+})
+
+// Blog CMS — SEO content, kept super-admin-only like Pricing/Locations/Settings.
+app.get('/api/admin/blog', requireSuperAdmin, (req, res) => {
+  res.json({ posts: db.listBlogPosts({ includeUnpublished: true }) })
+})
+
+function blogFieldsFromBody(body) {
+  return {
+    title: (body.title || '').trim(),
+    author: (body.author || '').trim() || null,
+    excerpt: (body.excerpt || '').trim() || null,
+    cover_image: (body.coverImage || '').trim() || null,
+    category: (body.category || '').trim() || null,
+    tags: Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(',').map((t) => t.trim()).filter(Boolean),
+    author_bio: (body.authorBio || '').trim() || null,
+    body: body.body || '',
+    meta_title: (body.metaTitle || '').trim() || null,
+    meta_description: (body.metaDescription || '').trim() || null,
+    meta_keywords: (body.metaKeywords || '').trim() || null,
+    published: !!body.published
+  }
+}
+
+app.post('/api/admin/blog', requireSuperAdmin, express.json(), (req, res) => {
+  const fields = blogFieldsFromBody(req.body || {})
+  if (!fields.title) return res.status(400).json({ error: 'title_required', message: 'Title is required.' })
+  let slug = slugify(req.body.slug || fields.title)
+  if (!slug) return res.status(400).json({ error: 'invalid_slug', message: 'Could not derive a URL slug from the title.' })
+  if (db.getBlogPostBySlug(slug)) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
+  const post = db.createBlogPost({ id: crypto.randomUUID(), slug, ...fields })
+  return res.json({ post })
+})
+
+app.put('/api/admin/blog/:id', requireSuperAdmin, express.json(), (req, res) => {
+  const existing = db.getBlogPostById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  const fields = blogFieldsFromBody(req.body || {})
+  if (!fields.title) return res.status(400).json({ error: 'title_required', message: 'Title is required.' })
+  let slug = req.body.slug !== undefined ? slugify(req.body.slug) : existing.slug
+  if (!slug) slug = existing.slug
+  const conflict = db.getBlogPostBySlug(slug)
+  if (conflict && conflict.id !== existing.id) return res.status(409).json({ error: 'slug_taken', message: 'That URL slug is already used by another post.' })
+  const post = db.updateBlogPost(existing.id, { slug, ...fields })
+  return res.json({ post })
+})
+
+app.delete('/api/admin/blog/:id', requireSuperAdmin, (req, res) => {
+  const existing = db.getBlogPostById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  db.deleteBlogPost(existing.id)
+  return res.json({ deleted: true })
+})
+
+app.post('/api/admin/blog/upload-cover', requireSuperAdmin, (req, res) => {
+  blogImageUpload.single('image')(req, res, (err) => {
+    if (err) {
+      const code = err.code === 'unsupported_image_type' ? 'unsupported_image_type' : 'upload_failed'
+      return res.status(400).json({ error: code, message: err.message })
+    }
+    if (!req.file) return res.status(400).json({ error: 'no_file' })
+    return res.json({ url: `/blog-uploads/${req.file.filename}` })
+  })
 })
 
 function publicUser(user) {
@@ -528,7 +668,7 @@ app.post('/api/auth/google', express.json(), async (req, res) => {
   return res.json({ token, user: publicUser(user) })
 })
 
-app.get('/api/admin/orders', requireAdmin, (req, res) => {
+app.get('/api/admin/orders', requireAdmin, requireTab('orders'), (req, res) => {
   const { status, search, limit, offset, location } = req.query
   // A branch admin's own scope always wins; a super admin may optionally
   // filter to one branch via ?location=, or omit it to see every branch.
@@ -546,7 +686,7 @@ app.get('/api/admin/orders', requireAdmin, (req, res) => {
 // Full single-order lookup for the printable job sheet — distinct from the
 // public /api/orders/:id (which any customer with the order ID can hit) since
 // this is gated behind requireAdmin.
-app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
+app.get('/api/admin/orders/:id', requireAdmin, requireTab('orders'), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   return res.json({ order })
@@ -557,7 +697,7 @@ app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
 // dependency) with the customer's actual print-ready document(s) into one
 // PDF — page 1 cover, middle pages the real document(s), last page branding.
 const A4_PT = { width: 595.28, height: 841.89 }
-app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) => {
+app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'), async (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const { coverImage, backImage } = req.body || {}
@@ -653,7 +793,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, async (req, res) =>
   }
 })
 
-app.patch('/api/admin/orders/:id', requireAdmin, express.json(), (req, res) => {
+app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const { order_status, failure_reason } = req.body || {}
@@ -717,7 +857,7 @@ function emailStatusChange(order, base) {
 // Bulk status update: apply one status to many orders at once. Skips orders
 // that are missing or already at that status, and emails each customer whose
 // new stage is notify-enabled.
-app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, res) => {
+app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const { ids, order_status } = req.body || {}
   if (!Array.isArray(ids) || !ids.length || !order_status) {
     return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order and a status.' })
@@ -740,7 +880,7 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, express.json(), (req, re
 })
 
 // Record a pay-on-delivery collection (Cash/UPI) — marks the order paid.
-app.post('/api/admin/orders/:id/collect-payment', requireAdmin, express.json(), (req, res) => {
+app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const { mode } = req.body || {}
   if (!['cash', 'upi'].includes(mode)) {
     return res.status(400).json({ error: 'invalid_mode', message: 'Payment mode must be cash or upi.' })
@@ -754,7 +894,7 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, express.json(), 
 // Archive (soft-delete) a single order. It leaves the Orders/Customers views
 // and BigQuery immediately, but is recoverable for 30 days before the purge
 // job removes it for good.
-app.delete('/api/admin/orders/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/orders/:id', requireAdmin, requireTab('orders'), (req, res) => {
   if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.archiveOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -762,7 +902,7 @@ app.delete('/api/admin/orders/:id', requireAdmin, (req, res) => {
 })
 
 // Bulk archive of orders.
-app.post('/api/admin/orders/bulk-delete', requireAdmin, express.json(), (req, res) => {
+app.post('/api/admin/orders/bulk-delete', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'missing_fields', message: 'Select at least one order.' })
   let archived = 0
@@ -774,28 +914,28 @@ app.post('/api/admin/orders/bulk-delete', requireAdmin, express.json(), (req, re
 })
 
 // Archive a customer (identified by mobile) — archives all their orders.
-app.delete('/api/admin/customers/:mobile', requireAdmin, (req, res) => {
+app.delete('/api/admin/customers/:mobile', requireAdmin, requireTab('customers'), (req, res) => {
   const orders = db.archiveCustomerByMobile(req.params.mobile, scopeLocation(req))
   return res.json({ archived: true, archivedOrders: orders.length })
 })
 
 // Archive management: list, restore, or permanently delete now.
-app.get('/api/admin/archive', requireAdmin, (req, res) => {
+app.get('/api/admin/archive', requireAdmin, requireTab('archive'), (req, res) => {
   return res.json({ orders: db.listArchivedOrders(scopeLocation(req)), retentionDays: 30 })
 })
 
-app.get('/api/admin/feedback', requireAdmin, (req, res) => {
+app.get('/api/admin/feedback', requireAdmin, requireTab('feedback'), (req, res) => {
   return res.json({ feedback: db.listOrderFeedback(scopeLocation(req)) })
 })
 
-app.post('/api/admin/orders/:id/restore', requireAdmin, (req, res) => {
+app.post('/api/admin/orders/:id/restore', requireAdmin, requireTab('orders'), (req, res) => {
   if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.restoreOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   return res.json({ restored: true })
 })
 
-app.delete('/api/admin/orders/:id/purge', requireAdmin, (req, res) => {
+app.delete('/api/admin/orders/:id/purge', requireAdmin, requireTab('orders'), (req, res) => {
   if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.deleteOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -809,6 +949,29 @@ app.get('/api/locations', (req, res) => {
     id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', shopOpen: l.shopOpen, mapsUrl: l.mapsUrl || ''
   }))
   return res.json({ locations: active })
+})
+
+// Public blog — list only shows published posts, ordered newest-first.
+app.get('/api/blog', (req, res) => {
+  const posts = db.listBlogPosts({ includeUnpublished: false }).map((p) => ({
+    id: p.id, title: p.title, slug: p.slug, author: p.author, excerpt: p.excerpt,
+    coverImage: p.cover_image, category: p.category, tags: p.tags, publishedAt: p.published_at
+  }))
+  return res.json({ posts })
+})
+
+app.get('/api/blog/:slug', (req, res) => {
+  const post = db.getBlogPostBySlug(req.params.slug)
+  if (!post || !post.published) return res.status(404).json({ error: 'not_found' })
+  return res.json({
+    post: {
+      id: post.id, title: post.title, slug: post.slug, author: post.author, excerpt: post.excerpt,
+      coverImage: post.cover_image, category: post.category, tags: post.tags, authorBio: post.author_bio,
+      metaTitle: post.meta_title, metaDescription: post.meta_description, metaKeywords: post.meta_keywords,
+      publishedAt: post.published_at, updatedAt: post.updated_at
+    },
+    html: marked.parse(post.body || '')
+  })
 })
 
 // Admin-managed branches / pickup locations (add / edit / delete / activate).
@@ -859,14 +1022,14 @@ app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) =>
 // hours only, never identity fields (name/address/etc. stay super-admin-only
 // via /api/admin/locations). Super admins have no "my location" — they use
 // the full locations list instead.
-app.get('/api/admin/my-location', requireAdmin, (req, res) => {
+app.get('/api/admin/my-location', requireAdmin, requireTab('mybranch'), (req, res) => {
   if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
   const location = db.getLocationById(req.admin.locationId)
   if (!location) return res.status(404).json({ error: 'not_found' })
   return res.json({ location })
 })
 
-app.put('/api/admin/my-location', requireAdmin, express.json(), (req, res) => {
+app.put('/api/admin/my-location', requireAdmin, requireTab('mybranch'), express.json(), (req, res) => {
   if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
   const { shopOpen, storeTimings } = req.body || {}
   const location = db.updateLocationOperatingInfo(req.admin.locationId, { shopOpen, storeTimings })
@@ -900,11 +1063,11 @@ app.put('/api/admin/stages', requireSuperAdmin, express.json(), (req, res) => {
   return res.json({ stages: db.getOrderStages() })
 })
 
-app.get('/api/admin/customers', requireAdmin, (req, res) => {
+app.get('/api/admin/customers', requireAdmin, requireTab('customers'), (req, res) => {
   return res.json({ customers: db.listCustomers(scopeLocation(req)) })
 })
 
-app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, (req, res) => {
+app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab('orders'), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
 
@@ -1296,12 +1459,92 @@ app.get('/policies', (req, res) => {
   res.sendFile(path.join(publicDir, 'landing.html'))
 })
 
-// SEO: robots.txt (references the sitemap) and the sitemap itself.
+// Blog list + article pages — the SPA-style views inside landing.html handle
+// their own routing, but the blog is plain server-rendered HTML + client JS
+// (like track.html) since each post needs its own crawlable, shareable URL.
+app.get('/blog', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
+  res.sendFile(path.join(publicDir, 'blog.html'))
+})
+
+// Attribute-safe (not full HTML-safe) — only used inside "..." attribute
+// values and <title>/<meta content> text nodes in the template below.
+function escAttr(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Server-renders the SEO-critical <head> tags (title, description, OG,
+// canonical, JSON-LD) into the static template before sending it, so
+// crawlers and social-media unfurlers see the real per-post metadata even
+// without executing JS. The visible article body is still filled in
+// client-side (see blog-post.html) — same pattern as the rest of the site.
+app.get('/blog/:slug', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
+  const post = db.getBlogPostBySlug(req.params.slug)
+  const template = fs.readFileSync(path.join(publicDir, 'blog-post.html'), 'utf8')
+  const canonical = `https://print.metalix.in/blog/${req.params.slug}`
+
+  if (!post || !post.published) {
+    const html = template
+      .split('__META_TITLE__').join(escAttr('Post not found — Metalix Print Blog'))
+      .split('__META_DESCRIPTION__').join(escAttr('This blog post could not be found.'))
+      .split('__META_KEYWORDS__').join('')
+      .split('__CANONICAL_URL__').join(escAttr(canonical))
+      .split('__OG_IMAGE__').join('https://print.metalix.in/logo.svg')
+      .split('__JSON_LD__').join('null')
+    return res.status(404).send(html)
+  }
+
+  const title = post.meta_title || post.title
+  const description = post.meta_description || post.excerpt || ''
+  const image = post.cover_image
+    ? (post.cover_image.startsWith('http') ? post.cover_image : `https://print.metalix.in${post.cover_image}`)
+    : 'https://print.metalix.in/logo.svg'
+  const jsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.title,
+    description,
+    image,
+    author: { '@type': 'Person', name: post.author || 'Metalix Team' },
+    datePublished: post.published_at ? new Date(post.published_at).toISOString() : undefined,
+    dateModified: post.updated_at ? new Date(post.updated_at).toISOString() : undefined,
+    mainEntityOfPage: canonical
+  })
+
+  const html = template
+    .split('__META_TITLE__').join(escAttr(title))
+    .split('__META_DESCRIPTION__').join(escAttr(description))
+    .split('__META_KEYWORDS__').join(escAttr(post.meta_keywords || (post.tags || []).join(', ')))
+    .split('__CANONICAL_URL__').join(escAttr(canonical))
+    .split('__OG_IMAGE__').join(escAttr(image))
+    .split('__JSON_LD__').join(jsonLd)
+  res.send(html)
+})
+
+// SEO: robots.txt (references the sitemap) and the sitemap itself. The
+// sitemap is generated on request (not a static file) so published blog
+// posts appear/disappear automatically as they're published/unpublished.
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').sendFile(path.join(publicDir, 'robots.txt'))
 })
 app.get('/sitemap.xml', (req, res) => {
-  res.type('application/xml').sendFile(path.join(publicDir, 'sitemap.xml'))
+  const staticUrls = [
+    { loc: 'https://print.metalix.in/', freq: 'weekly', priority: '1.0' },
+    { loc: 'https://print.metalix.in/order', freq: 'weekly', priority: '0.9' },
+    { loc: 'https://print.metalix.in/blog', freq: 'weekly', priority: '0.7' },
+    { loc: 'https://print.metalix.in/policies', freq: 'monthly', priority: '0.3' }
+  ]
+  const postUrls = db.listBlogPosts({ includeUnpublished: false }).map((p) => ({
+    loc: `https://print.metalix.in/blog/${p.slug}`, freq: 'monthly', priority: '0.6'
+  }))
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    staticUrls.concat(postUrls).map((u) =>
+      `  <url>\n    <loc>${u.loc}</loc>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+    ).join('\n') +
+    '\n</urlset>'
+  res.type('application/xml').send(xml)
 })
 
 // llms.txt — a machine-readable site summary for AI agents (llmstxt.org). Checked

@@ -5,35 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Metalix Print — Currently Closed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{ --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF; }
+  :root{ --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF; --body:#5B6472; --muted:#8893A2; color-scheme:light; }
+  [data-theme="dark"]{ --steel:#F3F5F8; --silver:#454C5E; --mist:#101215; --white:#1B1D24; --body:#C7CCD6; --muted:#9BA3B5; color-scheme:dark; }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
-  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .card{ background:var(--white); border-radius:20px; max-width:440px; width:100%; padding:40px 32px; text-align:center; box-shadow:0 20px 48px -20px rgba(26,35,50,.28); }
-  .logo{ font-size:22px; font-weight:800; }
+  body{ font-family:'Inter', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; transition:background-color .25s ease,color .25s ease; }
+  .card{ position:relative; background:var(--white); border-radius:20px; max-width:440px; width:100%; padding:40px 32px; text-align:center; box-shadow:0 20px 48px -20px rgba(26,35,50,.28); }
+  .logo{ font-size:22px; font-weight:700; font-family:'Sora',sans-serif; position:relative; }
   .logo .dot{ color:var(--orange); }
   .badge{ margin:22px auto 0; width:64px; height:64px; border-radius:50%; background:var(--mist); display:flex; align-items:center; justify-content:center; font-size:28px; }
-  h1{ font-size:22px; font-weight:800; margin:20px 0 10px; }
-  .sub{ font-size:14.5px; color:#5B6472; line-height:1.6; margin:0 0 26px; }
+  h1{ font-size:22px; font-weight:800; font-family:'Sora',sans-serif; margin:20px 0 10px; }
+  .sub{ font-size:14.5px; color:var(--body); line-height:1.6; margin:0 0 26px; }
   .contact-list{ display:flex; flex-direction:column; gap:10px; text-align:left; }
-  .contact-item{ display:flex; align-items:center; gap:12px; border:1.5px solid var(--silver); border-radius:12px; padding:12px 14px; text-decoration:none; color:var(--steel); }
+  .contact-item{ display:flex; align-items:center; gap:12px; border:1.5px solid var(--silver); border-radius:12px; padding:12px 14px; text-decoration:none; color:var(--steel); background:var(--white); }
   .contact-item .ic{ font-size:18px; flex-shrink:0; }
   .contact-item .ct{ display:flex; flex-direction:column; }
-  .contact-item .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; }
+  .contact-item .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
   .contact-item .ct-value{ font-size:14px; font-weight:700; }
-  .footer-note{ margin-top:26px; font-size:11.5px; color:#8893A2; }
+  .footer-note{ margin-top:26px; font-size:11.5px; color:var(--muted); }
   .hours-box{ margin-top:14px; border:1.5px solid var(--silver); border-radius:12px; padding:12px 14px; text-align:left; }
-  .hours-box .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; margin-bottom:6px; }
+  .hours-box .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
   .hours-row{ display:flex; justify-content:space-between; font-size:13px; padding:2px 0; }
   .hours-row .day{ font-weight:700; color:var(--steel); }
-  .hours-row .time{ color:#5B6472; }
+  .hours-row .time{ color:var(--body); }
+  .theme-toggle{ position:absolute; right:20px; top:20px; width:30px; height:30px; border-radius:50%; border:1.5px solid var(--silver); background:var(--white); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .theme-toggle:hover{ border-color:var(--orange); }
 </style>
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('metalix_theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
 
 <div class="card">
+  <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button>
   <div class="logo" id="bizLogo">Metalix<span class="dot">.</span>Print</div>
   <div class="badge">🕐</div>
   <h1>We're closed right now</h1>
@@ -47,6 +60,23 @@
 </div>
 
 <script>
+/* -- THEME TOGGLE -- */
+(function(){
+  const THEME_KEY = 'metalix_theme';
+  const btn = document.getElementById('themeToggle');
+  const icon = document.getElementById('themeToggleIcon');
+  function syncIcon(){
+    icon.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+  }
+  syncIcon();
+  btn.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    syncIcon();
+  });
+})();
+
 async function loadContact(){
   const list = document.getElementById('contactList');
   try {

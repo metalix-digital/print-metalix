@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>__META_TITLE__</title>
+<meta name="description" content="__META_DESCRIPTION__">
+<meta name="keywords" content="__META_KEYWORDS__">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="__CANONICAL_URL__"/>
+<meta name="theme-color" content="#FF6600">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Metalix Print">
+<meta property="og:title" content="__META_TITLE__">
+<meta property="og:description" content="__META_DESCRIPTION__">
+<meta property="og:url" content="__CANONICAL_URL__">
+<meta property="og:image" content="__OG_IMAGE__">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="__META_TITLE__">
+<meta name="twitter:description" content="__META_DESCRIPTION__">
+<script type="application/ld+json">__JSON_LD__</script>
+<link rel="icon" type="image/svg+xml" href="/logo.svg"/>
+<link rel="preload" href="/fonts/Sora-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Sora-700.woff2) format('woff2');}
+@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Sora-800.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Inter-400.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Inter-600.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Inter-700.woff2) format('woff2');}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/IBMPlexMono-600.woff2) format('woff2');}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  --orange:#FF6600; --orange-d:#E05500; --orange-l:#FFF4EB; --orange-text:#C2410C; --orange-border:#FFCCA0;
+  --ink:#1C1917; --ink2:#44403C; --ink3:#78716C; --ink-fixed:#1C1917;
+  --line:#E7E5E4; --line-soft:#F0EFED; --line-hover:#C7C4C0;
+  --white:#FFFFFF; --surface-hover:#F5F4F2; --paper:#FAFAF8;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+  --header-bg:rgba(250,250,248,.92);
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --orange-l:rgba(255,102,0,.16); --orange-border:rgba(255,102,0,.42);
+  --ink:#F7F6F1; --ink2:#D9D4CC; --ink3:#ABA69C;
+  --line:#3A3630; --line-soft:#2E2A25; --line-hover:#55504A;
+  --white:#1F1D22; --surface-hover:#2A2730; --paper:#141316;
+  --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px -8px rgba(0,0,0,.6);
+  --header-bg:rgba(20,19,22,.88);
+  color-scheme:dark;
+}
+body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;transition:background-color .25s ease,color .25s ease;}
+a{color:inherit;}
+
+header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);}
+.header-inner{max-width:760px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:8px;height:64px;}
+.h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;}
+.h-logo img{width:34px;height:34px;border-radius:50%;}
+.h-logo span{font-family:'Sora',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;}
+.h-space{flex:1;}
+nav a{font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;padding:8px 14px;border-radius:8px;}
+nav a:hover{color:var(--ink);background:var(--surface-hover);}
+.theme-toggle{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:var(--white);color:var(--ink3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-left:8px;transition:border-color .15s,transform .15s;}
+.theme-toggle:hover{border-color:var(--line-hover);transform:translateY(-1px);}
+
+.wrap{max-width:760px;margin:0 auto;padding:40px 24px 90px;}
+.back-link{font-size:13.5px;font-weight:600;color:var(--ink3);text-decoration:none;display:inline-block;margin-bottom:20px;}
+.back-link:hover{color:var(--orange-text);}
+.post-cat{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--orange-text);background:var(--orange-l);border:1px solid var(--orange-border);padding:5px 12px;border-radius:999px;display:inline-block;margin-bottom:16px;}
+h1{font-family:'Sora',sans-serif;font-size:clamp(28px,5vw,40px);font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-bottom:16px;}
+.post-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink3);margin-bottom:28px;}
+.post-meta .dot{width:3px;height:3px;border-radius:50%;background:var(--ink3);}
+.cover-img{width:100%;border-radius:16px;margin-bottom:32px;display:block;}
+.cover-img.hidden{display:none;}
+
+.article{font-size:16.5px;line-height:1.75;color:var(--ink);}
+.article h2{font-family:'Sora',sans-serif;font-size:24px;font-weight:700;margin:32px 0 14px;letter-spacing:-.01em;}
+.article h3{font-family:'Sora',sans-serif;font-size:19px;font-weight:700;margin:26px 0 10px;}
+.article p{margin-bottom:18px;}
+.article ul,.article ol{margin:0 0 18px 22px;}
+.article li{margin-bottom:8px;}
+.article a{color:var(--orange-text);text-decoration:underline;}
+.article blockquote{border-left:3px solid var(--orange);padding:4px 0 4px 18px;margin:0 0 18px;color:var(--ink2);font-style:italic;}
+.article code{font-family:'IBM Plex Mono',monospace;font-size:.88em;background:var(--surface-hover);padding:2px 6px;border-radius:5px;}
+.article pre{background:var(--ink-fixed);color:#F1EFEA;padding:16px 18px;border-radius:10px;overflow-x:auto;margin-bottom:18px;}
+.article pre code{background:none;padding:0;color:inherit;}
+.article img{max-width:100%;border-radius:10px;margin:10px 0;}
+.article hr{border:none;border-top:1px solid var(--line);margin:28px 0;}
+
+.tags-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:28px;}
+.tag-chip{font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface-hover);border-radius:999px;padding:5px 12px;}
+
+.author-box{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:36px;background:var(--white);}
+.author-box .av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#E11D74);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;}
+.author-box .name{font-weight:700;font-size:14px;margin-bottom:4px;}
+.author-box .bio{font-size:13.5px;color:var(--ink2);line-height:1.6;}
+.author-box.hidden{display:none;}
+
+.share-row{display:flex;align-items:center;gap:10px;margin-top:28px;flex-wrap:wrap;}
+.share-row .lbl{font-size:13px;color:var(--ink3);font-weight:600;}
+.share-btn{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:var(--white);color:var(--ink2);display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;font-size:14px;transition:.15s;}
+.share-btn:hover{border-color:var(--orange);color:var(--orange-d);}
+
+.cta-card{margin-top:44px;background:linear-gradient(135deg,var(--orange),var(--orange-d));border-radius:18px;padding:32px;text-align:center;color:#fff;}
+.cta-card h3{font-family:'Sora',sans-serif;font-size:21px;font-weight:700;margin-bottom:8px;}
+.cta-card p{font-size:14px;opacity:.92;margin-bottom:18px;}
+.cta-card a{display:inline-block;background:#fff;color:var(--orange-d);font-weight:700;font-size:14.5px;padding:12px 26px;border-radius:10px;text-decoration:none;}
+
+footer{background:var(--ink-fixed);color:#fff;padding:40px 24px;margin-top:20px;}
+.footer-inner{max-width:760px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;font-size:13.5px;color:#C7C2BA;}
+.footer-inner a{color:#fff;text-decoration:none;font-weight:600;}
+.footer-inner a:hover{text-decoration:underline;}
+
+.not-found{text-align:center;padding:60px 20px;color:var(--ink3);}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('metalix_theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a class="h-logo" href="/">
+      <img src="/logo.svg" alt="Metalix Print">
+      <span>Metalix Print</span>
+    </a>
+    <div class="h-space"></div>
+    <nav><a href="/blog">Blog</a></nav>
+    <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button>
+  </div>
+</header>
+
+<div class="wrap" id="content">
+  <a class="back-link" href="/blog">← Back to blog</a>
+  <div id="postContent">
+    <div class="not-found">Loading…</div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <span>© 2026 Metalix Print</span>
+    <span><a href="/">Home</a> · <a href="/order">Place an order</a> · <a href="/policies">Policies</a></span>
+  </div>
+</footer>
+
+<script>
+const themeToggle = document.getElementById('themeToggle');
+const themeToggleIcon = document.getElementById('themeToggleIcon');
+function syncThemeIcon(){ themeToggleIcon.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙'; }
+syncThemeIcon();
+themeToggle.addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('metalix_theme', next);
+  syncThemeIcon();
+});
+
+function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function formatDate(ms){ return ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
+function readingTime(text){
+  const words = String(text || '').split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200)) + ' min read';
+}
+function initials(name){
+  return String(name || 'M').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function shareUrl(kind, url, title){
+  const u = encodeURIComponent(url), t = encodeURIComponent(title);
+  if (kind === 'x') return 'https://twitter.com/intent/tweet?url=' + u + '&text=' + t;
+  if (kind === 'facebook') return 'https://www.facebook.com/sharer/sharer.php?u=' + u;
+  if (kind === 'linkedin') return 'https://www.linkedin.com/sharing/share-offsite/?url=' + u;
+  if (kind === 'whatsapp') return 'https://wa.me/?text=' + t + '%20' + u;
+  return '#';
+}
+
+const slug = window.location.pathname.split('/').filter(Boolean).pop();
+
+fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
+  if (!r.ok) throw new Error('not_found');
+  return r.json();
+}).then(({ post, html }) => {
+  const url = window.location.href;
+  document.getElementById('postContent').innerHTML =
+    (post.category ? '<span class="post-cat">' + escHtml(post.category) + '</span>' : '') +
+    '<h1>' + escHtml(post.title) + '</h1>' +
+    '<div class="post-meta">' +
+      '<span>' + escHtml(post.author || 'Metalix Team') + '</span><span class="dot"></span>' +
+      '<span>' + formatDate(post.publishedAt) + '</span><span class="dot"></span>' +
+      '<span>' + readingTime(html.replace(/<[^>]+>/g, ' ')) + '</span>' +
+    '</div>' +
+    (post.coverImage ? ('<img class="cover-img" src="' + escHtml(post.coverImage) + '" alt="">') : '') +
+    '<div class="article">' + html + '</div>' +
+    (post.tags && post.tags.length ? ('<div class="tags-row">' + post.tags.map((t) => '<span class="tag-chip">#' + escHtml(t) + '</span>').join('') + '</div>') : '') +
+    (post.authorBio ? (
+      '<div class="author-box"><div class="av">' + escHtml(initials(post.author)) + '</div>' +
+      '<div><div class="name">' + escHtml(post.author || 'Metalix Team') + '</div><div class="bio">' + escHtml(post.authorBio) + '</div></div></div>'
+    ) : '') +
+    '<div class="share-row"><span class="lbl">Share:</span>' +
+      '<a class="share-btn" href="' + shareUrl('x', url, post.title) + '" target="_blank" rel="noopener" title="Share on X">𝕏</a>' +
+      '<a class="share-btn" href="' + shareUrl('facebook', url, post.title) + '" target="_blank" rel="noopener" title="Share on Facebook">f</a>' +
+      '<a class="share-btn" href="' + shareUrl('linkedin', url, post.title) + '" target="_blank" rel="noopener" title="Share on LinkedIn">in</a>' +
+      '<a class="share-btn" href="' + shareUrl('whatsapp', url, post.title) + '" target="_blank" rel="noopener" title="Share on WhatsApp">💬</a>' +
+      '<a class="share-btn" href="mailto:?subject=' + encodeURIComponent(post.title) + '&body=' + encodeURIComponent(url) + '" title="Share by email">✉️</a>' +
+      '<button class="share-btn" id="copyLinkBtn" type="button" title="Copy link">🔗</button>' +
+    '</div>' +
+    '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — usually within 3–4 hours.</p><a href="/order">Start your order →</a></div>';
+
+  document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
+    navigator.clipboard.writeText(url).then(() => { e.target.textContent = '✓'; setTimeout(() => { e.target.textContent = '🔗'; }, 1500); });
+  });
+}).catch(() => {
+  document.getElementById('postContent').innerHTML = '<div class="not-found">We couldn\'t find that post. <a href="/blog">Back to blog</a></div>';
+});
+</script>
+
+</body>
+</html>

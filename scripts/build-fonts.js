@@ -30,9 +30,9 @@ chars += '©·×–—…₹→↓' // © · × – — … ₹ → ↓
 
 // Weights here must match the @font-face rules in landing.html.
 const families = [
-  { name: 'Syne', weights: [700, 800] },
-  { name: 'Inter', weights: [400, 500, 600, 700] },
-  { name: 'IBM Plex Mono', weights: [600, 700] },
+  { name: 'Sora', weights: [700, 800] },
+  { name: 'Inter', weights: [400, 600, 700] },
+  { name: 'IBM Plex Mono', weights: [600] },
 ]
 
 function get(url) {
