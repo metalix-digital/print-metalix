@@ -692,6 +692,11 @@ function willEmailOnStatus(status) {
 function emailStatusChange(order, base) {
   if (!order || !order.customer_email) return
   const trackUrl = `${base}/track/${order.id}`
+  // Only used by the "Awaiting Customer Pickup" copy, but harmless to look up
+  // for every status — a no-op when the order has no location or the branch
+  // never set a Maps link.
+  const location = order.location_id ? db.getLocationById(order.location_id) : null
+  const mapsUrl = location ? location.mapsUrl : null
   if (order.order_status === 'Completed') {
     ;(async () => {
       let attachments = []
@@ -700,12 +705,12 @@ function emailStatusChange(order, base) {
       } catch (err) {
         console.error(`[invoice] generation failed for ${order.id}:`, err.message)
       }
-      await mailer.sendOrderStatusEmail(order, trackUrl, attachments)
+      await mailer.sendOrderStatusEmail(order, trackUrl, attachments, mapsUrl)
     })().catch((err) => console.error(`[orders] completed email failed for ${order.id}:`, err.message))
     return
   }
   if (stageNotifies(order.order_status)) {
-    mailer.sendOrderStatusEmail(order, trackUrl).catch((err) => console.error(`[orders] status email failed for ${order.id}:`, err.message))
+    mailer.sendOrderStatusEmail(order, trackUrl, null, mapsUrl).catch((err) => console.error(`[orders] status email failed for ${order.id}:`, err.message))
   }
 }
 

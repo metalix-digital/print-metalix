@@ -174,6 +174,13 @@ function orderStatusTemplate(order, trackUrl, opts) {
   const isCompleted = order.order_status === 'Completed'
   const trackBtnLabel = isCompleted ? 'Rate your order' : 'Track your order'
   const trackBtn = trackUrl ? `<tr><td style="padding:4px 40px 8px 40px;">${button(trackBtnLabel, trackUrl, copy.accent)}</td></tr>` : ''
+  // Only meaningful once the order is actually sitting at the store waiting
+  // to be collected — irrelevant for every other status, including delivery.
+  const directionsRow = (order.order_status === 'Awaiting Customer Pickup' && opts.mapsUrl)
+    ? `<tr><td style="padding:0 40px 8px 40px;font-family:Arial,Helvetica,sans-serif;text-align:center;">
+        <a href="${opts.mapsUrl}" target="_blank" style="font-size:13.5px;font-weight:700;color:${copy.accent};text-decoration:none;">🗺️ Get directions to the store</a>
+      </td></tr>`
+    : ''
 
   const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr><td style="padding:34px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;">
@@ -182,6 +189,7 @@ function orderStatusTemplate(order, trackUrl, opts) {
       <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${name}, ${copy.line}${invoiceLine}</p>
     </td></tr>
     ${trackBtn}
+    ${directionsRow}
     <tr><td style="padding:18px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;">
         <tr>
@@ -194,16 +202,16 @@ function orderStatusTemplate(order, trackUrl, opts) {
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
   const html = renderEmailShell({ preheader: `${copy.title} — order ${order.id}`, accent: copy.accent, cardHtml, footerHtml })
 
-  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}${invoiceLine}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\n${trackBtnLabel}: ${trackUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
+  const text = [`${copy.title}`, '', `Hi ${name}, ${copy.line}${invoiceLine}`, '', `Order ID: ${order.id}`, `Status: ${order.order_status}`, `Order total: ${total}`, trackUrl ? `\n${trackBtnLabel}: ${trackUrl}` : '', (order.order_status === 'Awaiting Customer Pickup' && opts.mapsUrl) ? `Get directions: ${opts.mapsUrl}` : '', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
   return { html, text, subject: `Order ${order.id}: ${order.order_status}` }
 }
 
 // Emails the customer that their order status changed. No-op (with a stub log)
 // when the customer has no email on file or SMTP isn't configured.
-async function sendOrderStatusEmail(order, trackUrl, attachments) {
+async function sendOrderStatusEmail(order, trackUrl, attachments, mapsUrl) {
   if (!order || !order.customer_email) return
   const hasInvoice = !!(attachments && attachments.length)
-  const { html, text, subject } = orderStatusTemplate(order, trackUrl, { invoice: hasInvoice })
+  const { html, text, subject } = orderStatusTemplate(order, trackUrl, { invoice: hasInvoice, mapsUrl })
   const transporter = getTransporter()
   if (!transporter) {
     console.log(`[mailer] stub -> ${order.customer_email}: ${subject}${hasInvoice ? ' (+invoice attached)' : ''}`)
