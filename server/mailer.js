@@ -176,9 +176,15 @@ function orderStatusTemplate(order, trackUrl, opts) {
   const trackBtn = trackUrl ? `<tr><td style="padding:4px 40px 8px 40px;">${button(trackBtnLabel, trackUrl, copy.accent)}</td></tr>` : ''
   // Only meaningful once the order is actually sitting at the store waiting
   // to be collected — irrelevant for every other status, including delivery.
+  // Same button treatment as "Track your order" (not a small text link), just
+  // outlined instead of solid so the two don't visually compete.
   const directionsRow = (order.order_status === 'Awaiting Customer Pickup' && opts.mapsUrl)
-    ? `<tr><td style="padding:0 40px 8px 40px;font-family:Arial,Helvetica,sans-serif;text-align:center;">
-        <a href="${opts.mapsUrl}" target="_blank" style="font-size:13.5px;font-weight:700;color:${copy.accent};text-decoration:none;">🗺️ Get directions to the store</a>
+    ? `<tr><td style="padding:4px 40px 8px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td align="center" style="border-radius:10px;border:2px solid ${copy.accent};">
+            <a href="${opts.mapsUrl}" target="_blank" style="display:inline-block;padding:12px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:${copy.accent};text-decoration:none;border-radius:10px;">🗺️ Get directions to the store</a>
+          </td></tr>
+        </table>
       </td></tr>`
     : ''
 
