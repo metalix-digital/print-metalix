@@ -76,6 +76,15 @@ db.exec(`
     used_at INTEGER,
     created_at INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS order_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    rating INTEGER NOT NULL,
+    comment TEXT,
+    created_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_order_feedback_order_id ON order_feedback(order_id);
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -219,6 +228,7 @@ function setPricing(pricing) {
 }
 
 const DEFAULT_SITE_SETTINGS = {
+  shopOpen: true,
   businessName: 'Metalix Print',
   phone: '+91 98765 43210',
   whatsapp: '+91 98765 43210',
@@ -488,6 +498,42 @@ function getLatestPrintJobForOrder(orderId) {
   return db.prepare('SELECT * FROM print_jobs WHERE order_id = ? ORDER BY created_at DESC, id DESC LIMIT 1').get(orderId) || null
 }
 
+function getOrderFeedback(orderId) {
+  return db.prepare('SELECT * FROM order_feedback WHERE order_id = ?').get(orderId) || null
+}
+
+// One feedback row per order — the DB's unique index on order_id is the real
+// guard; the caller (POST /api/track/:id/feedback) checks first for a clean
+// "already submitted" error instead of a raw constraint failure.
+function createOrderFeedback({ order_id, rating, comment }) {
+  const info = db.prepare('INSERT INTO order_feedback (order_id, rating, comment, created_at) VALUES (?, ?, ?, ?)')
+    .run(order_id, rating, comment || null, Date.now())
+  return db.prepare('SELECT * FROM order_feedback WHERE id = ?').get(info.lastInsertRowid)
+}
+
+function listOrderFeedback() {
+  return db.prepare(`
+    SELECT order_feedback.*, orders.customer_name, orders.customer_mobile
+    FROM order_feedback
+    JOIN orders ON orders.id = order_feedback.order_id
+    ORDER BY order_feedback.created_at DESC
+  `).all()
+}
+
+// Feeds the landing page's reviews carousel — 4-5 star only (this is a
+// marketing surface, not a full public review log) and only entries with an
+// actual comment, since a bare star rating makes a weak testimonial card.
+function listPublicFeedback(limit = 20) {
+  return db.prepare(`
+    SELECT order_feedback.rating, order_feedback.comment, order_feedback.created_at, orders.customer_name
+    FROM order_feedback
+    JOIN orders ON orders.id = order_feedback.order_id
+    WHERE order_feedback.rating >= 4 AND TRIM(COALESCE(order_feedback.comment, '')) != ''
+    ORDER BY order_feedback.created_at DESC
+    LIMIT ?
+  `).all(limit)
+}
+
 function createUser({ id, name, email, mobile, password_hash, google_id }) {
   const now = Date.now()
   db.prepare(`
@@ -563,6 +609,10 @@ module.exports = {
   createPrintJob,
   updatePrintJob,
   getLatestPrintJobForOrder,
+  getOrderFeedback,
+  createOrderFeedback,
+  listOrderFeedback,
+  listPublicFeedback,
   getSiteSettings,
   setSiteSettings,
   getAdminAuth,

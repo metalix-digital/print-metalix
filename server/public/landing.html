@@ -300,6 +300,20 @@ nav a.active{color:var(--orange-text);}
   .pt-head span:last-child{display:none;}
 }
 
+/* -- REVIEWS CAROUSEL -- */
+.reviews-carousel{overflow:hidden;margin-top:40px;max-width:640px;margin-left:auto;margin-right:auto;}
+.reviews-track{display:flex;transition:transform .45s ease;}
+.review-card{flex:0 0 100%;background:#fff;border:1px solid var(--line);border-radius:18px;padding:32px 34px;box-shadow:var(--shadow);}
+.review-stars{color:var(--orange);font-size:18px;letter-spacing:2px;margin-bottom:14px;}
+.review-comment{font-size:16px;color:var(--ink);line-height:1.65;margin:0 0 18px;}
+.review-meta{font-size:13px;color:var(--ink3);font-weight:600;}
+.reviews-controls{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:22px;max-width:640px;margin-left:auto;margin-right:auto;}
+.reviews-arrow{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:#fff;cursor:pointer;font-size:18px;line-height:1;color:var(--ink2);display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0;}
+.reviews-arrow:hover{border-color:var(--orange);color:var(--orange-text);}
+.reviews-dots{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;}
+.reviews-dot{width:8px;height:8px;border-radius:50%;background:var(--line);border:none;cursor:pointer;padding:0;}
+.reviews-dot.active{background:var(--orange);width:22px;border-radius:5px;transition:.2s;}
+
 /* -- CONTACT -- */
 .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:48px;align-items:start;}
 @media(max-width:800px){.contact-grid{grid-template-columns:1fr;gap:32px;}}
@@ -693,6 +707,24 @@ footer{background:var(--ink);color:#fff;padding:64px 0 0;}
         <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
         <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹30 flat</span><span class="note">Within city limits</span></div>
         <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVIEWS: hidden until the bootstrap fetch confirms there's at least
+       one 4-5★ review with a comment; see renderTestimonials() below. -->
+  <section class="section" id="reviews" style="display:none;">
+    <div class="section-inner" style="text-align:center;">
+      <div class="section-eyebrow">Customer reviews</div>
+      <div class="section-title">What our customers say</div>
+      <p class="section-sub" style="margin-left:auto;margin-right:auto;">Real feedback from completed orders.</p>
+      <div class="reviews-carousel">
+        <div class="reviews-track" id="reviewsTrack"></div>
+      </div>
+      <div class="reviews-controls">
+        <button class="reviews-arrow" id="reviewsPrev" type="button" aria-label="Previous review">‹</button>
+        <div class="reviews-dots" id="reviewsDots"></div>
+        <button class="reviews-arrow" id="reviewsNext" type="button" aria-label="Next review">›</button>
       </div>
     </div>
   </section>
@@ -1129,13 +1161,66 @@ function applySettings(s){
   }
 }
 
-// One deferred request fills in live pricing, settings, and branches — keeping
-// all three off the initial critical request chain.
+function escHtmlLanding(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+let reviewsData = [];
+let reviewsIndex = 0;
+let reviewsTimer = null;
+
+function starString(n){ return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+function goToReview(i){
+  const n = reviewsData.length;
+  if (!n) return;
+  reviewsIndex = ((i % n) + n) % n;
+  document.getElementById('reviewsTrack').style.transform = 'translateX(-' + (reviewsIndex * 100) + '%)';
+  document.querySelectorAll('.reviews-dot').forEach((d, idx) => d.classList.toggle('active', idx === reviewsIndex));
+}
+
+// Renders whatever reviews /api/bootstrap returns (4-5★, has a comment) into
+// the carousel and reveals the section — stays hidden entirely with none yet.
+function renderTestimonials(list){
+  if (!list || !list.length) return;
+  reviewsData = list;
+  const section = document.getElementById('reviews');
+  const track = document.getElementById('reviewsTrack');
+  const dots = document.getElementById('reviewsDots');
+
+  track.innerHTML = list.map((r) =>
+    '<div class="review-card">' +
+      '<div class="review-stars">' + starString(r.rating) + '</div>' +
+      '<p class="review-comment">"' + escHtmlLanding(r.comment) + '"</p>' +
+      '<div class="review-meta">' + escHtmlLanding(r.name) + '</div>' +
+    '</div>'
+  ).join('');
+  dots.innerHTML = list.map((_, i) => '<button class="reviews-dot' + (i === 0 ? ' active' : '') + '" type="button" data-i="' + i + '" aria-label="Go to review ' + (i + 1) + '"></button>').join('');
+  dots.querySelectorAll('.reviews-dot').forEach((d) => d.addEventListener('click', () => goToReview(Number(d.dataset.i))));
+  document.getElementById('reviewsPrev').addEventListener('click', () => goToReview(reviewsIndex - 1));
+  document.getElementById('reviewsNext').addEventListener('click', () => goToReview(reviewsIndex + 1));
+
+  section.style.display = '';
+  goToReview(0);
+
+  if (list.length > 1) {
+    const startAutoplay = () => { reviewsTimer = setInterval(() => goToReview(reviewsIndex + 1), 6000); };
+    startAutoplay();
+    section.addEventListener('mouseenter', () => clearInterval(reviewsTimer));
+    section.addEventListener('mouseleave', startAutoplay);
+  }
+}
+
+// One deferred request fills in live pricing, settings, branches, and
+// testimonials — keeping all four off the initial critical request chain.
 function bootstrap(){
   fetch('/api/bootstrap').then(r => r.json()).then(data => {
     if (data.pricing) applyPricing(data.pricing);
     if (data.settings) applySettings(data.settings);
     if (window.__applyBranches) window.__applyBranches(data.locations || []);
+    renderTestimonials(data.testimonials);
   }).catch(err => console.error('Failed to load bootstrap data', err));
 }
 // Run once the browser is idle (or shortly after load as a fallback).

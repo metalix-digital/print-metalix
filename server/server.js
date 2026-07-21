@@ -176,11 +176,22 @@ app.get('/api/settings', (req, res) => {
 // One request for everything the landing page enhances with (pricing, site
 // settings, active branches) — lets the client make a single deferred fetch
 // instead of three, shrinking the critical request chain.
+// "Aarav Sharma" -> "Aarav S." — enough for social proof without publishing
+// a customer's full name on a public page.
+function maskReviewerName(name) {
+  const parts = String(name || '').trim().split(/\s+/)
+  if (!parts[0]) return 'Verified Customer'
+  return parts.length > 1 ? `${parts[0]} ${parts[1][0].toUpperCase()}.` : parts[0]
+}
+
 app.get('/api/bootstrap', (req, res) => {
   const locations = db.getLocations().filter((l) => l.active).map((l) => ({
     id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || ''
   }))
-  res.json({ pricing: db.getPricing(), settings: db.getSiteSettings(), locations })
+  const testimonials = db.listPublicFeedback().map((f) => ({
+    rating: f.rating, comment: f.comment, name: maskReviewerName(f.customer_name), created_at: f.created_at
+  }))
+  res.json({ pricing: db.getPricing(), settings: db.getSiteSettings(), locations, testimonials })
 })
 
 // Website "contact us" form → emails the business inbox. Always logs the
@@ -680,6 +691,10 @@ app.get('/api/admin/archive', requireAdmin, (req, res) => {
   return res.json({ orders: db.listArchivedOrders(), retentionDays: 30 })
 })
 
+app.get('/api/admin/feedback', requireAdmin, (req, res) => {
+  return res.json({ feedback: db.listOrderFeedback() })
+})
+
 app.post('/api/admin/orders/:id/restore', requireAdmin, (req, res) => {
   const order = db.restoreOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -980,8 +995,28 @@ app.get('/api/track/:id', (req, res) => {
   return res.json({
     id: order.id,
     order_status: order.order_status,
-    ready_by: (order.updated_at || order.created_at) + READY_BY_WINDOW_MS
+    ready_by: (order.updated_at || order.created_at) + READY_BY_WINDOW_MS,
+    completed: !!order.completed_at,
+    feedback_submitted: !!db.getOrderFeedback(order.id)
   })
+})
+
+// Same "order ID isn't secret enough to gate anything sensitive" posture as
+// the GET above — only accepts feedback for orders that actually completed,
+// and only once per order (order_feedback.order_id is uniquely indexed).
+app.post('/api/track/:id/feedback', express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!order || order.payment_status !== 'paid') return res.status(404).json({ error: 'not_found' })
+  if (!order.completed_at) return res.status(400).json({ error: 'not_completed', message: 'Feedback opens once this order is marked Completed.' })
+  if (db.getOrderFeedback(order.id)) return res.status(409).json({ error: 'already_submitted', message: 'Feedback was already submitted for this order.' })
+
+  const rating = Number(req.body?.rating)
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'invalid_rating', message: 'Rating must be a whole number from 1 to 5.' })
+  }
+  const comment = String(req.body?.comment || '').trim().slice(0, 2000)
+  const feedback = db.createOrderFeedback({ order_id: order.id, rating, comment })
+  return res.json({ feedback })
 })
 
 // Verify the Razorpay checkout response (or simulated payment) and advance the order.
@@ -1090,8 +1125,18 @@ if (fs.existsSync(publicDir)) {
   }))
 }
 
+// Admin-controlled kill switch (Settings tab) for taking the storefront
+// offline without touching /admin, /track/:id, /jobsheet.html, or any /api/*
+// route — those must keep working so admin can flip it back on and existing
+// customers can still track/print already-placed orders. Undefined (not yet
+// saved by any install) means open, so this never needs a DB migration.
+function isShopOpen() {
+  return db.getSiteSettings().shopOpen !== false
+}
+
 // Marketing landing page at the root path, served ahead of the SPA catch-all below.
 app.get('/', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   res.sendFile(path.join(publicDir, 'landing.html'))
 })
 
@@ -1099,6 +1144,7 @@ app.get('/', (req, res) => {
 // URL for them (the footer/nav link here). landing.html reads the path on load
 // and opens the policy view; see initFromUrl() there.
 app.get('/policies', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   res.sendFile(path.join(publicDir, 'landing.html'))
 })
 
@@ -1147,6 +1193,7 @@ if (fs.existsSync(clientDist)) {
     },
   }))
   app.get('*', (req, res) => {
+    if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
     res.sendFile(path.join(clientDist, 'index.html'))
   })
 }

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Metalix Print — Currently Closed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --steel:#1A2332; --orange:#FF4D1C; --silver:#C8CDD6; --mist:#F2F4F7; --white:#FFFFFF; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ font-family:'DM Sans', sans-serif; background:var(--mist); color:var(--steel); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card{ background:var(--white); border-radius:20px; max-width:440px; width:100%; padding:40px 32px; text-align:center; box-shadow:0 20px 48px -20px rgba(26,35,50,.28); }
+  .logo{ font-size:22px; font-weight:800; }
+  .logo .dot{ color:var(--orange); }
+  .badge{ margin:22px auto 0; width:64px; height:64px; border-radius:50%; background:var(--mist); display:flex; align-items:center; justify-content:center; font-size:28px; }
+  h1{ font-size:22px; font-weight:800; margin:20px 0 10px; }
+  .sub{ font-size:14.5px; color:#5B6472; line-height:1.6; margin:0 0 26px; }
+  .contact-list{ display:flex; flex-direction:column; gap:10px; text-align:left; }
+  .contact-item{ display:flex; align-items:center; gap:12px; border:1.5px solid var(--silver); border-radius:12px; padding:12px 14px; text-decoration:none; color:var(--steel); }
+  .contact-item .ic{ font-size:18px; flex-shrink:0; }
+  .contact-item .ct{ display:flex; flex-direction:column; }
+  .contact-item .ct-label{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8893A2; }
+  .contact-item .ct-value{ font-size:14px; font-weight:700; }
+  .footer-note{ margin-top:26px; font-size:11.5px; color:#8893A2; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo" id="bizLogo">Metalix<span class="dot">.</span>Print</div>
+  <div class="badge">🕐</div>
+  <h1>We're closed right now</h1>
+  <p class="sub">We're not accepting orders at the moment — we'll be open again shortly. Thanks for your patience! In the meantime, feel free to reach out below.</p>
+  <div class="contact-list" id="contactList"></div>
+  <div class="footer-note">print.metalix.in</div>
+</div>
+
+<script>
+async function loadContact(){
+  const list = document.getElementById('contactList');
+  try {
+    const res = await fetch('/api/settings');
+    const s = await res.json();
+    document.getElementById('bizLogo').textContent = '';
+    const logo = document.getElementById('bizLogo');
+    logo.textContent = (s.businessName || 'Metalix Print');
+
+    const items = [];
+    if (s.phone) items.push({ ic: '📞', label: 'Call us', value: s.phone, href: 'tel:' + s.phone.replace(/\s+/g, '') });
+    if (s.whatsapp) items.push({ ic: '💬', label: 'WhatsApp', value: s.whatsapp, href: 'https://wa.me/' + s.whatsapp.replace(/[^\d]/g, '') });
+    if (s.email) items.push({ ic: '✉️', label: 'Email', value: s.email, href: 'mailto:' + s.email });
+
+    list.innerHTML = items.map((it) =>
+      '<a class="contact-item" href="' + it.href + '" target="_blank" rel="noopener">' +
+        '<span class="ic">' + it.ic + '</span>' +
+        '<span class="ct"><span class="ct-label">' + it.label + '</span><span class="ct-value">' + it.value + '</span></span>' +
+      '</a>'
+    ).join('');
+  } catch (err) {
+    list.innerHTML = '<p class="sub" style="margin:0;">Could not load contact details — please try again shortly.</p>';
+  }
+}
+loadContact();
+</script>
+
+</body>
+</html>

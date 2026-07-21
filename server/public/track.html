@@ -20,6 +20,17 @@
   .row span:last-child{ font-weight:700; }
   .footer{ margin-top:18px; font-size:11px; color:#8893A2; }
   .error{ color:#5B6472; font-size:14px; margin-top:14px; }
+
+  .feedback{ margin-top:22px; padding-top:18px; border-top:1px solid var(--mist); text-align:left; }
+  .feedback h3{ margin:0 0 12px; font-size:13.5px; font-weight:700; text-align:center; }
+  .stars{ display:flex; justify-content:center; gap:6px; margin-bottom:12px; }
+  .stars button{ background:none; border:none; padding:0; font-size:28px; line-height:1; cursor:pointer; color:var(--silver); }
+  .stars button.filled{ color:var(--orange); }
+  .feedback textarea{ width:100%; min-height:64px; resize:vertical; border:1.5px solid var(--silver); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:13px; color:var(--steel); }
+  .feedback-submit{ margin-top:10px; width:100%; background:var(--orange); color:var(--white); border:none; border-radius:8px; padding:10px; font-weight:700; font-size:13.5px; cursor:pointer; }
+  .feedback-submit:disabled{ opacity:.55; cursor:default; }
+  .feedback-note{ margin-top:8px; font-size:11.5px; color:#8893A2; text-align:center; }
+  .feedback-thanks{ margin-top:22px; padding-top:18px; border-top:1px solid var(--mist); font-size:13.5px; font-weight:600; color:var(--steel); }
 </style>
 </head>
 <body>
@@ -44,6 +55,57 @@ function formatDateTime(ms){
   return `${day} ${month} · ${h}:${m} ${ampm}`;
 }
 
+function renderFeedbackForm(orderId){
+  const wrap = document.createElement('div');
+  wrap.className = 'feedback';
+  wrap.innerHTML =
+    '<h3>How was your order?</h3>' +
+    '<div class="stars" id="fbStars"></div>' +
+    '<textarea id="fbComment" placeholder="Anything we should improve? (optional)" maxlength="2000"></textarea>' +
+    '<button class="feedback-submit" id="fbSubmit" disabled>Submit feedback</button>' +
+    '<div class="feedback-note" id="fbNote"></div>';
+
+  let rating = 0;
+  const starsEl = wrap.querySelector('#fbStars');
+  for (let i = 1; i <= 5; i++) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '★';
+    btn.addEventListener('click', () => {
+      rating = i;
+      Array.from(starsEl.children).forEach((s, idx) => s.classList.toggle('filled', idx < rating));
+      wrap.querySelector('#fbSubmit').disabled = false;
+    });
+    starsEl.appendChild(btn);
+  }
+
+  wrap.querySelector('#fbSubmit').addEventListener('click', async () => {
+    const submitBtn = wrap.querySelector('#fbSubmit');
+    const note = wrap.querySelector('#fbNote');
+    submitBtn.disabled = true;
+    note.textContent = '';
+    try {
+      const res = await fetch('/api/track/' + encodeURIComponent(orderId) + '/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, comment: wrap.querySelector('#fbComment').value })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        note.textContent = data.message || 'Could not submit feedback.';
+        submitBtn.disabled = false;
+        return;
+      }
+      wrap.outerHTML = '<div class="feedback-thanks">Thanks for your feedback! 🙌</div>';
+    } catch (err) {
+      note.textContent = 'Could not submit feedback — check your connection and try again.';
+      submitBtn.disabled = false;
+    }
+  });
+
+  return wrap;
+}
+
 async function loadStatus(){
   const orderId = window.location.pathname.split('/').filter(Boolean).pop();
   const content = document.getElementById('content');
@@ -58,6 +120,14 @@ async function loadStatus(){
       '<div class="status-badge">' + data.order_status + '</div>' +
       '<div class="row"><span>Order ID</span><span>#' + data.id + '</span></div>' +
       '<div class="row"><span>Ready By</span><span>' + formatDateTime(data.ready_by) + '</span></div>';
+
+    if (data.completed) {
+      if (data.feedback_submitted) {
+        content.insertAdjacentHTML('beforeend', '<div class="feedback-thanks">Thanks for your feedback! 🙌</div>');
+      } else {
+        content.appendChild(renderFeedbackForm(data.id));
+      }
+    }
   } catch (err) {
     content.innerHTML = '<p class="error">Could not load order status.</p>';
   }
