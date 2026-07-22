@@ -1,11 +1,17 @@
 # Metalix Print MVP
 
 Online document printing — customers upload a PDF / Word / PPT, pick print options, pay,
-and get it printed and delivered. Includes a customer web app, a payment flow, an admin
-dashboard, and a daily analytics export to BigQuery.
+and get it printed and delivered or ready for pickup. Includes a marketing site, a
+customer order flow, a multi-branch admin dashboard, a public order-tracking page, a
+blog, and a daily analytics export to BigQuery.
 
-- **Client** — Vite + React single-page app (`client/`)
 - **Server** — Express API + static host, single Node process (`server/`)
+- **Marketing site** (`/`, `/blog`, `/policies`) — static HTML/CSS/vanilla JS, `server/public/landing.html`
+- **Order flow** (catch-all route, e.g. `/order`) — a single static HTML page built by Vite,
+  `client/` — plain HTML/CSS/vanilla JS, **no framework** (the `client` name and Vite
+  build step predate a planned React migration that never happened)
+- **Admin dashboard** (`/admin`) — static HTML/CSS/vanilla JS, `server/public/admin.html`
+- **Order tracking** (`/track/:id`) — static HTML/CSS/vanilla JS, `server/public/track.html`
 - **Data** — SQLite (`better-sqlite3`), file `server/data/metalix.db`
 
 ---
@@ -22,7 +28,7 @@ npm start          # or: npm run dev
 
 Health check: `http://localhost:5050/api/health`
 
-**Client** (Vite dev server):
+**Client** (Vite dev server, for the order/upload page only):
 
 ```bash
 cd client
@@ -46,7 +52,7 @@ the repo.
 | `PORT` | HTTP port (default `5050`) |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay payments & webhook verification |
 | `ADMIN_JWT_SECRET` | Signing secret for admin/customer sessions |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap admin login (used once to seed the DB) |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap super-admin login (used once to seed the DB) |
 | `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Email delivery (SMTP) |
@@ -78,10 +84,14 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 
 | Table | What it holds |
 |---|---|
-| `orders` | One row per order: customer name/contact, uploaded file info, print options (paper, colour, sides, copies), delivery details, amounts, and payment/order status. |
+| `orders` | One row per order: customer name/contact, uploaded file info, print options (paper, colour, sides, copies), delivery details, branch (`location_id`), amounts, payment/order status, and `archived_at` for soft-delete. |
 | `print_jobs` | Print-queue entries linked to an order, with status and timestamps. |
+| `order_feedback` | One star rating + optional comment per order, left by the customer from the tracking page. |
 | `users` | Customer accounts — name, email, mobile, a hashed password, and optional Google id. |
-| `settings` | Key/value app config (pricing, site settings, and the admin login credential). |
+| `admin_users` | Staff accounts — a `super_admin` sees every branch; a `branch_admin` is scoped to one `location_id` and a subset of dashboard tabs (`allowed_tabs`). |
+| `locations` | Branches — address, hours, Maps link, `active`/`shop_open` flags. |
+| `blog_posts` | SEO blog content (Markdown body, tags, cover image), managed from the admin Blog tab. |
+| `settings` | Key/value app config (pricing, site settings). |
 | `password_resets` | Short-lived, single-use tokens for password resets. |
 
 ---
@@ -91,15 +101,23 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 **Customer**
 - Upload PDF / Word / PPT; the server analyses pages, colour, and page count
 - Print options: paper size/type, B&W or colour, single/double-sided, orientation, copies
-- Live pricing calculator; home delivery or store pickup
-- Razorpay checkout with server-side signature verification
+- Live pricing calculator; choose a branch, home delivery or store pickup
+- Razorpay checkout (online) or cash/UPI pay-on-delivery, with server-side signature
+  verification for online payments
 - Accounts: email/mobile + password, Google sign-in, password reset by email
-- Track order status from a link / QR code
+- Track order status and progress timeline from a link / QR code; rate a completed order
+- Shop-closed state: outside a branch's hours, order/track/blog pages show a "closed" page
 
 **Admin** (`/admin`)
-- Dashboard for orders, customers, pricing, and site settings
+- Multi-branch dashboard: orders, customers, archive, feedback, blog, pricing, staff, and
+  site/branch settings — a `branch_admin`'s view and API access are scoped to their branch
+  and their `allowed_tabs`
 - Printable job sheet (PDF) per order, with per-file download
-- Order status workflow (Queued → Printing → Delivery/Pickup → Completed)
+- Order status workflow (Queued → Printing → Delivery/Pickup → Completed), single or bulk
+- **Cash-on-delivery orders cannot be marked Completed until payment is recorded** via the
+  "Collect Cash" / "Collect UPI" action — enforced both in the UI and by the API
+- Soft-delete ("Archive") with a 30-day recovery window before a background job purges the
+  order and its files permanently
 - Login by ID + password; "Forgot password" emails a time-limited reset link (the login
   ID must be correct, and the link goes only to the configured reset email)
 
@@ -108,7 +126,9 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 ## API reference
 
 **Public** — `GET /api/health` · `GET /api/pricing` · `GET /api/settings` ·
-`GET /api/auth/config` · `GET /track/:id`
+`GET /api/locations` · `GET /api/auth/config` · `GET /api/blog` · `GET /api/blog/:slug` ·
+`POST /api/contact` · `GET /track/:id` (page) · `GET /api/track/:id` ·
+`POST /api/track/:id/feedback`
 
 **Uploads & orders** — `POST /api/upload` · `POST /api/orders` · `GET /api/orders/:id` ·
 `POST /api/orders/:id/verify-payment` · `POST /api/webhook`
@@ -117,11 +137,26 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 `POST /api/auth/google` · `POST /api/auth/forgot-password` ·
 `POST /api/auth/reset-password` · `GET /api/me` · `GET /api/my/orders`
 
-**Admin** — `POST /api/admin/login` · `POST /api/admin/forgot-password` ·
-`POST /api/admin/reset-password` · `GET /api/admin/orders` · `GET /api/admin/orders/:id` ·
-`PATCH /api/admin/orders/:id` · `POST /api/admin/orders/:id/jobsheet-pdf` ·
-`GET /api/admin/orders/:id/files/:fileId/download` · `GET /api/admin/customers` ·
-`PUT /api/admin/pricing` · `PUT /api/admin/settings`
+**Admin — orders** — `GET /api/admin/orders` · `GET /api/admin/orders/:id` ·
+`PATCH /api/admin/orders/:id` · `POST /api/admin/orders/bulk-status` ·
+`POST /api/admin/orders/:id/collect-payment` · `POST /api/admin/orders/:id/jobsheet-pdf` ·
+`GET /api/admin/orders/:id/files/:fileId/download` · `DELETE /api/admin/orders/:id` (archive) ·
+`POST /api/admin/orders/:id/restore` · `DELETE /api/admin/orders/:id/purge` ·
+`POST /api/admin/orders/bulk-delete` · `GET /api/admin/archive` · `GET /api/admin/feedback`
+
+**Admin — auth, staff & branches** — `POST /api/admin/login` ·
+`POST /api/admin/forgot-password` · `POST /api/admin/reset-password` ·
+`GET /api/admin/me` · `GET /api/admin/staff` · `POST /api/admin/staff` ·
+`PUT /api/admin/staff/:id` · `DELETE /api/admin/staff/:id` ·
+`GET /api/admin/my-location` · `PUT /api/admin/my-location` ·
+`GET /api/admin/locations` · `PUT /api/admin/locations` ·
+`GET /api/admin/customers` · `DELETE /api/admin/customers/:mobile` ·
+`GET /api/admin/stages` · `PUT /api/admin/stages`
+
+**Admin — pricing, settings & blog** — `PUT /api/admin/pricing` ·
+`PUT /api/admin/settings` · `GET /api/admin/blog` · `POST /api/admin/blog` ·
+`PUT /api/admin/blog/:id` · `DELETE /api/admin/blog/:id` ·
+`POST /api/admin/blog/upload-cover`
 
 ---
 
@@ -144,22 +179,33 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 
 ## Production
 
-Build the client and serve everything from one Node process (from the repo root):
+**Live deploys are fully automated.** `.github/workflows/deploy.yml` runs on a self-hosted
+GitHub Actions runner installed directly on the production VM: on every push to `main` it
+pulls, rebuilds only the side (`server/`/`client/`) whose files actually changed, and
+restarts the `metalix` systemd service. `git push origin main` is the entire deploy step —
+no manual SSH needed.
+
+`client/dist/` is committed to the repo as a fallback so the app still serves before the
+first automated build runs, but it is regenerated by the workflow on every deploy — avoid
+committing a locally-rebuilt copy of it yourself, since a version that differs from what
+the VM's own build produces can make the next `git pull` refuse to merge.
+
+To reproduce a production-style run manually (from the repo root):
 
 ```bash
 npm run start:prod    # builds client/, then starts the server
 ```
 
-Typical setup: run the server behind a reverse proxy (see `deploy/nginx.conf.example`)
-and keep it alive with a process manager or systemd service. Supply configuration through
-the environment rather than committing it.
+Typical underlying setup: the server runs behind a reverse proxy (see
+`deploy/nginx.conf.example`) and is kept alive by the `metalix` systemd service. Supply
+configuration through the environment rather than committing it.
 
 ---
 
 ## Repository layout
 
 ```
-client/                 Vite + React customer app
+client/                 Order/upload page — static HTML/CSS/vanilla JS bundled by Vite (no framework)
 server/
   server.js             Express app: routes, static host, startup
   db.js                 SQLite schema, migrations, queries
@@ -170,10 +216,14 @@ server/
   printQueue.js         Print-job queue
   mailer.js  notify.js  Email / notifications
   backupDb.js           Periodic database backup
-  fileRetention.js      Expired-file cleanup
+  fileRetention.js      Expired-file cleanup + 30-day archive purge
   scripts/bqSync.js     SQLite → BigQuery upsert
-  public/               admin dashboard, job sheet, tracking, logo, SEO files
+  public/               landing.html (marketing site), admin.html (dashboard),
+                         track.html (order tracking + feedback), blog.html/blog-post.html,
+                         jobsheet.html (printable job sheet), closed.html (shop-closed page),
+                         logo, fonts, SEO files
 deploy/                 nginx + systemd unit examples
+.github/workflows/      deploy.yml — automated deploy on push to main
 ```
 
 ## Scripts
