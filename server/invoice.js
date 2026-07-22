@@ -5,6 +5,7 @@
 // rupee glyph (₹), so amounts are prefixed with "Rs." to avoid encode errors.
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib')
 const db = require('./db')
+const pricing = require('./pricing')
 
 const ORANGE = rgb(1, 0.4, 0)
 const INK = rgb(0.1, 0.13, 0.22)
@@ -14,6 +15,31 @@ const SOFT = rgb(0.97, 0.96, 0.93)
 const WHITE = rgb(1, 1, 1)
 
 function money(n) { return 'Rs. ' + (Number(n) || 0).toLocaleString('en-IN') }
+
+// Per-file paper type label, colour label, and cost — recomputed from the
+// *current* admin pricing rates, since no historical rate snapshot is kept
+// per order (matches the same per-file rate lookup pricing.calculate() uses
+// at order time; only drifts from what was actually charged if the admin
+// changes rates in the narrow window between an order being placed and
+// completed — the order's own TOTAL below is unaffected either way).
+function fileLineItem(f, pages, copies, paperTypes) {
+  const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]
+  const paperLabel = rates ? rates.label : (f.paperType || 'Paper')
+  const { colorPages, bwPages } = pricing.resolveFileColorPages(
+    { pageCount: pages, colorCount: f.colorPageCount },
+    f.printMode
+  )
+  if (!rates) return { paperLabel, colorLabel: 'Mixed', amount: 0 }
+  const side = f.printSide === 'double' ? 'double' : 'single'
+  if (colorPages && bwPages) {
+    const amount = (colorPages * (rates.color.single || 0) + bwPages * rates.bw[side]) * copies
+    return { paperLabel, colorLabel: colorPages + ' colour + ' + bwPages + ' B/W', amount: Math.round(amount) }
+  }
+  if (colorPages) {
+    return { paperLabel, colorLabel: 'Colour', amount: Math.round(colorPages * (rates.color.single || 0) * copies) }
+  }
+  return { paperLabel, colorLabel: 'Black & White', amount: Math.round(bwPages * rates.bw[side] * copies) }
+}
 
 async function buildInvoicePdf(order) {
   let settings = {}
@@ -93,14 +119,26 @@ async function buildInvoicePdf(order) {
   // Line items from files_json (fallback to the single-file summary)
   let files = []
   try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (e) { files = [] }
-  if (!files.length && order.file_name) files = [{ fileName: order.file_name, pageCount: order.page_count, copies: order.copies }]
+  if (!files.length && order.file_name) {
+    files = [{
+      fileName: order.file_name, pageCount: order.page_count, copies: order.copies,
+      printMode: order.print_mode, printSide: order.print_side, paperType: order.paper_type,
+      colorPageCount: order.color_page_count,
+    }]
+  }
+  let paperTypes = []
+  try { paperTypes = db.getPricing().rates.a4 || [] } catch (e) { paperTypes = [] }
   for (const f of files) {
     const desc = String(f.fileName || 'Document')
     const pages = f.pageCount != null ? f.pageCount : (order.page_count || 0)
     const copies = f.copies || 1
+    const { paperLabel, colorLabel, amount } = fileLineItem(f, pages, copies, paperTypes)
     text(desc.length > 54 ? desc.slice(0, 51) + '...' : desc, M + 8, y, 10, font)
-    right(pages + ' pg x ' + copies, width - M - 8, y, 10, font, MUTED)
-    y -= 16
+    right(pages + ' pg x ' + copies, width - M - 110, y, 10, font, MUTED)
+    right(money(amount), width - M - 8, y, 10, font)
+    y -= 13
+    text(paperLabel + ' · ' + colorLabel, M + 8, y, 8.5, font, MUTED)
+    y -= 19
     if (y < 170) break
   }
   y -= 6
