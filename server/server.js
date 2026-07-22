@@ -797,6 +797,9 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const { order_status, failure_reason } = req.body || {}
+  if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
+    return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
+  }
   const updates = {}
   if (order_status !== undefined) updates.order_status = order_status
   if (failure_reason !== undefined) updates.failure_reason = failure_reason
@@ -865,9 +868,14 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), ex
   const base = `${req.protocol}://${req.get('host')}`
   let updated = 0
   let emailed = 0
+  let skippedUnpaid = 0
   for (const id of ids) {
     const order = db.getOrder(id)
     if (!ownsOrder(req, order) || order.order_status === order_status) continue
+    if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
+      skippedUnpaid++
+      continue
+    }
     const u = db.updateOrder(id, { order_status })
     updated++
     printQueue.syncPrintJobStatus(u.id, u.order_status)
@@ -876,7 +884,7 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), ex
       emailStatusChange(u, base)
     }
   }
-  return res.json({ updated, emailed })
+  return res.json({ updated, emailed, skippedUnpaid })
 })
 
 // Record a pay-on-delivery collection (Cash/UPI) — marks the order paid.

@@ -84,6 +84,9 @@ tr.order-row:hover{background:var(--paper);}
 .empty,.loading{padding:20px;text-align:center;color:var(--ink3);font-size:13.5px;}
 .detail-row td{background:var(--paper);}
 .detail{font-size:13px;line-height:1.7;color:var(--ink2);}
+.detail>div{margin:4px 0;}
+.detail>div:first-child{margin-top:0;}
+.detail>.file-list{margin:4px 0 12px;}
 select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;font-family:'Inter',sans-serif;}
 
 .pricing-form{background:var(--card);border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
@@ -1203,7 +1206,7 @@ function renderOrders(orders){
       '<td class="branch-col"><span class="branch-chip">' + escHtml(o.location_name || '—') + '</span></td>' +
       '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
       '<td>' + paymentBadgeHtml(o) + '</td>' +
-      '<td>' + statusSelectHtml(o) + '</td>' +
+      '<td>' + statusSelectHtml(o) + '<div class="subtle">' + (o.delivery_method === 'delivery' ? 'Home delivery' : 'Shop pickup') + '</div></td>' +
       '<td><span class="placed">' + (o.created_at ? escHtml(new Date(o.created_at).toLocaleString()) : '—') + '</span></td>' +
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
@@ -1297,6 +1300,13 @@ function renderOrders(orders){
       const from = sel.dataset.prev || '';
       const to = sel.value;
       if (to === from) return;
+
+      const o0 = ordersById[sel.dataset.order] || {};
+      if (to === 'Completed' && o0.payment_method === 'cod' && String(o0.payment_status).toLowerCase() !== 'paid') {
+        alert('This is a pay-on-delivery order — collect cash/UPI payment first (use the Collect Cash / Collect UPI button below), then mark it Completed.');
+        sel.value = from;
+        return;
+      }
 
       // Confirm before changing — show the order's key details so the admin
       // is sure which order (and which change) they're committing to.
