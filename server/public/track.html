@@ -29,6 +29,8 @@
   .brand .dot{ color:var(--orange); }
   .theme-toggle{ position:absolute; right:0; top:50%; transform:translateY(-50%); width:32px; height:32px; border-radius:50%; border:1.5px solid var(--silver); background:var(--white); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; }
   .theme-toggle:hover{ border-color:var(--orange); }
+  .back-btn{ position:absolute; left:0; top:50%; transform:translateY(-50%); width:32px; height:32px; border-radius:50%; border:1.5px solid var(--silver); background:var(--white); color:var(--muted); display:flex; align-items:center; justify-content:center; font-size:16px; text-decoration:none; }
+  .back-btn:hover{ border-color:var(--orange); }
 
   .card{ background:var(--white); border-radius:18px; box-shadow:0 16px 40px -20px rgba(26,35,50,.25); overflow:hidden; margin-bottom:14px; }
 
@@ -95,7 +97,7 @@
 <body>
 
 <div class="wrap">
-  <div class="brand">Metalix<span class="dot">.</span>Print<button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button></div>
+  <div class="brand"><a class="back-btn" href="/" aria-label="Back to home" title="Back to home">←</a>Metalix<span class="dot">.</span>Print<button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button></div>
   <div id="content">
     <div class="card"><p class="error">Loading…</p></div>
   </div>
@@ -267,7 +269,7 @@ async function loadStatus(){
       '<div class="hero ' + heroClass + '">' +
         '<div class="hero-icon">' + heroIcon(data.order_status, attention, done) + '</div>' +
         '<div class="hero-status">' + data.order_status + '</div>' +
-        '<div class="hero-sub">Order #' + data.id + '</div>' +
+        '<div class="hero-sub">Order #' + data.id + ' · ' + (data.delivery_method === 'delivery' ? 'Home delivery' : 'Shop pickup') + '</div>' +
       '</div>' +
       '<div class="meta">' +
         '<div class="row"><span class="k">Payment</span><span class="v">' + renderPaymentPill(data) + '</span></div>' +
