@@ -73,7 +73,6 @@ h1{font-family:'Sora',sans-serif;font-size:clamp(30px,5vw,42px);font-weight:800;
 .post-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);}
 .post-cover{width:100%;aspect-ratio:16/9;background:var(--surface-hover);display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .post-cover img{width:100%;height:100%;object-fit:cover;}
-.post-cover .ph{font-size:34px;opacity:.35;}
 .post-body{padding:18px 20px 20px;display:flex;flex-direction:column;gap:8px;flex:1;}
 .post-cat{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--orange-text);}
 .post-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:700;line-height:1.35;}
@@ -178,7 +177,7 @@ function renderGrid(){
   }
   grid.innerHTML = posts.map((p) => (
     '<a class="post-card" href="/blog/' + encodeURIComponent(p.slug) + '">' +
-      '<div class="post-cover">' + (p.coverImage ? ('<img src="' + escHtml(p.coverImage) + '" alt="" loading="lazy">') : '<span class="ph">📄</span>') + '</div>' +
+      '<div class="post-cover"><img src="' + escHtml(p.coverImage || '/blog-placeholder.png') + '" alt="" loading="lazy"></div>' +
       '<div class="post-body">' +
         (p.category ? '<span class="post-cat">' + escHtml(p.category) + '</span>' : '') +
         '<span class="post-title">' + escHtml(p.title) + '</span>' +

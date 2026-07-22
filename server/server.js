@@ -1428,6 +1428,13 @@ if (fs.existsSync(publicDir)) {
     if (fs.existsSync(file)) return res.sendFile(file, logoCache)
     return res.status(404).end()
   })
+  // Default cover art shown on blog posts with no cover_image — same
+  // effectively-immutable caching as the logo above.
+  app.get('/blog-placeholder.png', (req, res) => {
+    const file = path.join(publicDir, 'blog-placeholder.png')
+    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
+    return res.status(404).end()
+  })
 
   // Self-hosted, glyph-subset web fonts referenced by landing.html's @font-face
   // rules. Content-hashed by weight and effectively immutable, so cache them for
