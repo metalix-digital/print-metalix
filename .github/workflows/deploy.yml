@@ -22,8 +22,11 @@ jobs:
           # lockfiles locally modified, which makes `git pull` refuse to
           # overwrite them. `npm ci` never rewrites the lockfile, so this
           # is just a safety net for state left over from before this
-          # workflow existed.
-          sudo -u www-data git -C "$REPO" checkout -- server/package-lock.json client/package-lock.json || true
+          # workflow existed. client/dist is rebuilt by this same script
+          # every time client/ changes (see below), so it's *always*
+          # locally modified after a deploy — discard that every run too,
+          # or the next pull that also touches dist refuses to merge.
+          sudo -u www-data git -C "$REPO" checkout -- server/package-lock.json client/package-lock.json client/dist || true
 
           OLD_HEAD=$(sudo -u www-data git -C "$REPO" rev-parse HEAD)
           sudo -u www-data git -C "$REPO" pull origin main
