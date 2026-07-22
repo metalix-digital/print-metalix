@@ -19,7 +19,7 @@
 <meta name="twitter:title" content="__META_TITLE__">
 <meta name="twitter:description" content="__META_DESCRIPTION__">
 <script type="application/ld+json">__JSON_LD__</script>
-<link rel="icon" type="image/svg+xml" href="/logo.svg"/>
+<link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
 <link rel="preload" href="/fonts/Sora-800.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -130,7 +130,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:40px 24px;margin-top:20px;
 <header>
   <div class="header-inner">
     <a class="h-logo" href="/">
-      <img src="/logo.svg" alt="Metalix Print">
+      <img src="/images/logo.svg" alt="Metalix Print">
       <span>Metalix Print</span>
     </a>
     <div class="h-space"></div>
@@ -214,7 +214,7 @@ fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
       '<span>' + readingTime(html.replace(/<[^>]+>/g, ' ')) + '</span>' +
     '</div>' +
     shareRowHtml(url, post.title, 'top') +
-    '<img class="cover-img" src="' + escHtml(post.coverImage || '/blog-placeholder.png') + '" alt="">' +
+    '<img class="cover-img" src="' + escHtml(post.coverImage || '/images/blog-placeholder.png') + '" alt="">' +
     '<div class="article">' + html + '</div>' +
     (post.tags && post.tags.length ? ('<div class="tags-row">' + post.tags.map((t) => '<span class="tag-chip">#' + escHtml(t) + '</span>').join('') + '</div>') : '') +
     (post.authorBio ? (

@@ -8,7 +8,7 @@
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://print.metalix.in/blog"/>
 <meta name="theme-color" content="#FF6600">
-<link rel="icon" type="image/svg+xml" href="/logo.svg"/>
+<link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
 <link rel="preload" href="/fonts/Sora-800.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -102,7 +102,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:40px 24px;margin-top:20px;
 <header>
   <div class="header-inner">
     <a class="h-logo" href="/">
-      <img src="/logo.svg" alt="Metalix Print">
+      <img src="/images/logo.svg" alt="Metalix Print">
       <span>Metalix Print</span>
     </a>
     <nav>
@@ -177,7 +177,7 @@ function renderGrid(){
   }
   grid.innerHTML = posts.map((p) => (
     '<a class="post-card" href="/blog/' + encodeURIComponent(p.slug) + '">' +
-      '<div class="post-cover"><img src="' + escHtml(p.coverImage || '/blog-placeholder.png') + '" alt="" loading="lazy"></div>' +
+      '<div class="post-cover"><img src="' + escHtml(p.coverImage || '/images/blog-placeholder.png') + '" alt="" loading="lazy"></div>' +
       '<div class="post-body">' +
         (p.category ? '<span class="post-cat">' + escHtml(p.category) + '</span>' : '') +
         '<span class="post-title">' + escHtml(p.title) + '</span>' +

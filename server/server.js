@@ -1411,30 +1411,18 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
   }
 })
 
-// Serve a logo or other public assets from server/public
+// Serve site images (logo, blog placeholder, ...) from server/public/images —
+// every static image asset lives under this one folder/mount rather than a
+// one-off route per file, so adding a new image needs no server.js change.
 const publicDir = path.join(__dirname, 'public')
 if (fs.existsSync(publicDir)) {
-  // The logo is a static brand asset that effectively never changes, so let
-  // browsers cache it for a year instead of re-fetching it on every visit
+  // These are static brand assets that effectively never change, so let
+  // browsers cache them for a year instead of re-fetching on every visit
   // (Lighthouse flags the default max-age=0 as an inefficient cache policy).
-  const logoCache = { maxAge: '365d', immutable: true }
-  app.get('/logo.png', (req, res) => {
-    const file = path.join(publicDir, 'logo.png')
-    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
-    return res.status(404).end()
-  })
-  app.get('/logo.svg', (req, res) => {
-    const file = path.join(publicDir, 'logo.svg')
-    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
-    return res.status(404).end()
-  })
-  // Default cover art shown on blog posts with no cover_image — same
-  // effectively-immutable caching as the logo above.
-  app.get('/blog-placeholder.png', (req, res) => {
-    const file = path.join(publicDir, 'blog-placeholder.png')
-    if (fs.existsSync(file)) return res.sendFile(file, logoCache)
-    return res.status(404).end()
-  })
+  app.use('/images', express.static(path.join(publicDir, 'images'), {
+    maxAge: '365d',
+    immutable: true,
+  }))
 
   // Self-hosted, glyph-subset web fonts referenced by landing.html's @font-face
   // rules. Content-hashed by weight and effectively immutable, so cache them for
@@ -1496,8 +1484,8 @@ function localBusinessJsonLd() {
     '@type': 'LocalBusiness',
     name: 'Metalix Print',
     url: 'https://print.metalix.in/',
-    logo: 'https://print.metalix.in/logo.svg',
-    image: 'https://print.metalix.in/logo.svg',
+    logo: 'https://print.metalix.in/images/logo.svg',
+    image: 'https://print.metalix.in/images/logo.svg',
     description: 'Online document printing — upload your PDF, Word, or PPT, choose settings, and get prints delivered, usually within 3–4 hours.',
     telephone: '+91-7042443143',
     address: {
@@ -1600,7 +1588,7 @@ app.get('/blog/:slug', (req, res) => {
       .split('__META_DESCRIPTION__').join(escAttr('This blog post could not be found.'))
       .split('__META_KEYWORDS__').join('')
       .split('__CANONICAL_URL__').join(escAttr(canonical))
-      .split('__OG_IMAGE__').join('https://print.metalix.in/logo.svg')
+      .split('__OG_IMAGE__').join('https://print.metalix.in/images/logo.svg')
       .split('__JSON_LD__').join('null')
     return res.status(404).send(html)
   }
@@ -1609,7 +1597,7 @@ app.get('/blog/:slug', (req, res) => {
   const description = post.meta_description || post.excerpt || ''
   const image = post.cover_image
     ? (post.cover_image.startsWith('http') ? post.cover_image : `https://print.metalix.in${post.cover_image}`)
-    : 'https://print.metalix.in/logo.svg'
+    : 'https://print.metalix.in/images/logo.svg'
   const jsonLd = JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'Article',
