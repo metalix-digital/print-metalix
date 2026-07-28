@@ -1,36 +1,16 @@
-// Shared Google Tag Manager loader + cookie consent banner for every public
-// page. The GTM Container ID is admin-managed (Settings → Analytics & SEO),
-// not hardcoded, so this fetches it at runtime and no-ops entirely until an
-// admin sets one. GA4 (and any other tags) are configured *inside* the GTM
-// container on Google's side, not loaded directly here — deliberately, to
-// avoid double-counting between a direct gtag.js load and a GTM-managed one.
-// Dispatches 'metalix-analytics-ready' once GTM is queued, for pages (e.g.
-// order-success.html) that need to wait on it before firing an event.
-//
-// Implements Google Consent Mode v2: all signals start denied, GTM loads
-// regardless (so Google can send privacy-safe modeled pings), and the
-// visitor's Accept/Decline choice — persisted in localStorage — updates the
-// signals via gtag('consent','update', ...). This is the "Basic" Consent
-// Mode implementation Google's setup wizard asks a site to have; the default
-// must be pushed to dataLayer before GTM's own script loads.
+// Cookie consent banner for every public page. The dataLayer/gtag stub and
+// the Consent Mode v2 default (all signals denied) are set up server-side —
+// see gtmSnippets() in server.js — synchronously in <head>, before this
+// script (deferred) even runs, so window.gtag always exists here already.
+// This file only owns the visible Accept/Decline banner and updating the
+// consent signals via gtag('consent','update', ...) once the visitor
+// chooses, persisting that choice in localStorage.
 (function () {
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = function () { window.dataLayer.push(arguments); };
-
   var CONSENT_KEY = 'metalix_cookie_consent'; // 'granted' | 'denied'
+  if (localStorage.getItem(CONSENT_KEY)) return; // already decided, nothing to show
 
   function consentSignals(state) {
     return { ad_storage: state, ad_user_data: state, ad_personalization: state, analytics_storage: state };
-  }
-
-  // Must run before gtag.js configures anything — denied is the safe default
-  // until the visitor actually chooses. wait_for_update gives the banner a
-  // moment to resolve before the first ping goes out unmodeled.
-  window.gtag('consent', 'default', Object.assign({ wait_for_update: 500 }, consentSignals('denied')));
-
-  var storedChoice = localStorage.getItem(CONSENT_KEY);
-  if (storedChoice === 'granted' || storedChoice === 'denied') {
-    window.gtag('consent', 'update', consentSignals(storedChoice));
   }
 
   function showConsentBanner() {
@@ -66,7 +46,7 @@
 
     function resolve(choice) {
       localStorage.setItem(CONSENT_KEY, choice);
-      window.gtag('consent', 'update', consentSignals(choice));
+      if (window.gtag) window.gtag('consent', 'update', consentSignals(choice));
       bar.remove();
     }
     acceptBtn.addEventListener('click', function () { resolve('granted'); });
@@ -79,27 +59,9 @@
     document.body.appendChild(bar);
   }
 
-  if (!storedChoice) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', showConsentBanner);
-    } else {
-      showConsentBanner();
-    }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', showConsentBanner);
+  } else {
+    showConsentBanner();
   }
-
-  fetch('/api/settings')
-    .then(function (r) { return r.json(); })
-    .then(function (s) {
-      var gtmId = s && s.analytics && s.analytics.gtmContainerId;
-      if (!gtmId) return;
-      // Standard GTM install: a 'gtm.js' marker on dataLayer (GTM reads this
-      // for load-timing metrics) followed by the container script itself.
-      window.dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
-      var script = document.createElement('script');
-      script.async = true;
-      script.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(gtmId);
-      document.head.appendChild(script);
-      window.dispatchEvent(new Event('metalix-analytics-ready'));
-    })
-    .catch(function () {});
 })();

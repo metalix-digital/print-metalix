@@ -1574,10 +1574,42 @@ const LANDING_ROUTES = {
   }
 }
 
+// Builds the two GTM install snippets (head script + body noscript) from the
+// admin-configured Container ID — server-rendered and synchronous (rather
+// than fetched client-side after page load) to match Google's official
+// install pattern exactly. GTM's own detection tooling (Tag Assistant) can
+// fail to find a container that only appears via a delayed client-side
+// fetch-then-inject; a real page load never has that gap. The dataLayer/gtag
+// stub + Consent Mode default are always emitted, even with no container
+// configured, so the cookie-banner code in analytics.js can always call
+// window.gtag() safely regardless of whether GTM itself is set up yet.
+function gtmSnippets(settings) {
+  const gtmId = (settings.analytics || {}).gtmContainerId || ''
+  const consentBoot = `<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){window.dataLayer.push(arguments);}
+window.gtag = gtag;
+gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});
+(function(){try{var c=localStorage.getItem('metalix_cookie_consent');if(c==='granted'||c==='denied'){gtag('consent','update',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c});}}catch(e){}})();
+</script>`
+  if (!gtmId) return { head: consentBoot, noscript: '' }
+  const idAttr = escAttr(gtmId)
+  const head = consentBoot + `
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${idAttr}');</script>
+<!-- End Google Tag Manager -->`
+  const noscript = `<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${idAttr}"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->`
+  return { head, noscript }
+}
+
 function renderLanding(route) {
   const meta = LANDING_ROUTES[route]
   const settings = db.getSiteSettings()
   const gscCode = (settings.analytics || {}).searchConsoleVerification || ''
+  const gtm = gtmSnippets(settings)
   const template = fs.readFileSync(path.join(publicDir, 'landing.html'), 'utf8')
   return template
     .split('__META_TITLE__').join(escAttr(meta.title))
@@ -1588,6 +1620,8 @@ function renderLanding(route) {
     // Search Console verifies via the home page, so this is only meaningful on "/" —
     // harmless (empty) on every other route since the meta tag is simply omitted.
     .split('__GSC_VERIFICATION__').join(gscCode ? `<meta name="google-site-verification" content="${escAttr(gscCode)}">` : '')
+    .split('__GTM_HEAD__').join(gtm.head)
+    .split('__GTM_NOSCRIPT__').join(gtm.noscript)
     .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
     .split('__FAQ_JSON_LD_SCRIPT__').join(meta.includeFaq ? `<script type="application/ld+json">${faqJsonLd()}</script>` : '')
 }
@@ -1619,7 +1653,9 @@ app.get('/orders', (req, res) => {
 // (like track.html) since each post needs its own crawlable, shareable URL.
 app.get('/blog', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
-  res.sendFile(path.join(publicDir, 'blog.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = fs.readFileSync(path.join(publicDir, 'blog.html'), 'utf8')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
 // Attribute-safe (not full HTML-safe) — only used inside "..." attribute
@@ -1638,6 +1674,7 @@ app.get('/blog/:slug', (req, res) => {
   const post = db.getBlogPostBySlug(req.params.slug)
   const template = fs.readFileSync(path.join(publicDir, 'blog-post.html'), 'utf8')
   const canonical = `https://print.metalix.in/blog/${req.params.slug}`
+  const gtm = gtmSnippets(db.getSiteSettings())
 
   if (!post || !post.published) {
     const html = template
@@ -1647,6 +1684,8 @@ app.get('/blog/:slug', (req, res) => {
       .split('__CANONICAL_URL__').join(escAttr(canonical))
       .split('__OG_IMAGE__').join('https://print.metalix.in/images/logo.svg')
       .split('__JSON_LD__').join('null')
+      .split('__GTM_HEAD__').join(gtm.head)
+      .split('__GTM_NOSCRIPT__').join(gtm.noscript)
     return res.status(404).send(html)
   }
 
@@ -1674,6 +1713,8 @@ app.get('/blog/:slug', (req, res) => {
     .split('__CANONICAL_URL__').join(escAttr(canonical))
     .split('__OG_IMAGE__').join(escAttr(image))
     .split('__JSON_LD__').join(jsonLd)
+    .split('__GTM_HEAD__').join(gtm.head)
+    .split('__GTM_NOSCRIPT__').join(gtm.noscript)
   res.send(html)
 })
 
@@ -1725,14 +1766,18 @@ app.get('/jobsheet.html', (req, res) => {
 
 // Public scan-to-track page linked from the job sheet's QR code.
 app.get('/track/:id', (req, res) => {
-  res.sendFile(path.join(publicDir, 'track.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = fs.readFileSync(path.join(publicDir, 'track.html'), 'utf8')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
 // Dedicated post-checkout confirmation page (stable URL, single order fetched
 // client-side via the existing public GET /api/orders/:id) — gives GA4 a real
 // page load to fire the 'purchase' conversion event from.
 app.get('/order-success/:id', (req, res) => {
-  res.sendFile(path.join(publicDir, 'order-success.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = fs.readFileSync(path.join(publicDir, 'order-success.html'), 'utf8')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
 // If a production client build exists, serve it (single-process deploy)
@@ -1751,7 +1796,10 @@ if (fs.existsSync(clientDist)) {
   }))
   app.get('*', (req, res) => {
     if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
-    res.sendFile(path.join(clientDist, 'index.html'))
+    const gtm = gtmSnippets(db.getSiteSettings())
+    const template = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8')
+    res.set('Cache-Control', 'no-cache')
+    res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
   })
 }
 
