@@ -1673,6 +1673,7 @@ async function handleGoogleCredential(response){
     if (!res.ok) { showToast(data.message || 'Google sign-in failed', '⚠️'); return; }
     setCustomerToken(data.token);
     refreshAuthHeader();
+    if(window.gtag) window.gtag('event', 'login', { method: 'google' });
     showSuccess('Signed in with Google!', `Welcome, ${data.user.name.split(' ')[0]}.`);
   } catch (err) {
     showToast('Something went wrong. Please try again.', '⚠️');
@@ -1694,6 +1695,7 @@ async function realLogin(){
     if(!res.ok){ showToast(data.message || 'Login failed', '⚠️'); return; }
     setCustomerToken(data.token);
     refreshAuthHeader();
+    if(window.gtag) window.gtag('event', 'login', { method: 'email' });
     showSuccess('Logged in!', `Welcome back, ${data.user.name.split(' ')[0]}.`);
   } catch (err) {
     showToast('Something went wrong. Please try again.', '⚠️');
@@ -1722,6 +1724,7 @@ async function realSignup(){
     if(!res.ok){ showToast(data.message || 'Signup failed', '⚠️'); return; }
     setCustomerToken(data.token);
     refreshAuthHeader();
+    if(window.gtag) window.gtag('event', 'sign_up', { method: 'email' });
     showSuccess('Account created!', `Welcome, ${name.split(' ')[0]}! Your details will auto-fill at checkout next time.`);
   } catch (err) {
     showToast('Something went wrong. Please try again.', '⚠️');
@@ -1823,6 +1826,7 @@ async function sendContactForm(){
     document.getElementById('cEmail').value='';
     document.getElementById('cPhone').value='';
     document.getElementById('cMsg').value='';
+    if(window.gtag) window.gtag('event', 'generate_lead');
     showToast('Message sent! We\'ll get back to you shortly.','✓');
   } catch(e){
     showToast('Could not send — please WhatsApp or call us.','⚠️');

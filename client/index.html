@@ -1076,6 +1076,10 @@ async function uploadFiles(fileArray){
       const json = await uploadOneFile(validFiles[i]);
       Object.assign(json, NEW_FILE_DEFAULTS, { paperType: defaultPaperTypeId() });
       state.files.push(json);
+      if(window.gtag) window.gtag('event', 'add_to_cart', {
+        currency: 'INR', value: fileCost(json),
+        items: [{ item_name: json.fileName, quantity: 1, price: fileCost(json) }]
+      });
     }catch(err){
       trayError.textContent = err.message || 'Upload failed';
     }
@@ -1192,6 +1196,10 @@ const confirmModal = document.getElementById('confirmModal');
 confirmBtn.addEventListener('click', ()=>{
   if(!validateForConfirm()) return;
   const est = calcEstimate();
+  if(window.gtag) window.gtag('event', 'begin_checkout', {
+    currency: 'INR', value: est.totalAmount,
+    items: state.files.map((f) => ({ item_name: f.fileName, quantity: f.copies || 1, price: fileCost(f) }))
+  });
   const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
   document.getElementById('mFile').textContent = state.files.length > 1
     ? `${state.files[0].fileName} +${state.files.length - 1} more`
