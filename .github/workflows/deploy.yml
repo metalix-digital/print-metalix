@@ -22,11 +22,8 @@ jobs:
           # lockfiles locally modified, which makes `git pull` refuse to
           # overwrite them. `npm ci` never rewrites the lockfile, so this
           # is just a safety net for state left over from before this
-          # workflow existed. client/dist is rebuilt by this same script
-          # every time client/ changes (see below), so it's *always*
-          # locally modified after a deploy — discard that every run too,
-          # or the next pull that also touches dist refuses to merge.
-          sudo -u www-data git -C "$REPO" checkout -- server/package-lock.json client/package-lock.json client/dist || true
+          # workflow existed.
+          sudo -u www-data git -C "$REPO" checkout -- server/package-lock.json client/package-lock.json || true
 
           OLD_HEAD=$(sudo -u www-data git -C "$REPO" rev-parse HEAD)
           sudo -u www-data git -C "$REPO" pull origin main
@@ -60,16 +57,18 @@ jobs:
             echo "--- server deps unchanged, skipping npm ci ---"
           fi
 
-          if echo "$CHANGED" | grep -q '^client/'; then
-            if echo "$CHANGED" | grep -qE '^client/package(-lock)?\.json$'; then
-              echo "--- client deps changed, running npm ci ---"
-              sudo -u www-data npm ci --prefix "$REPO/client"
-            fi
-            echo "--- client source changed, rebuilding ---"
-            sudo -u www-data npm run build --prefix "$REPO/client"
-          else
-            echo "--- client unchanged, skipping build ---"
+          if echo "$CHANGED" | grep -qE '^client/package(-lock)?\.json$'; then
+            echo "--- client deps changed, running npm ci ---"
+            sudo -u www-data npm ci --prefix "$REPO/client"
           fi
+          # client/dist is a build artifact, not tracked in git (see .gitignore) —
+          # always rebuild it from source rather than trying to detect whether
+          # client/ "changed since last deploy". That skip-if-unchanged check used
+          # to compare against a stale committed dist and could leave a previous
+          # deploy's rebuild silently reverted; the build itself is sub-second, so
+          # there's no real cost to always doing it.
+          echo "--- rebuilding client ---"
+          sudo -u www-data npm run build --prefix "$REPO/client"
 
           sudo systemctl start metalix
           sudo systemctl status metalix --no-pager
