@@ -1298,6 +1298,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
     notify.sendOrderConfirmationEmail(fresh)
+    mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
     return res.json({ order: fresh, cod: true })
   }
 
@@ -1381,6 +1382,7 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
     notify.sendOrderConfirmationEmail(fresh)
+    mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
     return res.json({ order: fresh })
   }
 
@@ -1400,6 +1402,7 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   const fresh = db.getOrder(order.id)
   notify.sendOrderConfirmationSms(fresh)
   notify.sendOrderConfirmationEmail(fresh)
+  mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
   return res.json({ order: fresh })
 })
 
@@ -1427,6 +1430,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
         const fresh = db.getOrder(order.id)
         notify.sendOrderConfirmationSms(fresh)
         notify.sendOrderConfirmationEmail(fresh)
+        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
       }
     }
     res.status(200).json({ ok: true })

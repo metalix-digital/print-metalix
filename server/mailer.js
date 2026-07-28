@@ -263,4 +263,39 @@ async function sendContactMessageEmail({ name, email, phone, message }) {
   })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail }
+// Alerts the business inbox the moment a new order is confirmed (paid online,
+// COD, or via the Razorpay webhook) — same recipient as the "contact us" form,
+// so staff have one inbox to watch rather than a second address to configure.
+async function sendNewOrderAlertEmail(order) {
+  const to = process.env.CONTACT_EMAIL || 'support@metalix.in'
+  const isCod = order.payment_method === 'cod'
+  const deliveryLine = order.delivery_method === 'delivery'
+    ? 'Home delivery' + (order.delivery_timing === 'scheduled' ? ' (scheduled)' : ' (instant)')
+    : 'Shop pickup'
+  const row = (label, valueHtml) => `<tr><td style="padding:10px 16px;border-bottom:1px solid ${BRAND.line};font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">${label}<br><span style="font-size:14px;color:${BRAND.ink};font-weight:700;">${valueHtml}</span></td></tr>`
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:34px 40px 8px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 style="margin:0 0 18px 0;font-size:22px;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">New order arrived</h1>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;margin-bottom:8px;">
+        ${row('Order ID', esc(order.id))}
+        ${row('Customer', esc(order.customer_name) + (order.customer_mobile ? ' · ' + esc(order.customer_mobile) : ''))}
+        ${row('Total', `₹${order.total_amount}` + (isCod ? ' (pay on delivery)' : ' (paid online)'))}
+        ${row('Fulfilment', esc(deliveryLine) + (order.location_name ? ' · ' + esc(order.location_name) : ''))}
+      </table>
+    </td></tr>
+    <tr><td style="padding:4px 40px 34px 40px;">${button('Open admin dashboard', 'https://print.metalix.in/admin')}</td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Sent automatically whenever a new order is confirmed.</p>`
+  const html = renderEmailShell({ preheader: `Order ${order.id} — ₹${order.total_amount}`, badge: 'New order', cardHtml, footerHtml })
+  const text = `New order arrived\n\nOrder ID: ${order.id}\nCustomer: ${order.customer_name} (${order.customer_mobile})\nTotal: ₹${order.total_amount} (${isCod ? 'pay on delivery' : 'paid online'})\nFulfilment: ${deliveryLine}${order.location_name ? ' · ' + order.location_name : ''}\n\nOpen admin dashboard: https://print.metalix.in/admin`
+
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${to}: new order ${order.id} (₹${order.total_amount})`)
+    return
+  }
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to, subject: `New order ${order.id} — ₹${order.total_amount}`, html, text })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail }
