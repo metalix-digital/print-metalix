@@ -68,6 +68,10 @@
 <script src="/js/analytics.js" defer></script>
 </head>
 <body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PG9JV9XD"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
 
 <div class="wrap">
   <div class="brand"><a class="back-btn" href="/" aria-label="Back to home" title="Back to home">←</a>Metalix<span class="dot">.</span>Print<button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button></div>
@@ -114,13 +118,13 @@ function deliveryTimingLabel(order){
     : 'Instant (within 2 hrs)';
 }
 
-// Fires the GA4 'purchase' conversion once analytics.js has wired up gtag AND
-// the order has loaded — guarded by sessionStorage so a page refresh (or the
-// two readiness signals racing) never double-counts the conversion.
+// Fires the GA4 'purchase' conversion (via GTM's dataLayer) once analytics.js
+// has queued GTM AND the order has loaded — guarded by sessionStorage so a
+// page refresh (or the two readiness signals racing) never double-counts.
 let orderForAnalytics = null;
-let ga4Ready = false;
+let analyticsReady = false;
 function tryFirePurchase(){
-  if(!orderForAnalytics || !ga4Ready || typeof window.gtag !== 'function') return;
+  if(!orderForAnalytics || !analyticsReady || typeof window.gtag !== 'function') return;
   const order = orderForAnalytics;
   const flagKey = 'metalix_ga4_purchase_' + order.id;
   if(sessionStorage.getItem(flagKey)) return;
@@ -138,7 +142,7 @@ function tryFirePurchase(){
     }]
   });
 }
-window.addEventListener('metalix-ga4-ready', () => { ga4Ready = true; tryFirePurchase(); });
+window.addEventListener('metalix-analytics-ready', () => { analyticsReady = true; tryFirePurchase(); });
 
 async function loadOrder(){
   const orderId = window.location.pathname.split('/').filter(Boolean).pop();

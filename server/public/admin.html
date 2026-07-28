@@ -2298,9 +2298,9 @@ async function loadSettings(){
       textFieldHtml('Shipping policy', 'legal.shippingPolicy', s.legal.shippingPolicy, true) +
     '</div>' +
     '<h2>Analytics & SEO</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Once set, Google Analytics loads automatically across the site and a "purchase" event fires on every successful order.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting.</p>' +
     '<div class="field-grid">' +
-      textFieldHtml('Google Analytics 4 Measurement ID', 'analytics.ga4MeasurementId', (s.analytics||{}).ga4MeasurementId || '') +
+      textFieldHtml('Google Tag Manager Container ID', 'analytics.gtmContainerId', (s.analytics||{}).gtmContainerId || '') +
       textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
     '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +

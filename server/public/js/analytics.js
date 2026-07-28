@@ -1,15 +1,18 @@
-// Shared GA4 loader + cookie consent banner for every public page. The
-// Measurement ID is admin-managed (Settings → Analytics & SEO), not
-// hardcoded, so this fetches it at runtime and no-ops entirely until an
-// admin sets one. Dispatches 'metalix-ga4-ready' once gtag is wired up, for
-// pages (e.g. order-success.html) that need to wait on it before firing an
-// event.
+// Shared Google Tag Manager loader + cookie consent banner for every public
+// page. The GTM Container ID is admin-managed (Settings → Analytics & SEO),
+// not hardcoded, so this fetches it at runtime and no-ops entirely until an
+// admin sets one. GA4 (and any other tags) are configured *inside* the GTM
+// container on Google's side, not loaded directly here — deliberately, to
+// avoid double-counting between a direct gtag.js load and a GTM-managed one.
+// Dispatches 'metalix-analytics-ready' once GTM is queued, for pages (e.g.
+// order-success.html) that need to wait on it before firing an event.
 //
-// Implements Google Consent Mode v2: all signals start denied, gtag.js loads
+// Implements Google Consent Mode v2: all signals start denied, GTM loads
 // regardless (so Google can send privacy-safe modeled pings), and the
 // visitor's Accept/Decline choice — persisted in localStorage — updates the
 // signals via gtag('consent','update', ...). This is the "Basic" Consent
-// Mode implementation Google's setup wizard asks a site to have.
+// Mode implementation Google's setup wizard asks a site to have; the default
+// must be pushed to dataLayer before GTM's own script loads.
 (function () {
   window.dataLayer = window.dataLayer || [];
   window.gtag = function () { window.dataLayer.push(arguments); };
@@ -87,15 +90,16 @@
   fetch('/api/settings')
     .then(function (r) { return r.json(); })
     .then(function (s) {
-      var id = s && s.analytics && s.analytics.ga4MeasurementId;
-      if (!id) return;
+      var gtmId = s && s.analytics && s.analytics.gtmContainerId;
+      if (!gtmId) return;
+      // Standard GTM install: a 'gtm.js' marker on dataLayer (GTM reads this
+      // for load-timing metrics) followed by the container script itself.
+      window.dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
       var script = document.createElement('script');
       script.async = true;
-      script.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id);
+      script.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(gtmId);
       document.head.appendChild(script);
-      window.gtag('js', new Date());
-      window.gtag('config', id);
-      window.dispatchEvent(new Event('metalix-ga4-ready'));
+      window.dispatchEvent(new Event('metalix-analytics-ready'));
     })
     .catch(function () {});
 })();

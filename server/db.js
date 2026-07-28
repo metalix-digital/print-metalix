@@ -326,7 +326,10 @@ const DEFAULT_SITE_SETTINGS = {
     keywords: 'print shop, online printing, document printing, Gurugram'
   },
   analytics: {
-    ga4MeasurementId: '',
+    // GA4 is configured *inside* the GTM container (a tag + trigger on
+    // Google's side), not loaded directly here — avoids double-counting
+    // pageviews/events between a direct gtag.js load and a GTM-managed one.
+    gtmContainerId: '',
     searchConsoleVerification: ''
   }
 }
