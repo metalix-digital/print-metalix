@@ -1118,6 +1118,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     customerName, customerMobile, customerEmail,
     files,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
+    deliveryTiming, scheduledAt,
     locationId, paymentMethod
   } = req.body || {}
   const isCod = paymentMethod === 'cod'
@@ -1181,6 +1182,25 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'missing_delivery_address' })
   }
 
+  // Instant delivery matches the existing 3-4hr TAT with no extra input needed;
+  // scheduled delivery requires a concrete future slot, bounded so it's neither
+  // effectively "instant" in disguise nor an unreasonably far-out promise.
+  const MIN_SCHEDULE_LEAD_MS = 2 * 60 * 60 * 1000
+  const MAX_SCHEDULE_LEAD_MS = 7 * 24 * 60 * 60 * 1000
+  let resolvedDeliveryTiming = 'instant'
+  let resolvedScheduledAt = null
+  if (deliveryMethod === 'delivery') {
+    resolvedDeliveryTiming = deliveryTiming === 'scheduled' ? 'scheduled' : 'instant'
+    if (resolvedDeliveryTiming === 'scheduled') {
+      const ts = Number(scheduledAt)
+      const now = Date.now()
+      if (!Number.isFinite(ts) || ts < now + MIN_SCHEDULE_LEAD_MS || ts > now + MAX_SCHEDULE_LEAD_MS) {
+        return res.status(400).json({ error: 'invalid_scheduled_time', message: 'Choose a delivery time at least 2 hours from now, within the next 7 days.' })
+      }
+      resolvedScheduledAt = ts
+    }
+  }
+
   const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
   const fileModes = new Set(safeFiles.map((f) => f.printMode))
   const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
@@ -1195,7 +1215,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
     files: pricingFiles,
-    deliveryMethod: deliveryMethod || 'pickup'
+    deliveryMethod: deliveryMethod || 'pickup',
+    deliveryPincode
   })
 
   const orderId = generateOrderId()
@@ -1254,11 +1275,14 @@ app.post('/api/orders', express.json(), async (req, res) => {
     delivery_city: deliveryCity || null,
     delivery_state: deliveryState || null,
     delivery_pincode: deliveryPincode || null,
+    delivery_timing: resolvedDeliveryTiming,
+    scheduled_at: resolvedScheduledAt,
     location_id: chosenLocation ? chosenLocation.id : (locationId || null),
     location_name: chosenLocation ? chosenLocation.name : null,
     payment_method: isCod ? 'cod' : 'online',
     print_cost: calc.printCost,
     delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
     razorpay_order_id: isCod ? null : razorpayOrder.id,
@@ -1437,6 +1461,10 @@ if (fs.existsSync(publicDir)) {
       res.setHeader('Content-Type', 'font/woff2')
     },
   }))
+
+  // Shared client-side logic (currently just the GA4 loader) — short cache
+  // since these are hand-edited scripts, not fingerprinted build assets.
+  app.use('/js', express.static(path.join(publicDir, 'js'), { maxAge: '1d' }))
 }
 
 // Admin-controlled kill switch (Settings tab) for taking the storefront
@@ -1454,7 +1482,7 @@ function isShopOpen() {
 const FAQ_ITEMS = [
   { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
   { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
-  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is a flat ₹30 within Gurugram city limits. If your PIN code is outside our delivery zone, we’ll contact you to arrange pickup instead and refund the delivery charge.' },
+  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505) and ₹30 elsewhere within Gurugram city limits. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later. If your PIN code is outside our delivery zone, we’ll contact you to arrange pickup instead and refund the delivery charge.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
   { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },
   { q: 'Can I track my order?', a: 'Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.' },
@@ -1520,25 +1548,42 @@ const LANDING_ROUTES = {
     description: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
     keywords: 'print shop, online printing, document printing, Gurugram',
     canonical: 'https://print.metalix.in/',
-    includeFaq: true
+    includeFaq: true,
+    robots: 'index,follow'
   },
   '/policies': {
     title: 'Terms, Privacy & Delivery Policies — Metalix Print',
     description: 'Read Metalix Print’s terms of service, privacy policy, refund & reprint policy, and delivery policy for our Gurugram print-and-deliver service.',
     keywords: 'refund policy, delivery policy, terms of service, privacy policy, Metalix Print',
     canonical: 'https://print.metalix.in/policies',
-    includeFaq: false
+    includeFaq: false,
+    robots: 'index,follow'
+  },
+  '/orders': {
+    title: 'My Orders — Metalix Print',
+    description: 'View your Metalix Print order history and status.',
+    keywords: '',
+    canonical: 'https://print.metalix.in/orders',
+    includeFaq: false,
+    // Private, per-customer content — never indexed.
+    robots: 'noindex,nofollow'
   }
 }
 
 function renderLanding(route) {
   const meta = LANDING_ROUTES[route]
+  const settings = db.getSiteSettings()
+  const gscCode = (settings.analytics || {}).searchConsoleVerification || ''
   const template = fs.readFileSync(path.join(publicDir, 'landing.html'), 'utf8')
   return template
     .split('__META_TITLE__').join(escAttr(meta.title))
     .split('__META_DESCRIPTION__').join(escAttr(meta.description))
     .split('__META_KEYWORDS__').join(escAttr(meta.keywords))
     .split('__CANONICAL_URL__').join(escAttr(meta.canonical))
+    .split('__META_ROBOTS__').join(meta.robots)
+    // Search Console verifies via the home page, so this is only meaningful on "/" —
+    // harmless (empty) on every other route since the meta tag is simply omitted.
+    .split('__GSC_VERIFICATION__').join(gscCode ? `<meta name="google-site-verification" content="${escAttr(gscCode)}">` : '')
     .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
     .split('__FAQ_JSON_LD_SCRIPT__').join(meta.includeFaq ? `<script type="application/ld+json">${faqJsonLd()}</script>` : '')
 }
@@ -1555,6 +1600,14 @@ app.get('/', (req, res) => {
 app.get('/policies', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   res.send(renderLanding('/policies'))
+})
+
+// Same pattern as /policies: "My Orders" is a view inside the landing page
+// (#page-orders, showPage('orders')) — this just gives it a real, bookmarkable,
+// noindex URL. landing.html's initFromUrl() opens the view on load.
+app.get('/orders', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
+  res.send(renderLanding('/orders'))
 })
 
 // Blog list + article pages — the SPA-style views inside landing.html handle
@@ -1627,19 +1680,23 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').sendFile(path.join(publicDir, 'robots.txt'))
 })
 app.get('/sitemap.xml', (req, res) => {
+  const today = new Date().toISOString().slice(0, 10)
   const staticUrls = [
-    { loc: 'https://print.metalix.in/', freq: 'weekly', priority: '1.0' },
-    { loc: 'https://print.metalix.in/order', freq: 'weekly', priority: '0.9' },
-    { loc: 'https://print.metalix.in/blog', freq: 'weekly', priority: '0.7' },
-    { loc: 'https://print.metalix.in/policies', freq: 'monthly', priority: '0.3' }
+    { loc: 'https://print.metalix.in/', freq: 'weekly', priority: '1.0', lastmod: today },
+    { loc: 'https://print.metalix.in/order', freq: 'weekly', priority: '0.9', lastmod: today },
+    { loc: 'https://print.metalix.in/blog', freq: 'weekly', priority: '0.7', lastmod: today },
+    { loc: 'https://print.metalix.in/policies', freq: 'monthly', priority: '0.3', lastmod: today }
   ]
+  // /orders and /order-success/:id are private, per-customer pages (noindex'd
+  // and disallowed in robots.txt) — deliberately excluded from the sitemap.
   const postUrls = db.listBlogPosts({ includeUnpublished: false }).map((p) => ({
-    loc: `https://print.metalix.in/blog/${p.slug}`, freq: 'monthly', priority: '0.6'
+    loc: `https://print.metalix.in/blog/${p.slug}`, freq: 'monthly', priority: '0.6',
+    lastmod: new Date(p.updated_at || p.published_at || Date.now()).toISOString().slice(0, 10)
   }))
   const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     staticUrls.concat(postUrls).map((u) =>
-      `  <url>\n    <loc>${u.loc}</loc>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+      `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
     ).join('\n') +
     '\n</urlset>'
   res.type('application/xml').send(xml)
@@ -1665,6 +1722,13 @@ app.get('/jobsheet.html', (req, res) => {
 // Public scan-to-track page linked from the job sheet's QR code.
 app.get('/track/:id', (req, res) => {
   res.sendFile(path.join(publicDir, 'track.html'))
+})
+
+// Dedicated post-checkout confirmation page (stable URL, single order fetched
+// client-side via the existing public GET /api/orders/:id) — gives GA4 a real
+// page load to fire the 'purchase' conversion event from.
+app.get('/order-success/:id', (req, res) => {
+  res.sendFile(path.join(publicDir, 'order-success.html'))
 })
 
 // If a production client build exists, serve it (single-process deploy)

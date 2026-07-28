@@ -2,7 +2,7 @@
 // printing side are all resolved per-file by the caller (client estimate
 // and server authoritative calc both do this the same way) so a single
 // order can mix per-file settings correctly.
-function calculate(config, { files, deliveryMethod }) {
+function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   let printCost = 0
   let colorPages = 0
   let bwPages = 0
@@ -23,12 +23,23 @@ function calculate(config, { files, deliveryMethod }) {
     printCost += (c * (rates.color.single || 0) + b * rates.bw[side]) * copies
   })
   printCost = Math.round(printCost)
-  const deliveryCharge = deliveryMethod === 'delivery' ? config.deliveryCharge : 0
-  const subtotal = printCost + deliveryCharge
+
+  // Delivery is a flat rate that drops to a cheaper "local" rate inside the
+  // shop's own PIN code, and stays at the standard (further-out) rate everywhere
+  // else within the delivery zone.
+  let deliveryCharge = 0
+  if (deliveryMethod === 'delivery') {
+    const isLocal = deliveryPincode && String(deliveryPincode).trim() === (config.deliveryLocalPincode || '122505')
+    deliveryCharge = isLocal
+      ? (config.deliveryLocalCharge != null ? config.deliveryLocalCharge : 20)
+      : (config.deliveryCharge != null ? config.deliveryCharge : 30)
+  }
+  const handlingCharge = Number(config.handlingCharge) || 0
+  const subtotal = printCost + deliveryCharge + handlingCharge
   const gstAmount = Math.round((subtotal * (config.gstPercent || 0)) / 100)
   const totalAmount = subtotal + gstAmount
 
-  return { colorPages, bwPages, printCost, deliveryCharge, gstAmount, totalAmount }
+  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, gstAmount, totalAmount }
 }
 
 // Resolves a single file's effective color/bw page split given its

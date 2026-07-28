@@ -1216,6 +1216,8 @@ function renderOrders(orders){
       '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
+      (o.delivery_method === 'delivery' ? '<div><strong>Delivery timing:</strong> ' + (o.delivery_timing === 'scheduled' ? 'Scheduled — ' + escHtml(o.scheduled_at ? new Date(o.scheduled_at).toLocaleString() : '—') : 'Instant (within 2 hrs)') + '</div>' : '') +
+      (o.handling_charge ? '<div><strong>Handling charge:</strong> ₹' + escHtml(o.handling_charge) + '</div>' : '') +
       (o.customer_email ? '<div><strong>Email:</strong> ' + escHtml(o.customer_email) + '</div>' : '') +
       (o.order_status === 'Completed' ? (
         feedbackByOrderId[o.id]
@@ -1870,7 +1872,13 @@ async function loadPricing(){
     '</tr></thead><tbody id="rateRows">' + rowsHtml.join('') + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addRateRow">+ Add paper type</button>' +
     '<h2>Other</h2><div class="field-grid">' +
-      rateFieldHtml('Delivery charge (₹ flat)', 'deliveryCharge', p.deliveryCharge) +
+      // Fall back to the same defaults pricing.js uses at calc time — this DB may
+      // predate these fields, and rendering them blank/zero would silently persist
+      // a $0 local delivery charge the moment someone hits Save without noticing.
+      rateFieldHtml('Handling charge (₹ flat, every order)', 'handlingCharge', p.handlingCharge != null ? p.handlingCharge : 10) +
+      textFieldHtml('Local delivery PIN code', 'deliveryLocalPincode', p.deliveryLocalPincode || '122505') +
+      rateFieldHtml('Local delivery charge (₹ flat)', 'deliveryLocalCharge', p.deliveryLocalCharge != null ? p.deliveryLocalCharge : 20) +
+      rateFieldHtml('Standard delivery charge (₹ flat, outside local PIN)', 'deliveryCharge', p.deliveryCharge != null ? p.deliveryCharge : 30) +
       rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
     '</div>' +
     '<button class="save-btn" id="savePricingBtn">Save pricing</button>' +
@@ -1916,6 +1924,9 @@ async function savePricing(){
 
   const pricing = {
     rates,
+    handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
+    deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
+    deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
     deliveryCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryCharge"]')),
     gstPercent: numOrZero(document.querySelector('#pricingForm input[data-key="gstPercent"]'))
   };
@@ -2286,6 +2297,12 @@ async function loadSettings(){
       textFieldHtml('Terms & conditions', 'legal.termsConditions', s.legal.termsConditions, true) +
       textFieldHtml('Shipping policy', 'legal.shippingPolicy', s.legal.shippingPolicy, true) +
     '</div>' +
+    '<h2>Analytics & SEO</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Once set, Google Analytics loads automatically across the site and a "purchase" event fires on every successful order.</p>' +
+    '<div class="field-grid">' +
+      textFieldHtml('Google Analytics 4 Measurement ID', 'analytics.ga4MeasurementId', (s.analytics||{}).ga4MeasurementId || '') +
+      textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
+    '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
     '<div id="settingsMessage"></div>';
 
@@ -2304,7 +2321,7 @@ async function loadSettings(){
 async function saveSettings(){
   const btn = document.getElementById('saveSettingsBtn');
   const msg = document.getElementById('settingsMessage');
-  const settings = { legal: {}, social: {}, seo: {}, storeTimings: {}, shopOpen: document.getElementById('shopOpenToggle').checked };
+  const settings = { legal: {}, social: {}, seo: {}, storeTimings: {}, analytics: {}, shopOpen: document.getElementById('shopOpenToggle').checked };
   document.querySelectorAll('#settingsForm input[data-key], #settingsForm textarea[data-key]').forEach((input) => {
     const path = input.dataset.key.split('.');
     let node = settings;

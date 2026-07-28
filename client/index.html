@@ -235,14 +235,6 @@
   .modal-actions .btn{ flex:1; }
 
   /* Success panel */
-  .success-panel{ display:none; text-align:center; padding:30px 10px; }
-  .success-panel.show{ display:block; }
-  .success-check{ width:64px; height:64px; border-radius:50%; background:var(--green); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; }
-  .success-title{ font-family:'Sora',sans-serif; font-weight:700; font-size:22px; margin-bottom:6px; }
-  .success-sub{ color:var(--ink-soft); font-size:13.5px; margin-bottom:24px; }
-  .success-details{ background:var(--paper-dim); border-radius:14px; padding:18px 20px; text-align:left; max-width:360px; margin:0 auto 24px; }
-  .success-details .sline{ display:flex; justify-content:space-between; font-size:13.5px; padding:6px 0; color:var(--ink-soft); }
-  .success-details .sline b{ color:var(--ink); font-family:'IBM Plex Mono',monospace; font-size:12.5px; }
 
   @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
 </style>
@@ -255,6 +247,7 @@
   }catch(e){}
 })();
 </script>
+<script src="/js/analytics.js" defer></script>
 </head>
 <body>
 
@@ -282,7 +275,7 @@
           <div class="pm-sub" id="pmSub">—</div>
         </div>
         <div class="profile-menu-section">Account</div>
-        <a class="profile-menu-item" href="/?page=orders">📦 My Orders</a>
+        <a class="profile-menu-item" href="/orders">📦 My Orders</a>
         <button class="profile-menu-item danger" type="button" id="headerLogoutBtn">↪ Log out</button>
       </div>
     </div>
@@ -359,7 +352,7 @@
         <span class="opt-label">Delivery</span>
         <div class="seg">
           <label><input type="radio" name="delivery" value="pickup" checked><span class="pill">Collect from shop</span></label>
-          <label><input type="radio" name="delivery" value="delivery"><span class="pill">Home delivery (+₹30)</span></label>
+          <label><input type="radio" name="delivery" value="delivery"><span class="pill">Home delivery</span></label>
         </div>
         <div class="delivery-note">Ready for collection or out for delivery within 3–4 hours of payment.</div>
         <div class="delivery-address" id="deliveryAddress">
@@ -384,6 +377,25 @@
             <label>PIN code *</label>
             <input type="text" id="addrPincode" placeholder="6-digit PIN" maxlength="6" />
             <div class="field-error">Enter a valid 6-digit PIN code</div>
+          </div>
+          <div class="opt-group" style="margin-top:14px;">
+            <span class="fcard-field-label">When would you like it delivered?</span>
+            <div class="seg" style="margin-top:8px;">
+              <label><input type="radio" name="deliveryTiming" value="instant" checked><span class="pill">Instant (within 2 hrs)</span></label>
+              <label><input type="radio" name="deliveryTiming" value="scheduled"><span class="pill">Schedule for later</span></label>
+            </div>
+            <div class="field-row" id="scheduledFields" style="display:none;margin-top:10px;">
+              <div class="field" id="fieldSchedDate">
+                <label>Date *</label>
+                <input type="date" id="schedDate" />
+                <div class="field-error">Please choose a date</div>
+              </div>
+              <div class="field" id="fieldSchedTime">
+                <label>Time *</label>
+                <input type="time" id="schedTime" min="09:00" max="20:00" />
+                <div class="field-error">Choose a time between 9 AM and 8 PM, at least 2 hrs from now</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -423,6 +435,7 @@
         <div class="rdiv"></div>
 
         <div class="rline"><span>Print cost</span><b class="num-tick" id="rPrintCost">₹0</b></div>
+        <div class="rline"><span>Handling charge</span><b class="num-tick" id="rHandling">₹0</b></div>
         <div class="rline"><span>Delivery charge</span><b class="num-tick" id="rDelivery">₹0</b></div>
         <div class="rline"><span>GST</span><b class="num-tick" id="rGst">₹0</b></div>
 
@@ -443,20 +456,6 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.2"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9"/></svg>
         <span>Your file is only printed after payment is confirmed. Collect from the Metalix shop or get it delivered, both within 3–4 hours.</span>
       </div>
-    </div>
-
-    <!-- SUCCESS PANEL (replaces the card content after payment) -->
-    <div class="success-panel" id="successPanel" style="grid-column:1 / -1;">
-      <div class="success-check"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="success-title" id="successTitle">Payment successful</div>
-      <div class="success-sub" id="successSub">Your order has been queued for printing.</div>
-      <div class="success-details">
-        <div class="sline"><span>Order ID</span><b id="successOrderId">—</b></div>
-        <div class="sline"><span>Transaction ID</span><b id="successTxnId">—</b></div>
-        <div class="sline"><span>Amount paid</span><b id="successAmount">—</b></div>
-        <div class="sline"><span>Order status</span><b id="successStatus">—</b></div>
-      </div>
-      <button class="btn btn-primary" id="newOrderBtn" type="button">Print another document</button>
     </div>
   </div>
 </div>
@@ -479,6 +478,7 @@
     <div class="mline" id="mPaperTypeRow"><span>Paper type</span><b id="mPaperType">—</b></div>
     <div class="mline"><span>Copies</span><b id="mCopies">—</b></div>
     <div class="mline"><span>Delivery</span><b id="mDelivery">—</b></div>
+    <div class="mline" id="mDeliveryTimingRow"><span>Delivery timing</span><b id="mDeliveryTiming">—</b></div>
     <div class="mline"><span>Payment</span><b id="mPayment">—</b></div>
     <div class="mline"><span>Final amount</span><b id="mTotal">—</b></div>
     <div class="mquestion">Would you like to proceed with payment?</div>
@@ -632,6 +632,7 @@ const rPaperTypeRow = document.getElementById('rPaperTypeRow');
 const rSide = document.getElementById('rSide');
 const rCopies = document.getElementById('rCopies');
 const rPrintCost = document.getElementById('rPrintCost');
+const rHandling = document.getElementById('rHandling');
 const rDelivery = document.getElementById('rDelivery');
 const rGst = document.getElementById('rGst');
 const rTotal = document.getElementById('rTotal');
@@ -655,6 +656,8 @@ let state = {
   uploading: false,
   paperSize: 'a4',
   deliveryMethod: 'pickup',
+  deliveryTiming: 'instant',
+  scheduledAt: null,
   paymentMethod: 'online'
 };
 
@@ -682,9 +685,20 @@ function resolveFileColorPages(f){
   return { colorPages, bwPages: Math.max(0, pageCount - colorPages) };
 }
 
+// Mirrors server/pricing.js's PIN-based delivery pricing: cheaper "local" rate
+// inside the shop's own PIN code, standard rate everywhere else in the zone.
+function resolveDeliveryCharge(){
+  if(state.deliveryMethod !== 'delivery' || !pricingConfig) return 0;
+  const pin = (document.getElementById('addrPincode').value || '').trim();
+  const localPin = pricingConfig.deliveryLocalPincode || '122505';
+  return pin === localPin
+    ? (pricingConfig.deliveryLocalCharge != null ? pricingConfig.deliveryLocalCharge : 20)
+    : (pricingConfig.deliveryCharge != null ? pricingConfig.deliveryCharge : 30);
+}
+
 function calcEstimate(){
   if(!pricingConfig || !state.files.length){
-    return { colorPages: 0, bwPages: 0, printCost: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
+    return { colorPages: 0, bwPages: 0, printCost: 0, handlingCharge: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
   }
   let colorPages = 0, bwPages = 0, printCost = 0;
   state.files.forEach((f) => {
@@ -695,11 +709,12 @@ function calcEstimate(){
     printCost += fileCost(f);
   });
   printCost = Math.round(printCost);
-  const deliveryCharge = state.deliveryMethod === 'delivery' ? pricingConfig.deliveryCharge : 0;
-  const subtotal = printCost + deliveryCharge;
+  const handlingCharge = pricingConfig.handlingCharge || 0;
+  const deliveryCharge = resolveDeliveryCharge();
+  const subtotal = printCost + handlingCharge + deliveryCharge;
   const gstAmount = Math.round(subtotal * (pricingConfig.gstPercent || 0) / 100);
   const totalAmount = subtotal + gstAmount;
-  return { colorPages, bwPages, printCost, deliveryCharge, gstAmount, totalAmount };
+  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, gstAmount, totalAmount };
 }
 
 function orientationSummaryLabel(){
@@ -740,10 +755,11 @@ function recalc(){
   rSide.textContent = sideSummaryLabel();
   rCopies.textContent = copiesSummaryLabel();
   rPrintCost.textContent = '₹' + est.printCost;
+  rHandling.textContent = '₹' + est.handlingCharge;
   rDelivery.textContent = '₹' + est.deliveryCharge;
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
-  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rDelivery, rGst, rTotal].forEach(flash);
+  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rGst, rTotal].forEach(flash);
   confirmBtn.disabled = !state.files.length || state.uploading;
 }
 
@@ -752,6 +768,13 @@ document.querySelectorAll('input[name=delivery]').forEach(r=> r.addEventListener
   state.deliveryMethod = e.target.value;
   deliveryAddress.classList.toggle('show', state.deliveryMethod === 'delivery');
   recalc();
+}));
+document.getElementById('addrPincode').addEventListener('input', recalc);
+
+const scheduledFields = document.getElementById('scheduledFields');
+document.querySelectorAll('input[name=deliveryTiming]').forEach(r=> r.addEventListener('change', e=>{
+  state.deliveryTiming = e.target.value;
+  scheduledFields.style.display = state.deliveryTiming === 'scheduled' ? 'grid' : 'none';
 }));
 
 document.querySelectorAll('input[name=payment]').forEach(r=> r.addEventListener('change', e=>{
@@ -1098,6 +1121,17 @@ function showToast(msg, isError){
   setTimeout(()=> toast.classList.remove('show'), 3500);
 }
 
+// Combines the date+time inputs into an epoch-ms timestamp, or null if either
+// is empty/unparseable. Shared by validation and the order payload builder so
+// they can never disagree on what "the chosen slot" means.
+function getScheduledTimestamp(){
+  const date = document.getElementById('schedDate').value;
+  const time = document.getElementById('schedTime').value;
+  if(!date || !time) return null;
+  const ts = new Date(date + 'T' + time).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
 function validateForConfirm(){
   let ok = true;
   let firstInvalidFieldId = null;
@@ -1125,6 +1159,20 @@ function validateForConfirm(){
     setFieldError('fieldState', !st); if(!st){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldState'; }
     const pinValid = /^[0-9]{6}$/.test(pin);
     setFieldError('fieldPincode', !pinValid); if(!pinValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldPincode'; }
+
+    if(state.deliveryTiming === 'scheduled'){
+      const ts = getScheduledTimestamp();
+      const minTs = Date.now() + 2 * 60 * 60 * 1000;
+      const maxTs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const dateFilled = !!document.getElementById('schedDate').value;
+      const timeFilled = !!document.getElementById('schedTime').value;
+      const schedValid = ts != null && ts >= minTs && ts <= maxTs;
+      setFieldError('fieldSchedDate', !dateFilled); if(!dateFilled){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldSchedDate'; }
+      setFieldError('fieldSchedTime', dateFilled && !schedValid); if(dateFilled && !schedValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldSchedTime'; }
+      state.scheduledAt = schedValid ? ts : null;
+    } else {
+      state.scheduledAt = null;
+    }
   }
   if(!ok && firstInvalidFieldId){
     showToast('Please fix the highlighted fields above', true);
@@ -1153,6 +1201,12 @@ confirmBtn.addEventListener('click', ()=>{
   document.getElementById('mPaperTypeRow').style.display = state.paperSize === 'a4' ? 'flex' : 'none';
   document.getElementById('mCopies').textContent = copiesSummaryLabel();
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
+  document.getElementById('mDeliveryTimingRow').style.display = state.deliveryMethod === 'delivery' ? 'flex' : 'none';
+  if(state.deliveryMethod === 'delivery'){
+    document.getElementById('mDeliveryTiming').textContent = state.deliveryTiming === 'scheduled'
+      ? 'Scheduled — ' + new Date(state.scheduledAt).toLocaleString()
+      : 'Instant (within 2 hrs)';
+  }
   document.getElementById('mPayment').textContent = state.paymentMethod === 'cod' ? 'Pay on delivery (Cash / UPI)' : 'Pay online now';
   document.getElementById('modalProceed').textContent = state.paymentMethod === 'cod' ? 'Place order' : 'Yes, proceed';
   document.getElementById('mTotal').textContent = '₹' + est.totalAmount;
@@ -1192,6 +1246,8 @@ function buildOrderPayload(){
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,
     deliveryState: state.deliveryMethod === 'delivery' ? document.getElementById('addrState').value.trim() : undefined,
     deliveryPincode: state.deliveryMethod === 'delivery' ? document.getElementById('addrPincode').value.trim() : undefined,
+    deliveryTiming: state.deliveryMethod === 'delivery' ? state.deliveryTiming : undefined,
+    scheduledAt: state.deliveryMethod === 'delivery' && state.deliveryTiming === 'scheduled' ? state.scheduledAt : undefined,
     locationId: getSelectedBranchId(),
     paymentMethod: state.paymentMethod
   };
@@ -1206,17 +1262,7 @@ function getSelectedBranchId(){
 }
 
 function showSuccess(order){
-  const isCod = order.payment_method === 'cod';
-  document.getElementById('successTitle').textContent = isCod ? 'Order placed!' : 'Payment successful';
-  document.getElementById('successSub').textContent = isCod
-    ? 'Pay in cash or by UPI on delivery / at pickup. Your order has been queued for printing.'
-    : 'Your order has been queued for printing.';
-  document.getElementById('successOrderId').textContent = order.id;
-  document.getElementById('successTxnId').textContent = isCod ? 'Pay on delivery' : (order.razorpay_payment_id || '—');
-  document.getElementById('successAmount').textContent = (isCod ? 'Due: ₹' : '₹') + order.total_amount;
-  document.getElementById('successStatus').textContent = order.order_status;
-  document.querySelectorAll('.card > .left, .card > .right').forEach(el => el.style.display = 'none');
-  document.getElementById('successPanel').classList.add('show');
+  window.location.href = '/order-success/' + encodeURIComponent(order.id);
 }
 
 function loadRazorpayScript(){
@@ -1298,7 +1344,6 @@ document.getElementById('modalProceed').addEventListener('click', async ()=>{
   }
 });
 
-document.getElementById('newOrderBtn').addEventListener('click', ()=> window.location.reload());
 
 recalc();
 </script>

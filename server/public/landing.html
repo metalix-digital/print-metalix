@@ -6,8 +6,9 @@
 <title id="page-title">__META_TITLE__</title>
 <meta name="description" id="meta-description" content="__META_DESCRIPTION__">
 <meta name="keywords" id="meta-keywords" content="__META_KEYWORDS__">
-<meta name="robots" content="index,follow">
+<meta name="robots" content="__META_ROBOTS__">
 <link rel="canonical" href="__CANONICAL_URL__">
+__GSC_VERIFICATION__
 <meta name="theme-color" content="#FF6600">
 <!-- Open Graph / Twitter for link previews and social crawlers -->
 <meta property="og:type" content="website">
@@ -558,6 +559,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
   }catch(e){}
 })();
 </script>
+<script src="/js/analytics.js" defer></script>
 </head>
 <body>
 
@@ -696,7 +698,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
       <div class="ticket-item"><div class="ti-num" id="ticket-bw">₹1.5</div><div class="ti-label">B/W per page</div></div>
       <div class="ticket-item"><div class="ti-num" id="ticket-color">₹6</div><div class="ti-label">Color per page</div></div>
       <div class="ticket-item"><div class="ti-num">3–4 hrs</div><div class="ti-label">Delivery time</div></div>
-      <div class="ticket-item"><div class="ti-num" id="ticket-delivery">₹30</div><div class="ti-label">Flat delivery fee</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-delivery">₹20–₹30</div><div class="ti-label">Flat delivery fee</div></div>
       <div class="ticket-item"><div class="ti-num">Free</div><div class="ti-label">Shop pickup</div></div>
     </div>
   </div>
@@ -788,7 +790,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
         <div class="pt-row"><span class="name">B/W · A4 · Single-sided</span><span class="price" id="pt-a4-bw-single">₹1.5/page</span><span class="note">Cheapest option</span></div>
         <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹2.5/sheet</span><span class="note">2 pages per sheet</span></div>
         <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
-        <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹30 flat</span><span class="note">Within city limits</span></div>
+        <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹20–₹30 flat</span><span class="note">Within city limits</span></div>
         <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
       </div>
     </div>
@@ -830,7 +832,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
         </details>
         <details class="faq-item">
           <summary>Do you deliver, or is it pickup only?</summary>
-          <p>Both. Shop pickup is free. Home delivery is a flat ₹30 within Gurugram city limits. If your PIN code is outside our delivery zone, we'll contact you to arrange pickup instead and refund the delivery charge.</p>
+          <p>Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505) and ₹30 elsewhere within Gurugram city limits — choose instant delivery (within 2 hours) or schedule a slot for later at checkout. If your PIN code is outside our delivery zone, we'll contact you to arrange pickup instead and refund the delivery charge.</p>
         </details>
         <details class="faq-item">
           <summary>What's the difference between color and black &amp; white pricing?</summary>
@@ -978,12 +980,12 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
     </div>
 
     <div class="ptab-content" id="ptab-delivery">
-      <div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹30 flat. Most orders are ready within 3–4 hours of payment.</p></div>
+      <div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Choose instant (within 2 hrs) or a scheduled slot. Most orders are ready within 3–4 hours of payment.</p></div>
       <h2>Delivery options</h2>
       <p>We offer two ways to receive your prints:</p>
       <ul>
         <li><strong>Shop pickup</strong> — Free. Collect from our store at your convenience once we notify you.</li>
-        <li><strong>Home delivery</strong> — ₹30 flat fee within the city. We dispatch your order as soon as it's printed.</li>
+        <li><strong>Home delivery</strong> — ₹20 within our local PIN code (122505), ₹30 elsewhere within the city. We dispatch your order as soon as it's printed. At checkout you can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.</li>
       </ul>
       <h2>Turnaround time</h2>
       <p>Most standard orders (under 100 pages) are ready within <strong>3–4 hours</strong> of successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
@@ -1240,8 +1242,14 @@ function applyPricing(p){
     set('pt-a4-color-single', `₹${fmtPrice(a4.color.single)}/page`);
   }
   if (p.deliveryCharge != null) {
-    set('ticket-delivery', `₹${fmtPrice(p.deliveryCharge)}`);
-    set('pt-delivery', `+₹${fmtPrice(p.deliveryCharge)} flat`);
+    // Delivery is two-tier: a cheaper rate inside the shop's own PIN code,
+    // the standard rate everywhere else in the zone — show both when they differ.
+    const local = p.deliveryLocalCharge;
+    const range = (local != null && local !== p.deliveryCharge)
+      ? `₹${fmtPrice(local)}–₹${fmtPrice(p.deliveryCharge)}`
+      : `₹${fmtPrice(p.deliveryCharge)}`;
+    set('ticket-delivery', range);
+    set('pt-delivery', `+${range} flat`);
   }
 }
 
@@ -1837,6 +1845,8 @@ function showToast(msg, icon='✓'){
     showPage('policy');
     const tab = location.hash.replace('#','');
     if(['refund','delivery','terms','privacy'].includes(tab)) showPolicyTab(tab);
+  } else if(location.pathname.replace(/\/$/, '') === '/orders'){
+    showPage('orders');
   } else if(location.hash){
     scrollToSection(location.hash.slice(1));
   }

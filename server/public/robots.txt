@@ -2,5 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /api/
+Disallow: /orders
+Disallow: /order-success/
 
 Sitemap: https://print.metalix.in/sitemap.xml

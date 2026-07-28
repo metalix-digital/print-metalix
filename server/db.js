@@ -163,6 +163,9 @@ ensureColumn('orders', 'location_name', 'TEXT')
 ensureColumn('orders', 'payment_method', "TEXT DEFAULT 'online'") // 'online' | 'cod'
 ensureColumn('orders', 'payment_mode', 'TEXT')     // set on collection: 'cash' | 'upi'
 ensureColumn('orders', 'payment_collected_at', 'INTEGER')
+ensureColumn('orders', 'handling_charge', 'INTEGER DEFAULT 0')
+ensureColumn('orders', 'delivery_timing', "TEXT DEFAULT 'instant'") // 'instant' | 'scheduled', delivery orders only
+ensureColumn('orders', 'scheduled_at', 'INTEGER') // epoch ms, set only when delivery_timing = 'scheduled'
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -182,7 +185,10 @@ const DEFAULT_PRICING = {
       { id: 'premium', label: 'Premium digital color', bw: { single: 4, double: 7 }, color: { single: 12 } }
     ]
   },
-  deliveryCharge: 30,
+  deliveryCharge: 30,          // standard/out-of-zone delivery charge
+  deliveryLocalPincode: '122505',
+  deliveryLocalCharge: 20,
+  handlingCharge: 10,
   gstPercent: 5
 }
 
@@ -318,6 +324,10 @@ const DEFAULT_SITE_SETTINGS = {
     metaTitle: 'Metalix Print — Upload · Print · Deliver',
     metaDescription: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
     keywords: 'print shop, online printing, document printing, Gurugram'
+  },
+  analytics: {
+    ga4MeasurementId: '',
+    searchConsoleVerification: ''
   }
 }
 
@@ -620,7 +630,8 @@ function createOrder(order) {
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
       location_id, location_name,
       payment_method,
-      print_cost, delivery_charge, gst_amount, total_amount,
+      delivery_timing, scheduled_at,
+      print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
       razorpay_order_id, payment_status, order_status,
       created_at, updated_at
     ) VALUES (
@@ -630,11 +641,12 @@ function createOrder(order) {
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
       @location_id, @location_name,
       @payment_method,
-      @print_cost, @delivery_charge, @gst_amount, @total_amount,
+      @delivery_timing, @scheduled_at,
+      @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount,
       @razorpay_order_id, @payment_status, @order_status,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 
