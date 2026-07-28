@@ -1651,11 +1651,40 @@ app.get('/orders', (req, res) => {
 // Blog list + article pages — the SPA-style views inside landing.html handle
 // their own routing, but the blog is plain server-rendered HTML + client JS
 // (like track.html) since each post needs its own crawlable, shareable URL.
+// Mirrors blog.html's client-side readingTime()/renderGrid() exactly, so the
+// server-rendered card markup (for crawlers and before client JS runs) never
+// visibly differs from what the client re-renders for search/category filtering.
+function blogReadingTime(excerpt) {
+  const words = String(excerpt || '').split(/\s+/).filter(Boolean).length
+  return Math.max(1, Math.round(words / 40)) + ' min read'
+}
+function renderBlogPostsSsr(posts) {
+  if (!posts.length) return '<div class="empty-state">No posts found.</div>'
+  return posts.map((p) => {
+    const dateStr = p.published_at
+      ? new Date(p.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+      : ''
+    return '<a class="post-card" href="/blog/' + encodeURIComponent(p.slug) + '">' +
+      '<div class="post-cover"><img src="' + escAttr(p.cover_image || '/images/blog-placeholder.png') + '" alt="' + escAttr(p.title) + '" loading="lazy"></div>' +
+      '<div class="post-body">' +
+        (p.category ? '<span class="post-cat">' + escAttr(p.category) + '</span>' : '') +
+        '<span class="post-title">' + escAttr(p.title) + '</span>' +
+        '<span class="post-excerpt">' + escAttr(p.excerpt || '') + '</span>' +
+        '<span class="post-meta">' + escAttr(p.author || 'Metalix Team') + ' · ' + dateStr + ' · ' + blogReadingTime(p.excerpt) + '</span>' +
+      '</div>' +
+    '</a>'
+  }).join('')
+}
+
 app.get('/blog', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   const gtm = gtmSnippets(db.getSiteSettings())
+  const posts = db.listBlogPosts({ includeUnpublished: false })
   const template = fs.readFileSync(path.join(publicDir, 'blog.html'), 'utf8')
-  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
+  res.send(template
+    .split('__GTM_HEAD__').join(gtm.head)
+    .split('__GTM_NOSCRIPT__').join(gtm.noscript)
+    .split('__BLOG_POSTS_SSR__').join(renderBlogPostsSsr(posts)))
 })
 
 // Attribute-safe (not full HTML-safe) — only used inside "..." attribute
