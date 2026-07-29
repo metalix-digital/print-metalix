@@ -4,5 +4,6 @@ Disallow: /admin
 Disallow: /api/
 Disallow: /orders
 Disallow: /order-success/
+Disallow: /track/
 
 Sitemap: https://print.metalix.in/sitemap.xml
