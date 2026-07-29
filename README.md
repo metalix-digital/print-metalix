@@ -56,6 +56,7 @@ the repo.
 | `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Email delivery (SMTP) |
+| `CONTACT_EMAIL` | Where "contact us" and "new order" business alerts are sent. **Must be a genuinely different mailbox from `GMAIL_USER`** — Gmail/Workspace delivers self-addressed mail (including aliases of the same account) to Sent only, never Inbox. Defaults to `support@metalix.in`, which equals `GMAIL_USER`, so this must be overridden in production (currently set via a systemd drop-in on the VM, not in git — see `deploy-process` notes). |
 | `SOFFICE_BIN` | Path to LibreOffice `soffice` for Word/PPT → PDF |
 
 ---
