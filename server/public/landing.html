@@ -29,11 +29,17 @@ __FAQ_JSON_LD_SCRIPT__
 <!-- Self-hosted fonts (no third-party font connection). Each file is a glyph
      subset containing only the characters this page renders, built via the
      Google Fonts text= API — see the @font-face block below and /fonts/.
-     Preload the three above-the-fold faces (hero headline + body + primary UI)
-     so they arrive without waiting for the CSS to be parsed. -->
+     Preload every face the hero actually renders (headline, nav logo + price
+     stats, body copy, the "Open now" eyebrow badge, primary CTA button) so
+     they all arrive in parallel with the HTML instead of being discovered
+     late via CSS parsing — a PageSpeed "avoid chaining critical requests"
+     audit caught Sora-700/Inter-700/IBMPlexMono-600 being fetched this way. -->
 <link rel="preload" href="/fonts/Sora-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Sora-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Inter-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Inter-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/IBMPlexMono-600.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* Self-hosted, glyph-subset web fonts (see /fonts/). display:swap shows the
    system fallback immediately, then swaps in the web font with no layout shift. */
