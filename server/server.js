@@ -249,6 +249,20 @@ app.get('/api/pricing', (req, res) => {
   res.json(db.getPricing())
 })
 
+// The order page estimates delivery charge client-side to match this
+// exactly, but "outside Gurugram" pricing needs the offline pincode-distance
+// dataset (server/geodata) that isn't worth shipping to the browser — this
+// gives the checkout page that one number, via the exact same pricing.js
+// logic the real order uses, so the estimate never disagrees with what the
+// customer is actually charged.
+app.get('/api/delivery-estimate', (req, res) => {
+  const pincode = String(req.query.pincode || '')
+  const preDeliveryTotal = Number(req.query.preDeliveryTotal) || 0
+  const config = db.getPricing()
+  const deliveryCharge = pricing.calculateDeliveryCharge(config, { deliveryMethod: 'delivery', deliveryPincode: pincode, preDeliveryTotal })
+  res.json({ deliveryCharge })
+})
+
 app.get('/api/settings', (req, res) => {
   res.json(db.getSiteSettings())
 })
@@ -1501,7 +1515,7 @@ function isShopOpen() {
 const FAQ_ITEMS = [
   { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
   { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
-  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505) and ₹30 elsewhere within Gurugram city limits. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later. If your PIN code is outside our delivery zone, we’ll contact you to arrange pickup instead and refund the delivery charge.' },
+  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505), ₹60 elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹500. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
   { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },
   { q: 'Can I track my order?', a: 'Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.' },

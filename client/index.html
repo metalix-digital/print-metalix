@@ -439,6 +439,7 @@ __GTM_NOSCRIPT__
         <div class="rline"><span>Print cost</span><b class="num-tick" id="rPrintCost">₹0</b></div>
         <div class="rline"><span>Handling charge</span><b class="num-tick" id="rHandling">₹0</b></div>
         <div class="rline"><span>Delivery charge</span><b class="num-tick" id="rDelivery">₹0</b></div>
+        <div id="rDeliveryHint" style="font-size:11px;margin:-2px 0 6px;display:none;"></div>
         <div class="rline"><span>GST</span><b class="num-tick" id="rGst">₹0</b></div>
 
         <div class="total-row">
@@ -636,6 +637,7 @@ const rCopies = document.getElementById('rCopies');
 const rPrintCost = document.getElementById('rPrintCost');
 const rHandling = document.getElementById('rHandling');
 const rDelivery = document.getElementById('rDelivery');
+const rDeliveryHint = document.getElementById('rDeliveryHint');
 const rGst = document.getElementById('rGst');
 const rTotal = document.getElementById('rTotal');
 
@@ -687,15 +689,47 @@ function resolveFileColorPages(f){
   return { colorPages, bwPages: Math.max(0, pageCount - colorPages) };
 }
 
-// Mirrors server/pricing.js's PIN-based delivery pricing: cheaper "local" rate
-// inside the shop's own PIN code, standard rate everywhere else in the zone.
-function resolveDeliveryCharge(){
+// Mirrors server/pricing.js's zone-based delivery pricing: free above a flat
+// order-value threshold, then the shop's own PIN code < rest of Gurugram <
+// distance-priced beyond that. Local/Gurugram are simple PIN-prefix checks,
+// computed instantly here — but "outside Gurugram" needs the offline
+// pincode-distance dataset that only exists server-side (server/geodata),
+// so that one case asks /api/delivery-estimate (debounced) for the exact
+// same number pricing.js would charge, rather than guessing client-side and
+// risking the checkout estimate disagreeing with what's actually charged.
+let outsideDeliveryEstimate = null; // { pincode, preDeliveryTotal, charge }
+let outsideDeliveryFetchTimer = null;
+
+function fetchOutsideDeliveryEstimate(pin, preDeliveryTotal){
+  clearTimeout(outsideDeliveryFetchTimer);
+  outsideDeliveryFetchTimer = setTimeout(() => {
+    fetch('/api/delivery-estimate?pincode=' + encodeURIComponent(pin) + '&preDeliveryTotal=' + encodeURIComponent(preDeliveryTotal))
+      .then(r => r.json())
+      .then(data => {
+        outsideDeliveryEstimate = { pincode: pin, preDeliveryTotal, charge: data.deliveryCharge };
+        recalc(); // refresh the displayed total now that the real number's in
+      })
+      .catch(() => {}); // estimate only — the order's authoritative price is always computed server-side at checkout
+  }, 400);
+}
+
+function resolveDeliveryCharge(preDeliveryTotal){
   if(state.deliveryMethod !== 'delivery' || !pricingConfig) return 0;
+  const freeThreshold = pricingConfig.freeDeliveryThreshold != null ? pricingConfig.freeDeliveryThreshold : 500;
+  if(preDeliveryTotal >= freeThreshold) return 0;
   const pin = (document.getElementById('addrPincode').value || '').trim();
   const localPin = pricingConfig.deliveryLocalPincode || '122505';
-  return pin === localPin
-    ? (pricingConfig.deliveryLocalCharge != null ? pricingConfig.deliveryLocalCharge : 20)
-    : (pricingConfig.deliveryCharge != null ? pricingConfig.deliveryCharge : 30);
+  const fallbackCharge = pricingConfig.deliveryCharge != null ? pricingConfig.deliveryCharge : 30;
+  if(!/^\d{6}$/.test(pin)) return fallbackCharge;
+  if(pin === localPin) return pricingConfig.deliveryLocalCharge != null ? pricingConfig.deliveryLocalCharge : 20;
+  if(pin.startsWith('122')) return pricingConfig.deliveryGurugramCharge != null ? pricingConfig.deliveryGurugramCharge : 60;
+  // Outside Gurugram: use the cached estimate if it's still for this exact
+  // pincode/total, otherwise show the flat fallback and kick off a fresh fetch.
+  if(outsideDeliveryEstimate && outsideDeliveryEstimate.pincode === pin && outsideDeliveryEstimate.preDeliveryTotal === preDeliveryTotal){
+    return outsideDeliveryEstimate.charge;
+  }
+  fetchOutsideDeliveryEstimate(pin, preDeliveryTotal);
+  return fallbackCharge;
 }
 
 function calcEstimate(){
@@ -712,11 +746,12 @@ function calcEstimate(){
   });
   printCost = Math.round(printCost);
   const handlingCharge = pricingConfig.handlingCharge || 0;
-  const deliveryCharge = resolveDeliveryCharge();
+  const preDeliveryTotal = printCost + handlingCharge;
+  const deliveryCharge = resolveDeliveryCharge(preDeliveryTotal);
   const subtotal = printCost + handlingCharge + deliveryCharge;
   const gstAmount = Math.round(subtotal * (pricingConfig.gstPercent || 0) / 100);
   const totalAmount = subtotal + gstAmount;
-  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, gstAmount, totalAmount };
+  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, preDeliveryTotal, gstAmount, totalAmount };
 }
 
 function orientationSummaryLabel(){
@@ -743,6 +778,27 @@ function paperTypeSummaryLabel(){
   return paperTypeLabel([...set][0]);
 }
 
+// Nudges the customer toward the free-delivery threshold while they're
+// still under it, and confirms it once they've crossed it — only ever shown
+// for actual delivery orders (pickup has no delivery charge to begin with).
+function updateDeliveryHint(est){
+  if(state.deliveryMethod !== 'delivery' || !pricingConfig){
+    rDeliveryHint.style.display = 'none';
+    return;
+  }
+  const freeThreshold = pricingConfig.freeDeliveryThreshold != null ? pricingConfig.freeDeliveryThreshold : 500;
+  if(est.deliveryCharge === 0 && est.preDeliveryTotal >= freeThreshold){
+    rDeliveryHint.textContent = '🎉 Free delivery on this order';
+    rDeliveryHint.style.color = 'var(--green)';
+    rDeliveryHint.style.display = 'block';
+  } else {
+    const remaining = freeThreshold - est.preDeliveryTotal;
+    rDeliveryHint.textContent = 'Add ₹' + remaining + ' more to get free delivery';
+    rDeliveryHint.style.color = 'var(--ink-soft)';
+    rDeliveryHint.style.display = 'block';
+  }
+}
+
 function recalc(){
   const est = calcEstimate();
   const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
@@ -759,6 +815,7 @@ function recalc(){
   rPrintCost.textContent = '₹' + est.printCost;
   rHandling.textContent = '₹' + est.handlingCharge;
   rDelivery.textContent = '₹' + est.deliveryCharge;
+  updateDeliveryHint(est);
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
   [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rGst, rTotal].forEach(flash);
