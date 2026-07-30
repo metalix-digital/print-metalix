@@ -1,8 +1,9 @@
-// No SMS provider is configured yet (see README) — this is the integration
-// point: swap in a real provider (e.g. MSG91/Twilio) without touching call
-// sites elsewhere in the server.
+// Real implementation lives in sms.js (Twilio) — same fire-and-forget
+// pattern as the email path below, so a failed/unconfigured SMS send can
+// never break order creation.
 function sendOrderConfirmationSms(order) {
-  console.log(`[notify] SMS stub -> ${order.customer_mobile}: Order ${order.id} confirmed, total ₹${order.total_amount}, status: ${order.order_status}`)
+  const sms = require('./sms')
+  sms.sendOrderConfirmationSms(order).catch((err) => console.error(`[sms] order confirmation failed for ${order.id}:`, err.message))
 }
 
 // Real implementation lives in mailer.js (same Gmail SMTP as every other

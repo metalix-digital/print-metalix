@@ -23,6 +23,7 @@
     "nodemailer": "^9.0.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.11.174",
-    "razorpay": "^2.9.6"
+    "razorpay": "^2.9.6",
+    "twilio": "^6.0.2"
   }
 }

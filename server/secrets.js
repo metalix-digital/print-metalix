@@ -11,7 +11,12 @@ async function loadSecretsIntoEnv() {
     ['GOOGLE_CLIENT_ID', 'google-client-id'],
     ['GOOGLE_CLIENT_SECRET', 'google-client-secret'],
     ['GMAIL_USER', 'gmail-user'],
-    ['GMAIL_APP_PASSWORD', 'gmail-app-password']
+    ['GMAIL_APP_PASSWORD', 'gmail-app-password'],
+    ['TWILIO_ACCOUNT_SID', 'twilio-account-sid'],
+    ['TWILIO_AUTH_TOKEN', 'twilio-auth-token'],
+    ['TWILIO_PHONE_NUMBER', 'twilio-phone-number'],
+    ['TWILIO_MESSAGING_SERVICE_SID', 'twilio-messaging-service-sid'],
+    ['TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID', 'twilio-order-confirmation-template-sid']
   ].filter(([envVar]) => !process.env[envVar])
 
   if (!needed.length) return
