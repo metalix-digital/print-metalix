@@ -1904,10 +1904,14 @@ if (fs.existsSync(clientDist)) {
       if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache')
     },
   }))
+  let clientIndexHtml = null
   app.get('*', (req, res) => {
     if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
     const gtm = gtmSnippets(db.getSiteSettings())
-    const template = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8')
+    // Same reasoning as readPublicTemplate() above: this only changes on
+    // deploy (which restarts the process), so read it from disk once.
+    if (!clientIndexHtml) clientIndexHtml = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8')
+    const template = clientIndexHtml
     res.set('Cache-Control', 'no-cache')
     res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
   })
