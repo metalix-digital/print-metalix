@@ -102,6 +102,12 @@ h1{font-family:'Sora',sans-serif;font-size:clamp(28px,5vw,40px);font-weight:800;
 .share-btn{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:var(--white);color:var(--ink2);display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;font-size:14px;transition:.15s;}
 .share-btn:hover{border-color:var(--orange);color:var(--orange-d);}
 
+.related-posts{margin-top:36px;}
+.related-posts h3{font-family:'Sora',sans-serif;font-size:16px;font-weight:700;margin-bottom:12px;}
+.related-grid{display:flex;flex-direction:column;gap:8px;}
+.related-card{display:block;border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;transition:.15s;}
+.related-card:hover{border-color:var(--orange);color:var(--orange-d);}
+
 .cta-card{margin-top:44px;background:linear-gradient(135deg,var(--orange),var(--orange-d));border-radius:18px;padding:32px;text-align:center;color:#fff;}
 .cta-card h3{font-family:'Sora',sans-serif;font-size:21px;font-weight:700;margin-bottom:8px;}
 .cta-card p{font-size:14px;opacity:.92;margin-bottom:18px;}
@@ -144,9 +150,7 @@ __GTM_NOSCRIPT__
 
 <div class="wrap" id="content">
   <a class="back-link" href="/blog">← Back to blog</a>
-  <div id="postContent">
-    <div class="not-found">Loading…</div>
-  </div>
+  <div id="postContent">__POST_CONTENT_SSR__</div>
 </div>
 
 <footer>
@@ -168,72 +172,14 @@ themeToggle.addEventListener('click', () => {
   syncThemeIcon();
 });
 
-function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function formatDate(ms){ return ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
-function readingTime(text){
-  const words = String(text || '').split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words / 200)) + ' min read';
-}
-function initials(name){
-  return String(name || 'M').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-}
-
-function shareUrl(kind, url, title){
-  const u = encodeURIComponent(url), t = encodeURIComponent(title);
-  if (kind === 'x') return 'https://twitter.com/intent/tweet?url=' + u + '&text=' + t;
-  if (kind === 'facebook') return 'https://www.facebook.com/sharer/sharer.php?u=' + u;
-  if (kind === 'linkedin') return 'https://www.linkedin.com/sharing/share-offsite/?url=' + u;
-  if (kind === 'whatsapp') return 'https://wa.me/?text=' + t + '%20' + u;
-  return '#';
-}
-
-// Rendered twice — right under the title (visible without scrolling past a
-// multi-minute article) and again at the end — so copyLinkBtn needs a unique
-// id per instance; the click handler below wires up every instance by class.
-function shareRowHtml(url, title, idSuffix){
-  return '<div class="share-row"><span class="lbl">Share:</span>' +
-    '<a class="share-btn" href="' + shareUrl('x', url, title) + '" target="_blank" rel="noopener" title="Share on X">𝕏</a>' +
-    '<a class="share-btn" href="' + shareUrl('facebook', url, title) + '" target="_blank" rel="noopener" title="Share on Facebook">f</a>' +
-    '<a class="share-btn" href="' + shareUrl('linkedin', url, title) + '" target="_blank" rel="noopener" title="Share on LinkedIn">in</a>' +
-    '<a class="share-btn" href="' + shareUrl('whatsapp', url, title) + '" target="_blank" rel="noopener" title="Share on WhatsApp">💬</a>' +
-    '<a class="share-btn" href="mailto:?subject=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(url) + '" title="Share by email">✉️</a>' +
-    '<button class="share-btn copy-link-btn" id="copyLinkBtn-' + idSuffix + '" type="button" title="Copy link">🔗</button>' +
-  '</div>';
-}
-
-const slug = window.location.pathname.split('/').filter(Boolean).pop();
-
-fetch('/api/blog/' + encodeURIComponent(slug)).then(async (r) => {
-  if (!r.ok) throw new Error('not_found');
-  return r.json();
-}).then(({ post, html }) => {
-  const url = window.location.href;
-  document.getElementById('postContent').innerHTML =
-    (post.category ? '<span class="post-cat">' + escHtml(post.category) + '</span>' : '') +
-    '<h1>' + escHtml(post.title) + '</h1>' +
-    '<div class="post-meta">' +
-      '<span>' + escHtml(post.author || 'Metalix Team') + '</span><span class="dot"></span>' +
-      '<span>' + formatDate(post.publishedAt) + '</span><span class="dot"></span>' +
-      '<span>' + readingTime(html.replace(/<[^>]+>/g, ' ')) + '</span>' +
-    '</div>' +
-    shareRowHtml(url, post.title, 'top') +
-    '<img class="cover-img" src="' + escHtml(post.coverImage || '/images/blog-placeholder.png') + '" alt="' + escHtml(post.title) + '">' +
-    '<div class="article">' + html + '</div>' +
-    (post.tags && post.tags.length ? ('<div class="tags-row">' + post.tags.map((t) => '<span class="tag-chip">#' + escHtml(t) + '</span>').join('') + '</div>') : '') +
-    (post.authorBio ? (
-      '<div class="author-box"><div class="av">' + escHtml(initials(post.author)) + '</div>' +
-      '<div><div class="name">' + escHtml(post.author || 'Metalix Team') + '</div><div class="bio">' + escHtml(post.authorBio) + '</div></div></div>'
-    ) : '') +
-    shareRowHtml(url, post.title, 'bottom') +
-    '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — usually within 3–4 hours.</p><a href="/order">Start your order →</a></div>';
-
-  document.querySelectorAll('.copy-link-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      navigator.clipboard.writeText(url).then(() => { e.target.textContent = '✓'; setTimeout(() => { e.target.textContent = '🔗'; }, 1500); });
-    });
+// The article itself is server-rendered (see /blog/:slug in server.js) so it's
+// there for crawlers with no JS involved — this just wires up the one bit of
+// behavior that genuinely needs the client: copying the share link.
+document.querySelectorAll('.copy-link-btn').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => { e.target.textContent = '✓'; setTimeout(() => { e.target.textContent = '🔗'; }, 1500); });
   });
-}).catch(() => {
-  document.getElementById('postContent').innerHTML = '<div class="not-found">We couldn\'t find that post. <a href="/blog">Back to blog</a></div>';
 });
 </script>
 

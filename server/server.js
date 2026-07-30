@@ -1443,6 +1443,21 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
 // every static image asset lives under this one folder/mount rather than a
 // one-off route per file, so adding a new image needs no server.js change.
 const publicDir = path.join(__dirname, 'public')
+
+// These HTML templates (landing/blog/blog-post/track/order-success) are read
+// and string-substituted on every request. They only change on deploy (which
+// restarts the process), so read each one from disk once and cache it here
+// instead of paying a synchronous fs read on every single page view.
+const templateCache = new Map()
+function readPublicTemplate(name) {
+  let cached = templateCache.get(name)
+  if (!cached) {
+    cached = fs.readFileSync(path.join(publicDir, name), 'utf8')
+    templateCache.set(name, cached)
+  }
+  return cached
+}
+
 if (fs.existsSync(publicDir)) {
   // These are static brand assets that effectively never change, so let
   // browsers cache them for a year instead of re-fetching on every visit
@@ -1610,7 +1625,7 @@ function renderLanding(route) {
   const settings = db.getSiteSettings()
   const gscCode = (settings.analytics || {}).searchConsoleVerification || ''
   const gtm = gtmSnippets(settings)
-  const template = fs.readFileSync(path.join(publicDir, 'landing.html'), 'utf8')
+  const template = readPublicTemplate('landing.html')
   return template
     .split('__META_TITLE__').join(escAttr(meta.title))
     .split('__META_DESCRIPTION__').join(escAttr(meta.description))
@@ -1680,7 +1695,7 @@ app.get('/blog', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   const gtm = gtmSnippets(db.getSiteSettings())
   const posts = db.listBlogPosts({ includeUnpublished: false })
-  const template = fs.readFileSync(path.join(publicDir, 'blog.html'), 'utf8')
+  const template = readPublicTemplate('blog.html')
   res.send(template
     .split('__GTM_HEAD__').join(gtm.head)
     .split('__GTM_NOSCRIPT__').join(gtm.noscript)
@@ -1694,14 +1709,75 @@ function escAttr(s) {
 }
 
 // Server-renders the SEO-critical <head> tags (title, description, OG,
-// canonical, JSON-LD) into the static template before sending it, so
-// crawlers and social-media unfurlers see the real per-post metadata even
-// without executing JS. The visible article body is still filled in
-// client-side (see blog-post.html) — same pattern as the rest of the site.
+// canonical, JSON-LD) *and* the full article body into the static template
+// before sending it, so crawlers see real content and a real <h1> with no JS
+// execution required — a crawler that doesn't render JS (Ahrefs by default)
+// previously saw an empty article and flagged "H1 missing"/"low word count"
+// on every post. blog-post.html's inline <script> now only wires up the
+// copy-link button; it no longer fetches or injects the content itself.
+function articleReadingTime(text) {
+  const words = String(text || '').split(/\s+/).filter(Boolean).length
+  return Math.max(1, Math.round(words / 200)) + ' min read'
+}
+function postInitials(name) {
+  return String(name || 'M').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+}
+function shareUrl(kind, url, title) {
+  const u = encodeURIComponent(url), t = encodeURIComponent(title)
+  if (kind === 'x') return 'https://twitter.com/intent/tweet?url=' + u + '&text=' + t
+  if (kind === 'facebook') return 'https://www.facebook.com/sharer/sharer.php?u=' + u
+  if (kind === 'linkedin') return 'https://www.linkedin.com/sharing/share-offsite/?url=' + u
+  if (kind === 'whatsapp') return 'https://wa.me/?text=' + t + '%20' + u
+  return '#'
+}
+function shareRowHtml(url, title, idSuffix) {
+  return '<div class="share-row"><span class="lbl">Share:</span>' +
+    '<a class="share-btn" href="' + shareUrl('x', url, title) + '" target="_blank" rel="noopener" title="Share on X">𝕏</a>' +
+    '<a class="share-btn" href="' + shareUrl('facebook', url, title) + '" target="_blank" rel="noopener" title="Share on Facebook">f</a>' +
+    '<a class="share-btn" href="' + shareUrl('linkedin', url, title) + '" target="_blank" rel="noopener" title="Share on LinkedIn">in</a>' +
+    '<a class="share-btn" href="' + shareUrl('whatsapp', url, title) + '" target="_blank" rel="noopener" title="Share on WhatsApp">💬</a>' +
+    '<a class="share-btn" href="mailto:?subject=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(url) + '" title="Share by email">✉️</a>' +
+    '<button class="share-btn copy-link-btn" type="button" title="Copy link">🔗</button>' +
+  '</div>'
+}
+// Every published post used to be linked from exactly one place — its card
+// on /blog — which Ahrefs flagged as "only one dofollow incoming internal
+// link" on both posts. Cross-linking a few other posts from the bottom of
+// each article gives every post at least one more inbound internal link.
+function renderRelatedPostsSsr(otherPosts) {
+  if (!otherPosts.length) return ''
+  return '<div class="related-posts"><h3>More from the blog</h3><div class="related-grid">' +
+    otherPosts.map((p) => '<a class="related-card" href="/blog/' + encodeURIComponent(p.slug) + '">' + escAttr(p.title) + '</a>').join('') +
+    '</div></div>'
+}
+function renderBlogPostContentSsr(post, articleHtml, canonicalUrl, otherPosts) {
+  const dateStr = post.published_at
+    ? new Date(post.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : ''
+  return (post.category ? '<span class="post-cat">' + escAttr(post.category) + '</span>' : '') +
+    '<h1>' + escAttr(post.title) + '</h1>' +
+    '<div class="post-meta">' +
+      '<span>' + escAttr(post.author || 'Metalix Team') + '</span><span class="dot"></span>' +
+      '<span>' + dateStr + '</span><span class="dot"></span>' +
+      '<span>' + articleReadingTime(articleHtml.replace(/<[^>]+>/g, ' ')) + '</span>' +
+    '</div>' +
+    shareRowHtml(canonicalUrl, post.title, 'top') +
+    '<img class="cover-img" src="' + escAttr(post.cover_image || '/images/blog-placeholder.png') + '" alt="' + escAttr(post.title) + '">' +
+    '<div class="article">' + articleHtml + '</div>' +
+    (post.tags && post.tags.length ? ('<div class="tags-row">' + post.tags.map((t) => '<span class="tag-chip">#' + escAttr(t) + '</span>').join('') + '</div>') : '') +
+    (post.author_bio ? (
+      '<div class="author-box"><div class="av">' + escAttr(postInitials(post.author)) + '</div>' +
+      '<div><div class="name">' + escAttr(post.author || 'Metalix Team') + '</div><div class="bio">' + escAttr(post.author_bio) + '</div></div></div>'
+    ) : '') +
+    shareRowHtml(canonicalUrl, post.title, 'bottom') +
+    renderRelatedPostsSsr(otherPosts) +
+    '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — usually within 3–4 hours.</p><a href="/order">Start your order →</a></div>'
+}
+
 app.get('/blog/:slug', (req, res) => {
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
   const post = db.getBlogPostBySlug(req.params.slug)
-  const template = fs.readFileSync(path.join(publicDir, 'blog-post.html'), 'utf8')
+  const template = readPublicTemplate('blog-post.html')
   const canonical = `https://print.metalix.in/blog/${req.params.slug}`
   const gtm = gtmSnippets(db.getSiteSettings())
 
@@ -1715,6 +1791,7 @@ app.get('/blog/:slug', (req, res) => {
       .split('__JSON_LD__').join('null')
       .split('__GTM_HEAD__').join(gtm.head)
       .split('__GTM_NOSCRIPT__').join(gtm.noscript)
+      .split('__POST_CONTENT_SSR__').join('<div class="not-found">We couldn\'t find that post. <a href="/blog">Back to blog</a></div>')
     return res.status(404).send(html)
   }
 
@@ -1734,6 +1811,9 @@ app.get('/blog/:slug', (req, res) => {
     dateModified: post.updated_at ? new Date(post.updated_at).toISOString() : undefined,
     mainEntityOfPage: canonical
   })
+  const articleHtml = marked.parse(post.body || '')
+  const otherPosts = db.listBlogPosts({ includeUnpublished: false }).filter((p) => p.slug !== post.slug).slice(0, 3)
+  const postContent = renderBlogPostContentSsr(post, articleHtml, canonical, otherPosts)
 
   const html = template
     .split('__META_TITLE__').join(escAttr(title))
@@ -1744,6 +1824,7 @@ app.get('/blog/:slug', (req, res) => {
     .split('__JSON_LD__').join(jsonLd)
     .split('__GTM_HEAD__').join(gtm.head)
     .split('__GTM_NOSCRIPT__').join(gtm.noscript)
+    .split('__POST_CONTENT_SSR__').join(postContent)
   res.send(html)
 })
 
@@ -1796,7 +1877,7 @@ app.get('/jobsheet.html', (req, res) => {
 // Public scan-to-track page linked from the job sheet's QR code.
 app.get('/track/:id', (req, res) => {
   const gtm = gtmSnippets(db.getSiteSettings())
-  const template = fs.readFileSync(path.join(publicDir, 'track.html'), 'utf8')
+  const template = readPublicTemplate('track.html')
   res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
@@ -1805,7 +1886,7 @@ app.get('/track/:id', (req, res) => {
 // page load to fire the 'purchase' conversion event from.
 app.get('/order-success/:id', (req, res) => {
   const gtm = gtmSnippets(db.getSiteSettings())
-  const template = fs.readFileSync(path.join(publicDir, 'order-success.html'), 'utf8')
+  const template = readPublicTemplate('order-success.html')
   res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
