@@ -324,9 +324,13 @@ function orderConfirmationTemplate(order, trackUrl) {
   const isCod = order.payment_method === 'cod'
   const isDelivery = order.delivery_method === 'delivery'
 
+  // Delivery charge is 0 both for a free-delivery-threshold order and for an
+  // unset/legacy charge — only call it out as "Free delivery" once we know
+  // it's actually a delivery order, so it never appears for pickup.
+  const isFreeDelivery = isDelivery && Number(order.delivery_charge) === 0
   const fulfilmentLines = isDelivery
     ? [
-        'Home delivery',
+        isFreeDelivery ? 'Home delivery — 🎉 free delivery' : 'Home delivery',
         [order.delivery_address, order.delivery_city, order.delivery_state, order.delivery_pincode].filter(Boolean).join(', '),
         order.delivery_timing === 'scheduled'
           ? `Scheduled for ${formatScheduledTime(order.scheduled_at)}`
