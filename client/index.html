@@ -713,6 +713,8 @@ function fetchOutsideDeliveryEstimate(pin, preDeliveryTotal){
   }, 400);
 }
 
+const DELIVERY_CHARGE_CEILING = 150; // mirrors the server-side cap in pricing.js — delivery must never show/charge more than this
+
 function resolveDeliveryCharge(preDeliveryTotal){
   if(state.deliveryMethod !== 'delivery' || !pricingConfig) return 0;
   const freeThreshold = pricingConfig.freeDeliveryThreshold != null ? pricingConfig.freeDeliveryThreshold : 500;
@@ -720,16 +722,16 @@ function resolveDeliveryCharge(preDeliveryTotal){
   const pin = (document.getElementById('addrPincode').value || '').trim();
   const localPin = pricingConfig.deliveryLocalPincode || '122505';
   const fallbackCharge = pricingConfig.deliveryCharge != null ? pricingConfig.deliveryCharge : 30;
-  if(!/^\d{6}$/.test(pin)) return fallbackCharge;
-  if(pin === localPin) return pricingConfig.deliveryLocalCharge != null ? pricingConfig.deliveryLocalCharge : 20;
-  if(pin.startsWith('122')) return pricingConfig.deliveryGurugramCharge != null ? pricingConfig.deliveryGurugramCharge : 60;
+  if(!/^\d{6}$/.test(pin)) return Math.min(fallbackCharge, DELIVERY_CHARGE_CEILING);
+  if(pin === localPin) return Math.min(pricingConfig.deliveryLocalCharge != null ? pricingConfig.deliveryLocalCharge : 20, DELIVERY_CHARGE_CEILING);
+  if(pin.startsWith('122')) return Math.min(pricingConfig.deliveryGurugramCharge != null ? pricingConfig.deliveryGurugramCharge : 60, DELIVERY_CHARGE_CEILING);
   // Outside Gurugram: use the cached estimate if it's still for this exact
   // pincode/total, otherwise show the flat fallback and kick off a fresh fetch.
   if(outsideDeliveryEstimate && outsideDeliveryEstimate.pincode === pin && outsideDeliveryEstimate.preDeliveryTotal === preDeliveryTotal){
-    return outsideDeliveryEstimate.charge;
+    return Math.min(outsideDeliveryEstimate.charge, DELIVERY_CHARGE_CEILING);
   }
   fetchOutsideDeliveryEstimate(pin, preDeliveryTotal);
-  return fallbackCharge;
+  return Math.min(fallbackCharge, DELIVERY_CHARGE_CEILING);
 }
 
 function calcEstimate(){

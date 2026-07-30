@@ -9,20 +9,27 @@ const shipping = require('./shipping')
 // used inside calculate() below) so /api/delivery-estimate can give the
 // checkout page's client-side estimate the exact same distance-based number
 // for the one case it can't compute itself without the pincode dataset.
+// Delivery must never cost more than this, no matter how far the pincode is
+// or how the per-km/flat rates are configured.
+const DELIVERY_CHARGE_CEILING = 150
+
 function calculateDeliveryCharge(config, { deliveryMethod, deliveryPincode, preDeliveryTotal }) {
   if (deliveryMethod !== 'delivery') return 0
   const freeThreshold = config.freeDeliveryThreshold != null ? config.freeDeliveryThreshold : 500
   if (preDeliveryTotal >= freeThreshold) return 0
   const zone = shipping.classifyZone(deliveryPincode, config.deliveryLocalPincode)
   const fallbackCharge = config.deliveryCharge != null ? config.deliveryCharge : 30
-  if (zone === 'local') return config.deliveryLocalCharge != null ? config.deliveryLocalCharge : 20
-  if (zone === 'gurugram') return config.deliveryGurugramCharge != null ? config.deliveryGurugramCharge : 60
-  if (zone === 'outside') {
+  let charge
+  if (zone === 'local') charge = config.deliveryLocalCharge != null ? config.deliveryLocalCharge : 20
+  else if (zone === 'gurugram') charge = config.deliveryGurugramCharge != null ? config.deliveryGurugramCharge : 60
+  else if (zone === 'outside') {
     const km = shipping.distanceKm(config.deliveryLocalPincode || '122505', deliveryPincode)
     const perKm = config.deliveryPerKmRate != null ? config.deliveryPerKmRate : 5
-    return km != null ? Math.round(km * perKm) : fallbackCharge
+    charge = km != null ? Math.round(km * perKm) : fallbackCharge
+  } else {
+    charge = fallbackCharge
   }
-  return fallbackCharge
+  return Math.min(charge, DELIVERY_CHARGE_CEILING)
 }
 
 // Pure rate math — color/B&W page counts, copy count, paper type, and
