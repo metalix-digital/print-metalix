@@ -830,6 +830,64 @@ document.querySelectorAll('input[name=delivery]').forEach(r=> r.addEventListener
 }));
 document.getElementById('addrPincode').addEventListener('input', recalc);
 
+// Google Places Autocomplete on the address line — fills city/state/PIN so
+// customers don't have to type them, and re-runs recalc() since pricing
+// depends on the PIN. Fails silently if no key is configured (checkout still
+// works with plain manual entry) or if Google's script fails to load.
+function fillAddressFromPlace(place){
+  const get = (type, useShort) => {
+    const c = (place.address_components || []).find(c => c.types[0] === type);
+    return c ? (useShort ? c.short_name : c.long_name) : '';
+  };
+  const streetNumber = get('street_number');
+  const route = get('route');
+  const line = [streetNumber, route].filter(Boolean).join(' ');
+  if(line) document.getElementById('addrLine').value = line;
+  const city = get('locality') || get('postal_town') || get('administrative_area_level_2');
+  if(city) document.getElementById('addrCity').value = city;
+  const state = get('administrative_area_level_1');
+  if(state) document.getElementById('addrState').value = state;
+  const pin = get('postal_code', true);
+  if(pin) document.getElementById('addrPincode').value = pin;
+  setFieldError('fieldAddress', false);
+  setFieldError('fieldCity', false);
+  setFieldError('fieldState', false);
+  setFieldError('fieldPincode', false);
+  recalc();
+}
+
+// If the Maps API errors out for any reason (quota, billing, misconfigured
+// key), Google's widget disables the underlying input and shows "Oops!
+// Something went wrong." — that would silently break the address field
+// instead of just losing autofill, so undo it and fall back to plain entry.
+window.gm_authFailure = function(){
+  const input = document.getElementById('addrLine');
+  input.disabled = false;
+  input.classList.remove('gm-err-autocomplete');
+  input.style.backgroundImage = '';
+  input.placeholder = 'House no, street, locality';
+};
+
+window.__initPlacesAutocomplete = function(){
+  const autocomplete = new google.maps.places.Autocomplete(document.getElementById('addrLine'), {
+    fields: ['address_components'],
+    types: ['address'],
+    componentRestrictions: { country: 'in' }
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if(place.address_components) fillAddressFromPlace(place);
+  });
+};
+
+fetch('/api/maps-config').then(r => r.json()).then(cfg => {
+  if(!cfg.googleMapsApiKey) return;
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cfg.googleMapsApiKey) + '&libraries=places&loading=async&callback=__initPlacesAutocomplete';
+  document.head.appendChild(script);
+}).catch(() => {});
+
 const scheduledFields = document.getElementById('scheduledFields');
 document.querySelectorAll('input[name=deliveryTiming]').forEach(r=> r.addEventListener('change', e=>{
   state.deliveryTiming = e.target.value;

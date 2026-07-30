@@ -639,6 +639,12 @@ app.get('/api/auth/config', (req, res) => {
   res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || '' })
 })
 
+// Public — the Maps key is HTTP-referrer-restricted to print.metalix.in, so it's
+// safe to hand to the browser; the checkout page needs it for address autocomplete.
+app.get('/api/maps-config', (req, res) => {
+  res.json({ googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '' })
+})
+
 const { OAuth2Client } = require('google-auth-library')
 
 app.post('/api/auth/google', express.json(), async (req, res) => {
