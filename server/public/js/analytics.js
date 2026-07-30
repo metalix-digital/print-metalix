@@ -34,8 +34,11 @@
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = label;
+      // Dark ink on orange, not white — matches the contrast ratio the rest of
+      // the site already uses for orange buttons (e.g. .btn-hero-primary);
+      // white-on-#FF6600 is ~2.9:1, which fails WCAG AA's 4.5:1 minimum.
       btn.style.cssText = 'font-family:inherit;font-size:13px;font-weight:700;border-radius:8px;padding:9px 18px;cursor:pointer;border:1.5px solid ' +
-        (primary ? 'transparent' : '#454A57') + ';background:' + (primary ? '#FF6600' : 'transparent') + ';color:' + (primary ? '#fff' : '#EDEEF2') + ';';
+        (primary ? 'transparent' : '#454A57') + ';background:' + (primary ? '#FF6600' : 'transparent') + ';color:' + (primary ? '#1C1917' : '#EDEEF2') + ';';
       btn.addEventListener('focus', function () { btn.style.outline = '2px solid #FF6600'; btn.style.outlineOffset = '2px'; });
       btn.addEventListener('blur', function () { btn.style.outline = 'none'; });
       return btn;
