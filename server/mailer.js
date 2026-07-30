@@ -298,4 +298,82 @@ async function sendNewOrderAlertEmail(order) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to, subject: `New order ${order.id} — ₹${order.total_amount}`, html, text })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail }
+// ---- Order confirmation (sent once, to the customer, right at placement) --
+// The only customer-facing email that fires immediately when an order is
+// placed (COD or a successful online payment) — everything else
+// (orderStatusTemplate above) only fires later, on a status change an admin
+// triggers. Must therefore be the one place delivery timing/address actually
+// gets communicated for a scheduled delivery.
+
+function formatScheduledTime(ms) {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const day = d.getDate()
+  const month = d.toLocaleString('en-US', { month: 'short' })
+  let h = d.getHours()
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12
+  if (h === 0) h = 12
+  return `${day} ${month} · ${h}:${m} ${ampm}`
+}
+
+function orderConfirmationTemplate(order, trackUrl) {
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const name = order.customer_name ? String(order.customer_name).split(' ')[0] : 'there'
+  const isCod = order.payment_method === 'cod'
+  const isDelivery = order.delivery_method === 'delivery'
+
+  const fulfilmentLines = isDelivery
+    ? [
+        'Home delivery',
+        [order.delivery_address, order.delivery_city, order.delivery_state, order.delivery_pincode].filter(Boolean).join(', '),
+        order.delivery_timing === 'scheduled'
+          ? `Scheduled for ${formatScheduledTime(order.scheduled_at)}`
+          : 'Instant delivery (within 2 hrs)'
+      ].filter(Boolean)
+    : ['Shop pickup', order.location_name ? `From ${order.location_name}` : null].filter(Boolean)
+
+  const row = (label, valueHtml) => `<tr><td style="padding:10px 16px;border-bottom:1px solid ${BRAND.line};font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">${label}<br><span style="font-size:14px;color:${BRAND.ink};font-weight:700;">${valueHtml}</span></td></tr>`
+
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:34px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 style="margin:0 0 10px 0;font-size:23px;line-height:1.25;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">Order confirmed!</h1>
+      <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${esc(name)}, we've got your order — it's queued for printing now.</p>
+    </td></tr>
+    <tr><td style="padding:4px 40px 8px 40px;">${button('Track your order', trackUrl, BRAND.green)}</td></tr>
+    <tr><td style="padding:18px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;">
+        ${row('Order ID', esc(order.id))}
+        ${row('Total', `₹${order.total_amount}` + (isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'))}
+        ${row('Fulfilment', fulfilmentLines.map(esc).join('<br>'))}
+      </table>
+    </td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
+  const html = renderEmailShell({ preheader: `Order ${order.id} confirmed — ₹${order.total_amount}`, accent: BRAND.green, cardHtml, footerHtml })
+  const text = [
+    'Order confirmed!', '',
+    `Hi ${name}, we've got your order — it's queued for printing now.`, '',
+    `Order ID: ${order.id}`,
+    `Total: ₹${order.total_amount}${isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'}`,
+    `Fulfilment: ${fulfilmentLines.join(' · ')}`,
+    `\nTrack your order: ${trackUrl}`,
+    "\nThis is an automated message from Metalix Print — please don't reply."
+  ].join('\n')
+  return { html, text, subject: `Order confirmed — ${order.id}` }
+}
+
+async function sendOrderConfirmationEmail(order) {
+  if (!order || !order.customer_email) return
+  const trackUrl = `https://print.metalix.in/track/${order.id}`
+  const { html, text, subject } = orderConfirmationTemplate(order, trackUrl)
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${order.customer_email}: ${subject}`)
+    return
+  }
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail }

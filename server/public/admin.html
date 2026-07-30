@@ -1877,8 +1877,11 @@ async function loadPricing(){
       // a $0 local delivery charge the moment someone hits Save without noticing.
       rateFieldHtml('Handling charge (₹ flat, every order)', 'handlingCharge', p.handlingCharge != null ? p.handlingCharge : 10) +
       textFieldHtml('Local delivery PIN code', 'deliveryLocalPincode', p.deliveryLocalPincode || '122505') +
-      rateFieldHtml('Local delivery charge (₹ flat)', 'deliveryLocalCharge', p.deliveryLocalCharge != null ? p.deliveryLocalCharge : 20) +
-      rateFieldHtml('Standard delivery charge (₹ flat, outside local PIN)', 'deliveryCharge', p.deliveryCharge != null ? p.deliveryCharge : 30) +
+      rateFieldHtml('Local delivery charge (₹ flat, this PIN code only)', 'deliveryLocalCharge', p.deliveryLocalCharge != null ? p.deliveryLocalCharge : 20) +
+      rateFieldHtml('Gurugram delivery charge (₹ flat, rest of 122xxx)', 'deliveryGurugramCharge', p.deliveryGurugramCharge != null ? p.deliveryGurugramCharge : 60) +
+      rateFieldHtml('Outside Gurugram (₹ per km, straight-line)', 'deliveryPerKmRate', p.deliveryPerKmRate != null ? p.deliveryPerKmRate : 5) +
+      rateFieldHtml('Fallback delivery charge (₹ flat, unrecognized PIN code)', 'deliveryCharge', p.deliveryCharge != null ? p.deliveryCharge : 30) +
+      rateFieldHtml('Free delivery above (₹ order value)', 'freeDeliveryThreshold', p.freeDeliveryThreshold != null ? p.freeDeliveryThreshold : 500) +
       rateFieldHtml('GST (%)', 'gstPercent', p.gstPercent) +
     '</div>' +
     '<button class="save-btn" id="savePricingBtn">Save pricing</button>' +
@@ -1927,7 +1930,10 @@ async function savePricing(){
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
     deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
+    deliveryGurugramCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryGurugramCharge"]')),
+    deliveryPerKmRate: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryPerKmRate"]')),
     deliveryCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryCharge"]')),
+    freeDeliveryThreshold: numOrZero(document.querySelector('#pricingForm input[data-key="freeDeliveryThreshold"]')),
     gstPercent: numOrZero(document.querySelector('#pricingForm input[data-key="gstPercent"]'))
   };
   btn.disabled = true;

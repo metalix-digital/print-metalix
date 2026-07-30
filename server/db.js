@@ -185,9 +185,12 @@ const DEFAULT_PRICING = {
       { id: 'premium', label: 'Premium digital color', bw: { single: 4, double: 7 }, color: { single: 12 } }
     ]
   },
-  deliveryCharge: 30,          // standard/out-of-zone delivery charge
+  deliveryCharge: 30,          // fallback rate: unrecognized/missing PIN code
   deliveryLocalPincode: '122505',
   deliveryLocalCharge: 20,
+  deliveryGurugramCharge: 60,  // rest of Gurugram (122xxx), outside the local PIN
+  deliveryPerKmRate: 5,        // outside Gurugram: straight-line km × this rate
+  freeDeliveryThreshold: 500,  // order value (print + handling) at/above which delivery is free
   handlingCharge: 10,
   gstPercent: 5
 }

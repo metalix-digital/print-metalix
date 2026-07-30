@@ -1,3 +1,5 @@
+const shipping = require('./shipping')
+
 // Pure rate math — color/B&W page counts, copy count, paper type, and
 // printing side are all resolved per-file by the caller (client estimate
 // and server authoritative calc both do this the same way) so a single
@@ -24,17 +26,36 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   })
   printCost = Math.round(printCost)
 
-  // Delivery is a flat rate that drops to a cheaper "local" rate inside the
-  // shop's own PIN code, and stays at the standard (further-out) rate everywhere
-  // else within the delivery zone.
+  const handlingCharge = Number(config.handlingCharge) || 0
+
+  // Delivery is free above a flat order-value threshold, then a flat rate for
+  // the shop's own PIN code, a flat (higher) rate for the rest of Gurugram,
+  // and — for anything further out — a straight-line-distance rate (see
+  // shipping.js). Falls back to the old flat "standard" rate if the pincode
+  // is missing/invalid or isn't in our offline pincode dataset, so an order
+  // can never fail to price just because of an unrecognized PIN code.
   let deliveryCharge = 0
   if (deliveryMethod === 'delivery') {
-    const isLocal = deliveryPincode && String(deliveryPincode).trim() === (config.deliveryLocalPincode || '122505')
-    deliveryCharge = isLocal
-      ? (config.deliveryLocalCharge != null ? config.deliveryLocalCharge : 20)
-      : (config.deliveryCharge != null ? config.deliveryCharge : 30)
+    const freeThreshold = config.freeDeliveryThreshold != null ? config.freeDeliveryThreshold : 500
+    const preDeliveryTotal = printCost + handlingCharge
+    if (preDeliveryTotal >= freeThreshold) {
+      deliveryCharge = 0
+    } else {
+      const zone = shipping.classifyZone(deliveryPincode, config.deliveryLocalPincode)
+      const fallbackCharge = config.deliveryCharge != null ? config.deliveryCharge : 30
+      if (zone === 'local') {
+        deliveryCharge = config.deliveryLocalCharge != null ? config.deliveryLocalCharge : 20
+      } else if (zone === 'gurugram') {
+        deliveryCharge = config.deliveryGurugramCharge != null ? config.deliveryGurugramCharge : 60
+      } else if (zone === 'outside') {
+        const km = shipping.distanceKm(config.deliveryLocalPincode || '122505', deliveryPincode)
+        const perKm = config.deliveryPerKmRate != null ? config.deliveryPerKmRate : 5
+        deliveryCharge = km != null ? Math.round(km * perKm) : fallbackCharge
+      } else {
+        deliveryCharge = fallbackCharge
+      }
+    }
   }
-  const handlingCharge = Number(config.handlingCharge) || 0
   const subtotal = printCost + deliveryCharge + handlingCharge
   const gstAmount = Math.round((subtotal * (config.gstPercent || 0)) / 100)
   const totalAmount = subtotal + gstAmount
