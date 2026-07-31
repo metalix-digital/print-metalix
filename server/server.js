@@ -1269,10 +1269,11 @@ app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) =>
     if (err.code === 'location_has_staff') return res.status(400).json({ error: err.code, message: err.message })
     throw err
   }
-  // Identity fields (above) and operating info (shopOpen/hours) are separate
-  // updates in db.js so a branch admin's own PUT (below) can never touch
-  // identity fields — but the super admin's single request here can include
-  // both, so apply any operating-info fields per location too.
+  // Name/active (above) and everything else (shopOpen/hours/address/city/
+  // pincode/mapsUrl) are separate updates in db.js so a branch admin's own
+  // PUT (below) can touch the latter but never rename or deactivate their own
+  // branch — the super admin's single request here can include both, so
+  // apply any operating-info fields per location too.
   for (const l of locations) {
     if (l && l.id && (l.shopOpen !== undefined || l.storeTimings)) {
       db.updateLocationOperatingInfo(l.id, { shopOpen: l.shopOpen, storeTimings: l.storeTimings })
@@ -1281,10 +1282,10 @@ app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) =>
   return res.json({ locations: db.getLocations() })
 })
 
-// A branch admin's self-serve view of their own branch — shop open/closed +
-// hours only, never identity fields (name/address/etc. stay super-admin-only
-// via /api/admin/locations). Super admins have no "my location" — they use
-// the full locations list instead.
+// A branch admin's self-serve view of their own branch — shop open/closed,
+// hours, and contact details (address/city/pincode/Maps link). Renaming or
+// deactivating the branch stays super-admin-only via /api/admin/locations.
+// Super admins have no "my location" — they use the full locations list instead.
 app.get('/api/admin/my-location', requireAdmin, requireTab('mybranch'), (req, res) => {
   if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
   const location = db.getLocationById(req.admin.locationId)
@@ -1294,8 +1295,17 @@ app.get('/api/admin/my-location', requireAdmin, requireTab('mybranch'), (req, re
 
 app.put('/api/admin/my-location', requireAdmin, requireTab('mybranch'), express.json(), (req, res) => {
   if (req.admin.adminRole !== 'branch_admin') return res.status(403).json({ error: 'forbidden', message: 'This is for branch logins only — use Locations instead.' })
-  const { shopOpen, storeTimings } = req.body || {}
-  const location = db.updateLocationOperatingInfo(req.admin.locationId, { shopOpen, storeTimings })
+  const { shopOpen, storeTimings, address, city, pincode, mapsUrl } = req.body || {}
+  const update = { shopOpen, storeTimings }
+  if (address !== undefined) update.address = String(address || '').trim().slice(0, 200)
+  if (city !== undefined) update.city = String(city || '').trim().slice(0, 80)
+  if (pincode !== undefined) update.pincode = String(pincode || '').trim().slice(0, 12)
+  if (mapsUrl !== undefined) {
+    // Only keep http(s) links — matches the super admin's Locations validation.
+    const raw = String(mapsUrl || '').trim().slice(0, 500)
+    update.mapsUrl = /^https?:\/\//i.test(raw) ? raw : ''
+  }
+  const location = db.updateLocationOperatingInfo(req.admin.locationId, update)
   if (!location) return res.status(404).json({ error: 'not_found' })
   return res.json({ location })
 })
