@@ -429,16 +429,21 @@ async function loadOrder(){
     return;
   }
   try {
-    const res = await fetch('/api/admin/orders/' + encodeURIComponent(orderId), {
-      headers: { Authorization: 'Bearer ' + token }
-    });
+    // Both fire immediately rather than one after the other — the pricing
+    // fetch doesn't depend on the order, so waiting for it to finish first
+    // was one whole extra network round-trip before anything could render.
+    const [res] = await Promise.all([
+      fetch('/api/admin/orders/' + encodeURIComponent(orderId), {
+        headers: { Authorization: 'Bearer ' + token }
+      }),
+      mergePaperTypeLabels()
+    ]);
     if (res.status === 401) { window.location.href = '/admin'; return; }
     if (!res.ok) {
       document.getElementById('jsRoot').innerHTML = '<div class="js-error">Order not found.</div>';
       return;
     }
     const { order } = await res.json();
-    await mergePaperTypeLabels();
     // Order ID in the page title → the browser's print/"Save as PDF" dialog
     // suggests an order-ID filename for the manual print button too.
     document.title = 'Metalix Job Sheet ' + order.id;

@@ -786,14 +786,42 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
     await addImagePage(coverImage)
 
     const font = await merged.embedFont(StandardFonts.Helvetica)
-    for (const f of files) {
+
+    // Convert every file to a PDF buffer up front, in parallel. A LibreOffice
+    // cold-start (each conversion spawns its own soffice process) dominates
+    // this step, and every file's conversion is independent — running them
+    // concurrently turns N sequential cold-starts into one wait instead of N,
+    // which is most of where "Print Job Sheet" felt slow on multi-file orders.
+    // Page-embedding below stays sequential (it mutates the one shared
+    // `merged` PDFDocument, and is CPU-bound/fast either way).
+    const converted = await Promise.all(files.map(async (f) => {
       const safeFileId = path.basename(String(f.fileId || ''))
       const filePath = path.join(uploadsDir, safeFileId)
-      if (!safeFileId || !fs.existsSync(filePath)) continue
+      if (!safeFileId || !fs.existsSync(filePath)) return { f, safeFileId, skip: true }
       try {
         const buffer = fs.readFileSync(filePath)
         const ext = path.extname(f.fileName || safeFileId).toLowerCase() || '.pdf'
         const pdfBuffer = ext === '.pdf' ? buffer : await convertToPdf(buffer, ext)
+        return { f, safeFileId, pdfBuffer }
+      } catch (err) {
+        return { f, safeFileId, convertError: err }
+      }
+    }))
+
+    for (const { f, safeFileId, pdfBuffer, convertError, skip } of converted) {
+      if (skip) continue
+      if (convertError) {
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        const lines = [
+          `Could not auto-include "${f.fileName || safeFileId}".`,
+          'It may be password-protected or in an unsupported format.',
+          'Use the per-file Download button in admin to print it manually.'
+        ]
+        if (f.password) lines.push(`Document password on file: ${f.password}`)
+        lines.forEach((line, i) => page.drawText(line, { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
+        continue
+      }
+      try {
         // Normalize every document page onto an A4 sheet: fit-to-page (preserve
         // aspect ratio, centered), using A4 portrait or landscape to match the
         // source page's orientation. Guarantees the whole job sheet prints on A4.
