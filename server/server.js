@@ -2078,6 +2078,8 @@ function localBusinessJsonLd() {
 // used the homepage's, which told crawlers /policies was just a duplicate
 // of "/" via its canonical tag). Only "/" gets the FAQPage schema, since
 // that's the only route where the FAQ markup is actually the page's content.
+// (Policies used to live here too, but each policy is now its own real page
+// — see POLICY_META and renderPolicyPage() below.)
 const LANDING_ROUTES = {
   '/': {
     title: 'Metalix Print — Upload · Print · Deliver',
@@ -2085,14 +2087,6 @@ const LANDING_ROUTES = {
     keywords: 'print shop, online printing, document printing, Gurugram',
     canonical: 'https://print.metalix.in/',
     includeFaq: true,
-    robots: 'index,follow'
-  },
-  '/policies': {
-    title: 'Terms, Privacy & Delivery Policies — Metalix Print',
-    description: 'Read Metalix Print’s terms of service, privacy policy, refund & reprint policy, and delivery policy for our Gurugram print-and-deliver service.',
-    keywords: 'refund policy, delivery policy, terms of service, privacy policy, Metalix Print',
-    canonical: 'https://print.metalix.in/policies',
-    includeFaq: false,
     robots: 'index,follow'
   },
   '/orders': {
@@ -2164,12 +2158,178 @@ app.get('/', (req, res) => {
   res.send(renderLanding('/'))
 })
 
-// Policies live as a view inside the landing page, but expose a real, crawlable
-// URL for them (the footer/nav link here). landing.html reads the path on load
-// and opens the policy view; see initFromUrl() there.
+// Each policy used to be a tab inside one /policies view (all four sharing a
+// single canonical URL/title/description) — GSC flagged that page as
+// non-actionable since crawlers only ever saw whichever tab was server-
+// rendered first. Every policy is now its own real page with a distinct
+// title/description/canonical; content still comes from the admin-editable
+// legal settings when set, falling back to the copy below otherwise (mirrors
+// the old client-side setLegal() override, just applied server-side now).
+const POLICY_META = {
+  'refund-reprint': {
+    label: 'Refund & Reprint',
+    title: 'Refund & Reprint Policy — Metalix Print',
+    description: 'When you can cancel, when we reprint for free, and how refunds are processed at Metalix Print.',
+    legalKey: 'refundPolicy'
+  },
+  'delivery': {
+    label: 'Delivery',
+    title: 'Delivery Policy — Metalix Print',
+    description: 'Delivery options, turnaround time, delivery area, and what happens if your order is delayed.',
+    legalKey: 'shippingPolicy'
+  },
+  'terms-of-service': {
+    label: 'Terms of Service',
+    title: 'Terms of Service — Metalix Print',
+    description: 'The terms that apply when you use Metalix Print to upload, pay for, and print documents.',
+    legalKey: 'termsConditions'
+  },
+  'privacy': {
+    label: 'Privacy',
+    title: 'Privacy Policy — Metalix Print',
+    description: 'What information Metalix Print collects, how it is used, and how long uploaded files are retained.',
+    legalKey: 'privacyPolicy'
+  }
+}
+const POLICY_SLUGS = Object.keys(POLICY_META)
+
+function defaultPolicyBody(slug) {
+  switch (slug) {
+    case 'refund-reprint':
+      return `<div class="callout"><p><strong>TL;DR:</strong> Cancel any time before "Printing started" for a full refund. If we make a mistake, we reprint free. If the issue is with your file, we can offer a paid reprint.</p></div>
+      <h2>When can I cancel?</h2>
+      <p>You can cancel your order free of charge from <strong>My Orders</strong> on the app as long as the status is <em>Received</em> or <em>Queued</em>. The moment the status changes to <strong>Printing Started</strong>, your job is on the press and can no longer be cancelled.</p>
+      <h2>If the mistake is ours</h2>
+      <p>We take responsibility for errors that happen on our end — smudged pages, wrong paper size, wrong number of copies, wrong color mode applied after you paid for auto-detect. In these cases:</p>
+      <ul>
+        <li>We'll <strong>reprint the affected pages free of charge</strong>, or</li>
+        <li>Issue a <strong>full or partial refund</strong> to your original payment method within 5–7 business days</li>
+      </ul>
+      <p>Report the issue within <strong>24 hours</strong> of pickup or delivery by calling or WhatsApp-ing us.</p>
+      <h2>If the issue is with your file</h2>
+      <p>We print exactly what you upload, without modifying your files. We cannot offer refunds for:</p>
+      <ul>
+        <li>Low-resolution images that appear blurry once printed</li>
+        <li>Typos or content errors in the original document</li>
+        <li>Wrong file uploaded by mistake</li>
+        <li>Color pages the customer chose to print as B/W (or vice versa)</li>
+      </ul>
+      <p>We're happy to offer a <strong>paid reprint</strong> once you've updated your file.</p>
+      <h2>Refund timeline</h2>
+      <p>Approved refunds are processed to your original payment method. Razorpay typically settles refunds within <strong>5–7 business days</strong>.</p>`
+    case 'delivery':
+      return `<div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Choose instant (within 2 hrs) or a scheduled slot. Most orders are ready within 3–4 hours of payment.</p></div>
+      <h2>Delivery options</h2>
+      <p>We offer two ways to receive your prints:</p>
+      <ul>
+        <li><strong>Shop pickup</strong> — Free. Collect from our store at your convenience once we notify you.</li>
+        <li><strong>Home delivery</strong> — ₹20 within our local PIN code (122505), ₹30 elsewhere within the city. We dispatch your order as soon as it's printed. At checkout you can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.</li>
+      </ul>
+      <h2>Turnaround time</h2>
+      <p>Most standard orders (under 100 pages) are ready within <strong>3–4 hours</strong> of successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
+      <h2>Delivery area</h2>
+      <p>Home delivery is currently available within Gurugram city limits. If your PIN code is outside our zone, we'll contact you to arrange shop pickup and refund the delivery charge.</p>
+      <h2>Delays</h2>
+      <p>If your order is delayed significantly past the estimate, reach out via WhatsApp with your Order ID. We'll either expedite or waive the delivery fee, depending on the situation.</p>`
+    case 'terms-of-service':
+      return `<h2>Who can use this service</h2>
+      <p>Metalix Print is available to anyone aged 18 and above. By placing an order, you agree to these terms.</p>
+      <h2>Your content</h2>
+      <p>You confirm that you have the legal right to print and reproduce the content in any file you upload. Metalix Print is not responsible for copyright infringement, defamatory content, or unauthorized reproduction of third-party material.</p>
+      <h2>What we will not print</h2>
+      <ul>
+        <li>Content that infringes copyright without authorization</li>
+        <li>Defamatory, obscene, or hateful material</li>
+        <li>Content that violates any applicable law</li>
+      </ul>
+      <h2>Payment</h2>
+      <p>All payments are processed securely through Razorpay. Metalix Print does not store your card or banking details. By paying, you agree to Razorpay's terms of service.</p>
+      <h2>Limitation of liability</h2>
+      <p>Our liability is limited to the amount paid for the specific order in question. We are not liable for indirect losses, loss of business, or consequential damages.</p>`
+    case 'privacy':
+      return `<div class="callout"><p><strong>Short version:</strong> Your files are used only to print your order and deleted after 3 days. We don't sell your data.</p></div>
+      <h2>What we collect</h2>
+      <ul>
+        <li>Name, mobile number, and optional email — to process and communicate about your order</li>
+        <li>Delivery address — only if you choose home delivery</li>
+        <li>Uploaded files — solely to fulfil your print job</li>
+        <li>Payment transaction data — processed by Razorpay; we only receive a transaction ID</li>
+      </ul>
+      <h2>How we use it</h2>
+      <p>We use your information only to fulfil your order, contact you about it, and improve our service. We do not share your data with third parties except as needed to complete delivery (our delivery partner).</p>
+      <h2>File retention</h2>
+      <p>Uploaded documents are automatically and permanently deleted from our systems <strong>3 days after your order is completed</strong>.</p>
+      <h2>Your rights</h2>
+      <p>You can request deletion of your personal data or a copy of what we hold by emailing <a href="mailto:hello@metalix.in" style="color:var(--orange-text);">hello@metalix.in</a>.</p>`
+    default:
+      return ''
+  }
+}
+
+function renderPolicyPage(slug) {
+  const meta = POLICY_META[slug]
+  const settings = db.getSiteSettings()
+  const gtm = gtmSnippets(settings)
+  const template = readPublicTemplate('policy.html')
+  const body = (settings.legal && settings.legal[meta.legalKey]) || defaultPolicyBody(slug)
+  const email = settings.email || 'hello@metalix.in'
+  const canonical = `https://print.metalix.in/policies/${slug}`
+  let html = template
+    .split('__GTM_HEAD__').join(gtm.head)
+    .split('__GTM_NOSCRIPT__').join(gtm.noscript)
+    .split('__META_TITLE__').join(escAttr(meta.title))
+    .split('__META_DESCRIPTION__').join(escAttr(meta.description))
+    .split('__META_KEYWORDS__').join(escAttr('refund policy, delivery policy, terms of service, privacy policy, Metalix Print'))
+    .split('__CANONICAL_URL__').join(escAttr(canonical))
+    .split('__PAGE_H1__').join(escAttr(meta.label + ' Policy'))
+    .split('__PAGE_META__').join(`Last updated: June 2026 · Questions? <a href="mailto:${escAttr(email)}">${escAttr(email)}</a>`)
+    .split('__CONTENT_HTML__').join(`<div class="policy-article">${body}</div>`)
+  const TAB_TOKENS = { 'refund-reprint': 'REFUND', 'delivery': 'DELIVERY', 'terms-of-service': 'TERMS', 'privacy': 'PRIVACY' }
+  Object.entries(TAB_TOKENS).forEach(([s, token]) => {
+    html = html.split(`__TAB_${token}_ACTIVE__`).join(s === slug ? 'active' : '')
+  })
+  return html
+}
+
 app.get('/policies', (req, res) => {
+  // Previously the four policies lived as tabs under this one URL — now each
+  // has its own page, so this permanently redirects to the first (matching
+  // what visitors used to see by default at /policies).
+  res.redirect(301, '/policies/refund-reprint')
+})
+
+app.get('/policies/:slug', (req, res) => {
+  if (!POLICY_META[req.params.slug]) return res.status(404).send('Not found')
   if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
-  res.send(renderLanding('/policies'))
+  res.send(renderPolicyPage(req.params.slug))
+})
+
+function renderContactPage() {
+  const settings = db.getSiteSettings()
+  const gtm = gtmSnippets(settings)
+  const template = readPublicTemplate('contact.html')
+  const phone = settings.phone || '+91 70424 43143'
+  const whatsapp = 'https://wa.me/' + (settings.whatsapp || phone).replace(/[^0-9]/g, '')
+  const email = settings.email || 'hello@metalix.in'
+  const address = settings.pickupAddress || settings.headOfficeAddress || ''
+  const t = settings.storeTimings || {}
+  return template
+    .split('__GTM_HEAD__').join(gtm.head)
+    .split('__GTM_NOSCRIPT__').join(gtm.noscript)
+    .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
+    .split('__CONTACT_ADDRESS__').join(escAttr(address))
+    .split('__CONTACT_PHONE_HREF__').join(escAttr(phone.replace(/[^0-9+]/g, '')))
+    .split('__CONTACT_PHONE__').join(escAttr(phone))
+    .split('__CONTACT_WHATSAPP_HREF__').join(escAttr(whatsapp))
+    .split('__CONTACT_EMAIL__').join(escAttr(email))
+    .split('__HOURS_WEEKDAYS__').join(escAttr(t.weekdays || ''))
+    .split('__HOURS_SATURDAY__').join(escAttr(t.saturday || ''))
+    .split('__HOURS_SUNDAY__').join(escAttr(t.sunday || ''))
+}
+
+app.get('/contact', (req, res) => {
+  if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
+  res.send(renderContactPage())
 })
 
 // Same pattern as /policies: "My Orders" is a view inside the landing page
@@ -2357,7 +2517,8 @@ app.get('/sitemap.xml', (req, res) => {
     { loc: 'https://print.metalix.in/', freq: 'weekly', priority: '1.0', lastmod: today },
     { loc: 'https://print.metalix.in/order', freq: 'weekly', priority: '0.9', lastmod: today },
     { loc: 'https://print.metalix.in/blog', freq: 'weekly', priority: '0.7', lastmod: today },
-    { loc: 'https://print.metalix.in/policies', freq: 'monthly', priority: '0.3', lastmod: today }
+    { loc: 'https://print.metalix.in/contact', freq: 'monthly', priority: '0.5', lastmod: today },
+    ...POLICY_SLUGS.map((slug) => ({ loc: `https://print.metalix.in/policies/${slug}`, freq: 'monthly', priority: '0.3', lastmod: today }))
   ]
   // /orders and /order-success/:id are private, per-customer pages (noindex'd
   // and disallowed in robots.txt) — deliberately excluded from the sitemap.

@@ -25,7 +25,7 @@
     var text = document.createElement('p');
     text.style.cssText = 'margin:0;font-size:13px;line-height:1.55;max-width:520px;flex:1 1 260px;min-width:200px;color:#C9CBD4;';
     text.innerHTML = 'We use cookies to understand how visitors use this site. ' +
-      '<a href="/policies#privacy" style="color:#FF8A3D;text-decoration:underline;">Privacy policy</a>';
+      '<a href="/policies/privacy" style="color:#FF8A3D;text-decoration:underline;">Privacy policy</a>';
 
     var actions = document.createElement('div');
     actions.style.cssText = 'display:flex;gap:10px;flex-shrink:0;';

@@ -418,31 +418,10 @@ a.pt-row{color:inherit;text-decoration:none;cursor:pointer;}
 .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--orange);background:var(--white);}
 .field textarea{min-height:110px;resize:vertical;}
 
-/* -- POLICY PAGE -- */
+/* -- MY ORDERS PAGE -- (policies moved to their own real pages — see policy.html) */
 .policy-wrap{max-width:800px;margin:0 auto;padding:60px 24px 80px;}
 .policy-wrap h2{font-family:'Sora','Sora Fallback',sans-serif;font-weight:800;font-size:36px;letter-spacing:-.02em;margin-bottom:8px;}
 .policy-wrap .meta{font-size:13px;color:var(--ink3);margin-bottom:40px;}
-.policy-tabs{display:flex;gap:0;border-bottom:2px solid var(--line);margin-bottom:36px;}
-.ptab{
-  font-size:14px;font-weight:600;color:var(--ink3);background:none;border:none;
-  cursor:pointer;padding:12px 22px;border-bottom:2.5px solid transparent;margin-bottom:-2px;
-  transition:all .15s;font-family:'Inter','Inter Fallback',sans-serif;
-}
-.ptab.active{color:var(--orange-text);border-bottom-color:var(--orange);}
-.ptab:hover:not(.active){color:var(--ink);}
-.ptab-content{display:none;}
-.ptab-content.active{display:block;}
-.ptab-content h2{font-family:'Sora','Sora Fallback',sans-serif;font-size:22px;font-weight:700;margin:32px 0 12px;}
-.ptab-content h2:first-child{margin-top:0;}
-.ptab-content p{font-size:15px;color:var(--ink2);line-height:1.75;margin-bottom:14px;}
-.ptab-content ul{padding-left:20px;margin:0 0 16px;}
-.ptab-content li{font-size:15px;color:var(--ink2);line-height:1.75;margin-bottom:6px;}
-.ptab-content strong{color:var(--ink);}
-.callout{
-  background:var(--orange-l);border-left:4px solid var(--orange);
-  border-radius:0 10px 10px 0;padding:16px 20px;margin:20px 0;
-}
-.callout p{color:var(--ink);margin:0;}
 
 /* -- FOOTER -- */
 footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
@@ -617,7 +596,7 @@ __GTM_NOSCRIPT__
       <a href="/#pricing" onclick="showPage('home'); scrollToSection('pricing'); return false;" id="nav-pricing">Pricing</a>
       <a href="/#contact" onclick="showPage('home'); scrollToSection('contact'); return false;" id="nav-contact">Contact</a>
       <a href="/blog" id="nav-blog">Blog</a>
-      <a href="/policies" onclick="showPage('policy'); return false;" id="nav-policy">Policies</a>
+      <a href="/policies" id="nav-policy">Policies</a>
     </nav>
     <div class="h-space"></div>
     <div class="branch-picker" id="branchPicker">
@@ -647,7 +626,7 @@ __GTM_NOSCRIPT__
       <a href="/#pricing" onclick="mmNavigate('home','pricing'); return false;" id="mnav-pricing">Pricing</a>
       <a href="/#contact" onclick="mmNavigate('home','contact'); return false;" id="mnav-contact">Contact</a>
       <a href="/blog" id="mnav-blog">Blog</a>
-      <a href="/policies" onclick="mmNavigate('policy'); return false;" id="mnav-policy">Policies</a>
+      <a href="/policies" id="mnav-policy">Policies</a>
       <div class="mm-actions" id="mmLoggedOutActions">
         <button class="btn-ghost-sm" onclick="closeMobileMenu();openModal('login')">Log in</button>
         <button class="btn-orange-sm" onclick="closeMobileMenu();openModal('signup')">Sign up</button>
@@ -958,96 +937,6 @@ __GTM_NOSCRIPT__
   </div>
 </div>
 
-<!-- ================ PAGE: POLICY ================ -->
-<div class="page" id="page-policy">
-  <div class="policy-wrap">
-    <div class="section-eyebrow" style="margin-bottom:10px;">Legal & policies</div>
-    <h2>Our policies</h2>
-    <p class="meta">Last updated: June 2026 · Questions? <a href="mailto:hello@metalix.in" style="color:var(--orange-text);font-weight:600;">hello@metalix.in</a></p>
-
-    <div class="policy-tabs">
-      <button class="ptab active" onclick="showPolicyTab('refund',this)">Refund & Reprint</button>
-      <button class="ptab" onclick="showPolicyTab('delivery',this)">Delivery</button>
-      <button class="ptab" onclick="showPolicyTab('terms',this)">Terms of Service</button>
-      <button class="ptab" onclick="showPolicyTab('privacy',this)">Privacy</button>
-    </div>
-
-    <div class="ptab-content active" id="ptab-refund">
-      <div class="callout"><p><strong>TL;DR:</strong> Cancel any time before "Printing started" for a full refund. If we make a mistake, we reprint free. If the issue is with your file, we can offer a paid reprint.</p></div>
-      <h2>When can I cancel?</h2>
-      <p>You can cancel your order free of charge from <strong>My Orders</strong> on the app as long as the status is <em>Received</em> or <em>Queued</em>. The moment the status changes to <strong>Printing Started</strong>, your job is on the press and can no longer be cancelled.</p>
-      <h2>If the mistake is ours</h2>
-      <p>We take responsibility for errors that happen on our end — smudged pages, wrong paper size, wrong number of copies, wrong color mode applied after you paid for auto-detect. In these cases:</p>
-      <ul>
-        <li>We'll <strong>reprint the affected pages free of charge</strong>, or</li>
-        <li>Issue a <strong>full or partial refund</strong> to your original payment method within 5–7 business days</li>
-      </ul>
-      <p>Report the issue within <strong>24 hours</strong> of pickup or delivery by calling or WhatsApp-ing us.</p>
-      <h2>If the issue is with your file</h2>
-      <p>We print exactly what you upload, without modifying your files. We cannot offer refunds for:</p>
-      <ul>
-        <li>Low-resolution images that appear blurry once printed</li>
-        <li>Typos or content errors in the original document</li>
-        <li>Wrong file uploaded by mistake</li>
-        <li>Color pages the customer chose to print as B/W (or vice versa)</li>
-      </ul>
-      <p>We're happy to offer a <strong>paid reprint</strong> once you've updated your file.</p>
-      <h2>Refund timeline</h2>
-      <p>Approved refunds are processed to your original payment method. Razorpay typically settles refunds within <strong>5–7 business days</strong>.</p>
-    </div>
-
-    <div class="ptab-content" id="ptab-delivery">
-      <div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Choose instant (within 2 hrs) or a scheduled slot. Most orders are ready within 3–4 hours of payment.</p></div>
-      <h2>Delivery options</h2>
-      <p>We offer two ways to receive your prints:</p>
-      <ul>
-        <li><strong>Shop pickup</strong> — Free. Collect from our store at your convenience once we notify you.</li>
-        <li><strong>Home delivery</strong> — ₹20 within our local PIN code (122505), ₹30 elsewhere within the city. We dispatch your order as soon as it's printed. At checkout you can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.</li>
-      </ul>
-      <h2>Turnaround time</h2>
-      <p>Most standard orders (under 100 pages) are ready within <strong>3–4 hours</strong> of successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
-      <h2>Delivery area</h2>
-      <p>Home delivery is currently available within Gurugram city limits. If your PIN code is outside our zone, we'll contact you to arrange shop pickup and refund the delivery charge.</p>
-      <h2>Delays</h2>
-      <p>If your order is delayed significantly past the estimate, reach out via WhatsApp with your Order ID. We'll either expedite or waive the delivery fee, depending on the situation.</p>
-    </div>
-
-    <div class="ptab-content" id="ptab-terms">
-      <h2>Who can use this service</h2>
-      <p>Metalix Print is available to anyone aged 18 and above. By placing an order, you agree to these terms.</p>
-      <h2>Your content</h2>
-      <p>You confirm that you have the legal right to print and reproduce the content in any file you upload. Metalix Print is not responsible for copyright infringement, defamatory content, or unauthorized reproduction of third-party material.</p>
-      <h2>What we will not print</h2>
-      <ul>
-        <li>Content that infringes copyright without authorization</li>
-        <li>Defamatory, obscene, or hateful material</li>
-        <li>Content that violates any applicable law</li>
-      </ul>
-      <h2>Payment</h2>
-      <p>All payments are processed securely through Razorpay. Metalix Print does not store your card or banking details. By paying, you agree to Razorpay's terms of service.</p>
-      <h2>Limitation of liability</h2>
-      <p>Our liability is limited to the amount paid for the specific order in question. We are not liable for indirect losses, loss of business, or consequential damages.</p>
-    </div>
-
-    <div class="ptab-content" id="ptab-privacy">
-      <div class="callout"><p><strong>Short version:</strong> Your files are used only to print your order and deleted after 3 days. We don't sell your data.</p></div>
-      <h2>What we collect</h2>
-      <ul>
-        <li>Name, mobile number, and optional email — to process and communicate about your order</li>
-        <li>Delivery address — only if you choose home delivery</li>
-        <li>Uploaded files — solely to fulfil your print job</li>
-        <li>Payment transaction data — processed by Razorpay; we only receive a transaction ID</li>
-      </ul>
-      <h2>How we use it</h2>
-      <p>We use your information only to fulfil your order, contact you about it, and improve our service. We do not share your data with third parties except as needed to complete delivery (our delivery partner).</p>
-      <h2>File retention</h2>
-      <p>Uploaded documents are automatically and permanently deleted from our systems <strong>3 days after your order is completed</strong>.</p>
-      <h2>Your rights</h2>
-      <p>You can request deletion of your personal data or a copy of what we hold by emailing <a href="mailto:hello@metalix.in" style="color:var(--orange-text);">hello@metalix.in</a>.</p>
-    </div>
-
-  </div>
-</div>
 </main>
 
 <!-- ================ FOOTER ================ -->
@@ -1079,10 +968,11 @@ __GTM_NOSCRIPT__
     <div class="footer-col">
       <h4>Policies</h4>
       <ul>
-        <li><a href="/policies#refund" onclick="showPage('policy'); showPolicyTab('refund'); return false;">Refund & Reprint policy</a></li>
-        <li><a href="/policies#delivery" onclick="showPage('policy'); showPolicyTab('delivery'); return false;">Delivery policy</a></li>
-        <li><a href="/policies#terms" onclick="showPage('policy'); showPolicyTab('terms'); return false;">Terms of service</a></li>
-        <li><a href="/policies#privacy" onclick="showPage('policy'); showPolicyTab('privacy'); return false;">Privacy policy</a></li>
+        <li><a href="/policies/refund-reprint">Refund & Reprint policy</a></li>
+        <li><a href="/policies/delivery">Delivery policy</a></li>
+        <li><a href="/policies/terms-of-service">Terms of service</a></li>
+        <li><a href="/policies/privacy">Privacy policy</a></li>
+        <li><a href="/contact">Contact us</a></li>
       </ul>
     </div>
     <div class="footer-col">
@@ -1188,7 +1078,7 @@ __GTM_NOSCRIPT__
       </div>
       <div class="terms-check">
         <input type="checkbox" id="termsCheck">
-        <label for="termsCheck">I agree to the <a href="/policies#terms" onclick="closeModal();showPage('policy');showPolicyTab('terms'); return false;">Terms of Service</a> and <a href="/policies#privacy" onclick="closeModal();showPage('policy');showPolicyTab('privacy'); return false;">Privacy Policy</a></label>
+        <label for="termsCheck">I agree to the <a href="/policies/terms-of-service" target="_blank" rel="noopener">Terms of Service</a> and <a href="/policies/privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
       </div>
       <button class="submit-btn" id="signupSubmitBtn" onclick="realSignup()">Create account</button>
       <div class="modal-footer-text">Already have an account? <a role="button" tabindex="0" onclick="switchTab('login', document.querySelectorAll('.mtab')[0])">Log in</a></div>
@@ -1338,13 +1228,6 @@ function applySettings(s){
     });
   }
 
-  if (s.legal) {
-    const setLegal = (tab, text) => { const el = document.getElementById('ptab-' + tab); if (el && text) el.innerHTML = text; };
-    setLegal('refund', s.legal.refundPolicy);
-    setLegal('delivery', s.legal.shippingPolicy);
-    setLegal('terms', s.legal.termsConditions);
-    setLegal('privacy', s.legal.privacyPolicy);
-  }
 }
 
 function escHtmlLanding(str){
@@ -1519,20 +1402,6 @@ function mmNavigate(page, section){
   closeMobileMenu();
   showPage(page);
   if(section) scrollToSection(section);
-}
-
-/* -- POLICY TABS -- */
-function showPolicyTab(tab, btn){
-  document.querySelectorAll('.ptab-content').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('active'));
-  const content = document.getElementById('ptab-'+tab);
-  if(content) content.classList.add('active');
-  if(btn) btn.classList.add('active');
-  else{
-    document.querySelectorAll('.ptab').forEach(b=>{
-      if(b.getAttribute('onclick').includes("'"+tab+"'")) b.classList.add('active');
-    });
-  }
 }
 
 /* -- MODAL -- */
@@ -1859,15 +1728,13 @@ function showToast(msg, icon='✓'){
 }
 
 /* -- DEEP LINKS --
-   The nav/footer links now carry real, crawlable URLs (/, /#services, /policies…).
+   The nav/footer links now carry real, crawlable URLs (/, /#services, /orders…).
    When the page loads at one of those URLs directly, open the matching view so
-   the destination matches the href a crawler or visitor followed. */
+   the destination matches the href a crawler or visitor followed. (Policies are
+   now their own real pages — server.js's /policies/:slug route — so they're no
+   longer handled here.) */
 (function initFromUrl(){
-  if(location.pathname.replace(/\/$/, '') === '/policies'){
-    showPage('policy');
-    const tab = location.hash.replace('#','');
-    if(['refund','delivery','terms','privacy'].includes(tab)) showPolicyTab(tab);
-  } else if(location.pathname.replace(/\/$/, '') === '/orders'){
+  if(location.pathname.replace(/\/$/, '') === '/orders'){
     showPage('orders');
   } else if(location.hash){
     scrollToSection(location.hash.slice(1));
