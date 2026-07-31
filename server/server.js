@@ -1995,7 +1995,7 @@ function isShopOpen() {
 const FAQ_ITEMS = [
   { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
   { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
-  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505), ₹60 elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹500. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
+  { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹__PRICE_DELIVERY_LOCAL__ within our local PIN code (122505), ₹__PRICE_DELIVERY_GURUGRAM__ elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹__PRICE_FREE_DELIVERY_THRESHOLD__. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
   { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },
   { q: 'Can I track my order?', a: 'Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.' },
@@ -2003,13 +2003,15 @@ const FAQ_ITEMS = [
 ]
 
 function faqJsonLd() {
+  const prices = pricingPlaceholders()
+  const withLivePrices = (text) => Object.entries(prices).reduce((s, [token, value]) => s.split(token).join(value), text)
   return JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     mainEntity: FAQ_ITEMS.map((item) => ({
       '@type': 'Question',
       name: item.q,
-      acceptedAnswer: { '@type': 'Answer', text: item.a }
+      acceptedAnswer: { '@type': 'Answer', text: withLivePrices(item.a) }
     }))
   })
 }
@@ -2108,13 +2110,47 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   return { head, noscript }
 }
 
+// Matches landing.html's client-side fmtPrice() exactly, so the
+// server-rendered figure and whatever applyPricing() might patch it to
+// later never disagree in format (whole number vs. up to 2 decimals).
+function fmtPrice(n) {
+  const num = Number(n)
+  return Number.isInteger(num) ? String(num) : String(Math.round(num * 100) / 100)
+}
+
+// landing.html's hero/pricing numbers used to be hardcoded fallback text —
+// fine at first, but "hardcoded" means they silently go stale the moment an
+// admin changes a rate, and every single page load would then visibly flash
+// from the stale figure to the live one once landing.html's applyPricing()
+// patches it in (deliberately deferred to idle, so it doesn't block first
+// paint). Rendering the *current* rate here instead means that flash can
+// only happen if pricing changes again before this process next restarts
+// (i.e. the next deploy), not on every page load in between.
+function pricingPlaceholders() {
+  const pricing = db.getPricing()
+  const a4 = (Array.isArray(pricing.rates.a4) ? pricing.rates.a4[0] : null) || {}
+  const bw = a4.bw || {}
+  const color = a4.color || {}
+  // Same fallbacks as pricing.js's calculateDeliveryCharge() — an install's
+  // DB may predate these fields (added after deliveryCharge/deliveryLocalCharge),
+  // and fmtPrice(undefined) would otherwise render "₹NaN".
+  return {
+    __PRICE_BW_SINGLE__: fmtPrice(bw.single),
+    __PRICE_BW_DOUBLE__: fmtPrice(bw.double),
+    __PRICE_COLOR_SINGLE__: fmtPrice(color.single),
+    __PRICE_DELIVERY_LOCAL__: fmtPrice(pricing.deliveryLocalCharge != null ? pricing.deliveryLocalCharge : 20),
+    __PRICE_DELIVERY_GURUGRAM__: fmtPrice(pricing.deliveryGurugramCharge != null ? pricing.deliveryGurugramCharge : 60),
+    __PRICE_FREE_DELIVERY_THRESHOLD__: fmtPrice(pricing.freeDeliveryThreshold != null ? pricing.freeDeliveryThreshold : 500)
+  }
+}
+
 function renderLanding(route) {
   const meta = LANDING_ROUTES[route]
   const settings = db.getSiteSettings()
   const gscCode = (settings.analytics || {}).searchConsoleVerification || ''
   const gtm = gtmSnippets(settings)
   const template = readPublicTemplate('landing.html')
-  return template
+  let html = template
     .split('__META_TITLE__').join(escAttr(meta.title))
     .split('__META_DESCRIPTION__').join(escAttr(meta.description))
     .split('__META_KEYWORDS__').join(escAttr(meta.keywords))
@@ -2127,6 +2163,8 @@ function renderLanding(route) {
     .split('__GTM_NOSCRIPT__').join(gtm.noscript)
     .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
     .split('__FAQ_JSON_LD_SCRIPT__').join(meta.includeFaq ? `<script type="application/ld+json">${faqJsonLd()}</script>` : '')
+  Object.entries(pricingPlaceholders()).forEach(([token, value]) => { html = html.split(token).join(escAttr(value)) })
+  return html
 }
 
 // Marketing landing page at the root path, served ahead of the SPA catch-all below.

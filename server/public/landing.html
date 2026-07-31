@@ -658,7 +658,7 @@ __GTM_NOSCRIPT__
           <button class="btn-hero btn-hero-secondary" onclick="showPage('home'); scrollToSection('how')">How it works →</button>
         </div>
         <div class="hero-stats">
-          <div class="stat"><div class="snum" id="stat-bw-price">₹1.5</div><div class="slabel">per B/W page</div></div>
+          <div class="stat"><div class="snum" id="stat-bw-price">₹__PRICE_BW_SINGLE__</div><div class="slabel">per B/W page</div></div>
           <div class="stat"><div class="snum">3–4 hrs</div><div class="slabel">avg. turnaround</div></div>
           <div class="stat"><div class="snum">500+</div><div class="slabel">orders completed</div></div>
         </div>
@@ -691,10 +691,10 @@ __GTM_NOSCRIPT__
   <!-- TICKET DIVIDER STATS -->
   <div class="ticket-divider">
     <div class="ticket-inner">
-      <div class="ticket-item"><div class="ti-num" id="ticket-bw">₹1.5</div><div class="ti-label">B/W per page</div></div>
-      <div class="ticket-item"><div class="ti-num" id="ticket-color">₹6</div><div class="ti-label">Color per page</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-bw">₹__PRICE_BW_SINGLE__</div><div class="ti-label">B/W per page</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-color">₹__PRICE_COLOR_SINGLE__</div><div class="ti-label">Color per page</div></div>
       <div class="ticket-item"><div class="ti-num">3–4 hrs</div><div class="ti-label">Delivery time</div></div>
-      <div class="ticket-item"><div class="ti-num" id="ticket-delivery">₹500+</div><div class="ti-label">Free delivery above</div></div>
+      <div class="ticket-item"><div class="ti-num" id="ticket-delivery">₹__PRICE_FREE_DELIVERY_THRESHOLD__+</div><div class="ti-label">Free delivery above</div></div>
       <div class="ticket-item"><div class="ti-num">Free</div><div class="ti-label">Shop pickup</div></div>
     </div>
   </div>
@@ -745,25 +745,25 @@ __GTM_NOSCRIPT__
           <div class="sc-icon">📄</div>
           <h3>PDF printing</h3>
           <p>Upload any PDF and get crisp, accurate prints. We support multi-page, booklets, and presentations.</p>
-          <div class="price" id="svc-pdf">From ₹1.5/page</div>
+          <div class="price" id="svc-pdf">From ₹__PRICE_BW_SINGLE__/page</div>
         </div>
         <div class="service-card">
           <div class="sc-icon">📝</div>
           <h3>Word & DOC</h3>
           <p>Assignments, reports, letters — print your .doc or .docx files exactly as formatted.</p>
-          <div class="price" id="svc-doc">From ₹1.5/page</div>
+          <div class="price" id="svc-doc">From ₹__PRICE_BW_SINGLE__/page</div>
         </div>
         <div class="service-card">
           <div class="sc-icon">📊</div>
           <h3>PowerPoint</h3>
           <p>Print slides 1-up, 2-up, or 6-up. Great for presentations and lecture notes.</p>
-          <div class="price" id="svc-ppt">From ₹1.5/page</div>
+          <div class="price" id="svc-ppt">From ₹__PRICE_BW_SINGLE__/page</div>
         </div>
         <div class="service-card">
           <div class="sc-icon">🎨</div>
           <h3>Color printing</h3>
           <p>Vivid, accurate color output for brochures, charts, photos, and more.</p>
-          <div class="price" id="svc-color">₹6/page</div>
+          <div class="price" id="svc-color">₹__PRICE_COLOR_SINGLE__/page</div>
         </div>
         <div class="service-card">
           <div class="sc-icon">📦</div>
@@ -783,10 +783,10 @@ __GTM_NOSCRIPT__
       <p class="section-sub">The estimate on the order page updates live as you pick options. GST included in all totals.</p>
       <div class="pricing-table">
         <div class="pt-head"><span>Print type</span><span>Rate</span><span>Notes</span></div>
-        <div class="pt-row"><span class="name">B/W · A4 · Single-sided</span><span class="price" id="pt-a4-bw-single">₹1.5/page</span><span class="note">Cheapest option</span></div>
-        <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹2.5/sheet</span><span class="note">2 pages per sheet</span></div>
-        <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹6/page</span><span class="note">Vivid CMYK output</span></div>
-        <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹20–₹60 flat</span><span class="note">Within Gurugram · free above ₹500</span></div>
+        <div class="pt-row"><span class="name">B/W · A4 · Single-sided</span><span class="price" id="pt-a4-bw-single">₹__PRICE_BW_SINGLE__/page</span><span class="note">Cheapest option</span></div>
+        <div class="pt-row"><span class="name">B/W · A4 · Double-sided</span><span class="price" id="pt-a4-bw-double">₹__PRICE_BW_DOUBLE__/sheet</span><span class="note">2 pages per sheet</span></div>
+        <div class="pt-row"><span class="name">Color · A4 · Single-sided</span><span class="price" id="pt-a4-color-single">₹__PRICE_COLOR_SINGLE__/page</span><span class="note">Vivid CMYK output</span></div>
+        <div class="pt-row"><span class="name">Home delivery</span><span class="price" id="pt-delivery">+₹__PRICE_DELIVERY_LOCAL__–₹__PRICE_DELIVERY_GURUGRAM__ flat</span><span class="note">Within Gurugram · free above ₹__PRICE_FREE_DELIVERY_THRESHOLD__</span></div>
         <div class="pt-row"><span class="name">Shop pickup</span><span class="price">Free</span><span class="note">Ready within 3–4 hrs</span></div>
       </div>
     </div>
@@ -828,7 +828,7 @@ __GTM_NOSCRIPT__
         </details>
         <details class="faq-item">
           <summary>Do you deliver, or is it pickup only?</summary>
-          <p>Both. Shop pickup is free. Home delivery is ₹20 within our local PIN code (122505), ₹60 elsewhere in Gurugram, and priced by distance if you're outside Gurugram — choose instant delivery (within 2 hours) or schedule a slot for later at checkout. Delivery is free on orders over ₹500.</p>
+          <p>Both. Shop pickup is free. Home delivery is ₹__PRICE_DELIVERY_LOCAL__ within our local PIN code (122505), ₹__PRICE_DELIVERY_GURUGRAM__ elsewhere in Gurugram, and priced by distance if you're outside Gurugram — choose instant delivery (within 2 hours) or schedule a slot for later at checkout. Delivery is free on orders over ₹__PRICE_FREE_DELIVERY_THRESHOLD__.</p>
         </details>
         <details class="faq-item">
           <summary>What's the difference between color and black &amp; white pricing?</summary>
