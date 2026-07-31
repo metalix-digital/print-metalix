@@ -3044,7 +3044,6 @@ async function loadSettings(){
     '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting.</p>' +
     '<div class="field-grid">' +
       textFieldHtml('Google Tag Manager Container ID', 'analytics.gtmContainerId', (s.analytics||{}).gtmContainerId || '') +
-      textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
     '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
     '<div id="settingsMessage"></div>';
