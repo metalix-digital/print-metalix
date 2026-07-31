@@ -246,7 +246,14 @@ function renderFeedbackForm(orderId){
         submitBtn.disabled = false;
         return;
       }
-      wrap.outerHTML = '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>';
+      if (data.reviewUrl) {
+        wrap.outerHTML = '<div class="card feedback-thanks">' +
+          'Thanks for your feedback! 🙌<br>Loved your experience? Share it with others:' +
+          '<a href="' + data.reviewUrl + '" target="_blank" rel="noopener" class="feedback-submit" style="display:block;text-decoration:none;text-align:center;margin-top:10px;">⭐ Leave us a Google review</a>' +
+        '</div>';
+      } else {
+        wrap.outerHTML = '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>';
+      }
     } catch (err) {
       note.textContent = 'Could not submit feedback — check your connection and try again.';
       submitBtn.disabled = false;

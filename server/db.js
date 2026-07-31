@@ -166,6 +166,8 @@ ensureColumn('orders', 'payment_collected_at', 'INTEGER')
 ensureColumn('orders', 'handling_charge', 'INTEGER DEFAULT 0')
 ensureColumn('orders', 'delivery_timing', "TEXT DEFAULT 'instant'") // 'instant' | 'scheduled', delivery orders only
 ensureColumn('orders', 'scheduled_at', 'INTEGER') // epoch ms, set only when delivery_timing = 'scheduled'
+ensureColumn('orders', 'payment_link_id', 'TEXT')   // Razorpay Payment Link id, set when a link is generated for this order
+ensureColumn('orders', 'payment_link_url', 'TEXT')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -304,6 +306,9 @@ const DEFAULT_SITE_SETTINGS = {
   whatsapp: '+91 98765 43210',
   email: 'hello@metalix.in',
   gstin: '09AHOPH6696N2Z8',
+  // Shown to customers who leave a 4-5 star rating on the order-tracking
+  // page's feedback form, prompting them to also post it publicly.
+  googleReviewUrl: '',
   headOfficeAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
   pickupAddress: 'Shop 12, MG Road Market, Near City Center Mall, Gurugram, Haryana 122001',
   storeTimings: {

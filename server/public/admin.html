@@ -727,6 +727,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <div class="seg-row">
           <label class="seg-opt"><input type="radio" name="noPayment" value="later" checked /><span>Pay later (cash/UPI on pickup or delivery)</span></label>
           <label class="seg-opt"><input type="radio" name="noPayment" value="paid" /><span>Already paid (cash/UPI collected now)</span></label>
+          <label class="seg-opt"><input type="radio" name="noPayment" value="link" /><span>Send payment link (online, via SMS)</span></label>
         </div>
       </div>
       <div class="field-grid hidden" id="noPaidModeFields">
@@ -1408,9 +1409,12 @@ function renderOrders(orders){
         '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
         ((o.payment_method === 'cod' && String(o.payment_status).toLowerCase() !== 'paid')
           ? '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="cash">💵 Collect Cash</button>' +
-            '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>'
+            '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>' +
+            '<button class="jobsheet-btn payment-link-btn" data-order="' + escHtml(o.id) + '">🔗 Send payment link</button>'
           : '') +
-        '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">✎ Edit order</button>' +
+        (String(o.payment_status).toLowerCase() !== 'paid'
+          ? '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">✎ Edit order</button>'
+          : '') +
         '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Archive order</button>' +
       '</div>' +
     '</div></td></tr>'
@@ -1459,7 +1463,27 @@ function renderOrders(orders){
       openEditOrderModal(ordersById[btn.dataset.order]);
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn)').forEach((btn) => {
+  body.querySelectorAll('.payment-link-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order) + '/payment-link', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Could not create payment link');
+        try { await navigator.clipboard.writeText(data.linkUrl); } catch (err) { /* clipboard permission denied — link is still in the flash message */ }
+        showFlash('Payment link ' + (data.smsSent ? 'sent via SMS' : 'copied to clipboard (SMS not sent — share it manually)') + '.');
+      } catch (err) {
+        if (err.message !== 'unauthorized') alert(err.message || 'Could not create payment link.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  });
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
@@ -2565,6 +2589,11 @@ async function loadSettings(){
       textFieldHtml('Saturday', 'storeTimings.saturday', (s.storeTimings || {}).saturday || '') +
       textFieldHtml('Sunday', 'storeTimings.sunday', (s.storeTimings || {}).sunday || '') +
     '</div>' +
+    '<h2>Reviews</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Customers who leave a 4-5 star rating on the order-tracking feedback form are prompted to also post it here.</p>' +
+    '<div class="field-grid">' +
+      textFieldHtml('Google Business review link', 'googleReviewUrl', s.googleReviewUrl || '') +
+    '</div>' +
     '<h2>Social media</h2><div class="field-grid">' +
       textFieldHtml('Facebook URL', 'social.facebook', s.social.facebook) +
       textFieldHtml('Instagram URL', 'social.instagram', s.social.instagram) +
@@ -2793,7 +2822,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     deliveryCity: deliveryMethod === 'delivery' ? deliveryCity : undefined,
     deliveryState: deliveryMethod === 'delivery' ? deliveryState : undefined,
     deliveryPincode: deliveryMethod === 'delivery' ? deliveryPincode : undefined,
-    paymentStatus: paymentChoice === 'paid' ? 'paid' : 'pending',
+    paymentStatus: paymentChoice === 'paid' ? 'paid' : (paymentChoice === 'link' ? 'link' : 'pending'),
     paymentMode: paymentChoice === 'paid' ? document.getElementById('noPaymentMode').value : undefined
   };
 
@@ -2803,6 +2832,13 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     const res = await adminFetch('/api/admin/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error || 'Could not create order');
+    if (paymentChoice === 'link') {
+      try { await navigator.clipboard.writeText(data.linkUrl); } catch (e) { /* clipboard permission denied — link is still in the flash message */ }
+      closeNewOrderModal();
+      loadOrders();
+      showFlash('Order ' + data.order.id + ' created — payment link ' + (data.smsSent ? 'sent via SMS' : 'copied to clipboard (SMS not sent — share it manually)') + '.');
+      return;
+    }
     msg.textContent = 'Order ' + data.order.id + ' created — ₹' + data.order.total_amount + ' total.';
     msg.className = 'save-message'; msg.classList.remove('hidden');
     loadOrders();
@@ -2943,13 +2979,7 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     if (!res.ok) throw new Error(data.message || data.error || 'Could not save changes');
     closeEditOrderModal();
     loadOrders();
-    if (data.paymentMismatch) {
-      const m = data.paymentMismatch;
-      const diffText = m.difference > 0 ? ('collect ₹' + m.difference + ' more') : ('refund ₹' + Math.abs(m.difference));
-      showFlash('Order updated — was already paid ₹' + m.previousTotal + ', new total ₹' + m.newTotal + ' (' + diffText + ')');
-    } else {
-      showFlash('Order updated');
-    }
+    showFlash('Order updated');
   } catch (err) {
     if (err.message !== 'unauthorized') {
       msg.textContent = err.message || 'Could not save changes.';

@@ -114,6 +114,7 @@ const db = require('./db')
 const printQueue = require('./printQueue')
 const notify = require('./notify')
 const mailer = require('./mailer')
+const sms = require('./sms')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
@@ -131,6 +132,42 @@ function generateOrderId() {
     if (!db.getOrder(id)) return id
   }
   throw new Error('could_not_generate_unique_order_id')
+}
+
+// Generates a Razorpay Payment Link for an order's current total, so an
+// admin-placed order can be paid online remotely instead of in person.
+// Cancels any link already on the order first — otherwise editing the order
+// (which reprices it) would leave a stale link out there payable at the old
+// amount. Razorpay's own SMS/email notification is turned off since we send
+// our own DLT-compliant SMS (see sms.js) rather than Razorpay's generic one.
+async function createPaymentLinkForOrder(order) {
+  const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+    const err = new Error('Online payments are not configured.')
+    err.code = 'razorpay_not_configured'
+    throw err
+  }
+  const Razorpay = require('razorpay')
+  const instance = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
+  if (order.payment_link_id) {
+    try { await instance.paymentLink.cancel(order.payment_link_id) } catch (err) { /* already paid/expired/cancelled — fine either way */ }
+  }
+  const link = await instance.paymentLink.create({
+    amount: order.total_amount * 100,
+    currency: 'INR',
+    reference_id: order.id,
+    description: `Metalix Print order ${order.id}`,
+    customer: {
+      name: order.customer_name,
+      contact: `+91${order.customer_mobile}`,
+      email: order.customer_email || undefined
+    },
+    notify: { sms: false, email: false },
+    callback_url: 'https://print.metalix.in/api/payment-links/callback',
+    callback_method: 'get'
+  })
+  db.updateOrder(order.id, { payment_link_id: link.id, payment_link_url: link.short_url })
+  return link
 }
 const { backupDatabase } = require('./backupDb')
 
@@ -825,6 +862,19 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
     return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
   }
+
+  // Content edits (customer/delivery/print options) are only allowed before
+  // money has changed hands — once paid, reprising here would mean silently
+  // rewriting a paid amount. Place a new order for the customer instead.
+  // Status changes (order_status/failure_reason) are unaffected — those must
+  // keep working on paid orders, which is the normal happy path.
+  const wantsContentEdit = customer_name !== undefined || customer_mobile !== undefined || customer_email !== undefined ||
+    delivery_method !== undefined || delivery_address !== undefined || delivery_city !== undefined ||
+    delivery_state !== undefined || delivery_pincode !== undefined || Array.isArray(files)
+  if (wantsContentEdit && String(order.payment_status).toLowerCase() === 'paid') {
+    return res.status(400).json({ error: 'order_already_paid', message: 'This order is already paid — place a new order for the customer instead of editing this one.' })
+  }
+
   if (customer_mobile !== undefined && !/^\d{10}$/.test(String(customer_mobile))) {
     return res.status(400).json({ error: 'invalid_mobile', message: 'Mobile must be a 10-digit number.' })
   }
@@ -920,14 +970,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     emailStatusChange(updated, `${req.protocol}://${req.get('host')}`)
   }
 
-  // A repriced order that was already paid needs a human to reconcile the
-  // difference (collect more, or refund) — surfaced here, never auto-applied.
-  const priceChanged = updates.total_amount !== undefined && updates.total_amount !== order.total_amount
-  const paymentMismatch = (priceChanged && String(updated.payment_status).toLowerCase() === 'paid')
-    ? { previousTotal: order.total_amount, newTotal: updated.total_amount, difference: updated.total_amount - order.total_amount }
-    : null
-
-  return res.json({ order: updated, paymentMismatch })
+  return res.json({ order: updated })
 })
 
 // Whether reaching `status` should email the customer, per the admin-managed
@@ -1011,6 +1054,32 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orde
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
   const updated = db.updateOrder(order.id, { payment_status: 'paid', payment_mode: mode, payment_collected_at: Date.now() })
   return res.json({ order: updated })
+})
+
+// Generates (or regenerates) a Razorpay Payment Link for an already-placed
+// COD/pending order and texts it to the customer — lets a customer who
+// phoned in an order pay online remotely instead of at pickup/delivery.
+app.post('/api/admin/orders/:id/payment-link', requireAdmin, requireTab('orders'), async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  if (String(order.payment_status).toLowerCase() === 'paid') {
+    return res.status(400).json({ error: 'order_already_paid', message: 'This order is already paid.' })
+  }
+  let link
+  try {
+    link = await createPaymentLinkForOrder(order)
+  } catch (err) {
+    return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
+  }
+  const fresh = db.getOrder(order.id)
+  let smsSent = true
+  try {
+    await sms.sendPaymentLinkSms(fresh, link.short_url)
+  } catch (err) {
+    smsSent = false
+    console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
+  }
+  return res.json({ order: fresh, linkUrl: link.short_url, smsSent })
 })
 
 // Archive (soft-delete) a single order. It leaves the Orders/Customers views
@@ -1468,6 +1537,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     return res.status(400).json({ error: 'missing_file_info' })
   }
   const markPaidNow = paymentStatus === 'paid'
+  const wantsPaymentLink = paymentStatus === 'link'
   if (markPaidNow && !['cash', 'upi'].includes(paymentMode)) {
     return res.status(400).json({ error: 'invalid_payment_mode', message: 'Payment mode must be cash or upi.' })
   }
@@ -1591,20 +1661,50 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     scheduled_at: resolvedScheduledAt,
     location_id: chosenLocation ? chosenLocation.id : (effectiveLocationId || null),
     location_name: chosenLocation ? chosenLocation.name : null,
-    payment_method: 'cod',
+    // A payment-link order is genuinely online (nothing collected in person),
+    // so it follows the same "paid before printing" rule as a customer's own
+    // checkout — everything else here is COD-shaped (staff-trusted).
+    payment_method: wantsPaymentLink ? 'online' : 'cod',
     print_cost: calc.printCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
     razorpay_order_id: null,
-    payment_status: markPaidNow ? 'paid' : 'pending',
+    // 'created' mirrors the public checkout's pre-payment state — it's what
+    // keeps an unpaid link order out of db.listOrders() until it's paid,
+    // same as an abandoned self-checkout never shows up either.
+    payment_status: markPaidNow ? 'paid' : (wantsPaymentLink ? 'created' : 'pending'),
     order_status: 'Received',
     created_at: Date.now()
   })
 
   if (markPaidNow) {
     db.updateOrder(order.id, { payment_mode: paymentMode, payment_collected_at: Date.now() })
+  }
+
+  if (wantsPaymentLink) {
+    let link
+    try {
+      link = await createPaymentLinkForOrder(order)
+    } catch (err) {
+      // Order creation and link generation are one operation from the
+      // admin's point of view — if the link fails, don't leave behind a
+      // ghost order stuck in payment_status 'created', which never shows up
+      // in the Orders list and has no link to recover it.
+      db.deleteOrder(order.id)
+      return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
+    }
+    let smsSent = true
+    try {
+      await sms.sendPaymentLinkSms(order, link.short_url)
+    } catch (err) {
+      smsSent = false
+      console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
+    }
+    // No printQueue.enqueue / order-confirmation notify here — those fire
+    // from the payment-link callback below, once the customer actually pays.
+    return res.json({ order, linkUrl: link.short_url, smsSent })
   }
 
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
@@ -1670,7 +1770,10 @@ app.post('/api/track/:id/feedback', express.json(), (req, res) => {
   }
   const comment = String(req.body?.comment || '').trim().slice(0, 2000)
   const feedback = db.createOrderFeedback({ order_id: order.id, rating, comment })
-  return res.json({ feedback })
+  // Only nudge happy customers toward a public Google review — never
+  // prompt after a middling/poor rating.
+  const reviewUrl = rating >= 4 ? (db.getSiteSettings().googleReviewUrl || null) : null
+  return res.json({ feedback, reviewUrl })
 })
 
 // Verify the Razorpay checkout response (or simulated payment) and advance the order.
@@ -1721,6 +1824,33 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   return res.json({ order: fresh })
 })
 
+// Razorpay redirects the customer's browser here after they pay (or cancel)
+// a Payment Link — this is the primary confirmation path for that flow (the
+// webhook below is the secondary/backup one, same "client-driven primary,
+// webhook backup" split as the regular checkout's verify-payment endpoint).
+app.get('/api/payment-links/callback', (req, res) => {
+  const {
+    razorpay_payment_id, razorpay_payment_link_id,
+    razorpay_payment_link_reference_id, razorpay_payment_link_status,
+    razorpay_signature
+  } = req.query
+  const order = db.getOrder(razorpay_payment_link_reference_id)
+  if (order && razorpay_payment_link_status === 'paid' && order.payment_status !== 'paid') {
+    const secret = process.env.RAZORPAY_KEY_SECRET || ''
+    const payload = `${razorpay_payment_link_id}|${razorpay_payment_link_reference_id}|${razorpay_payment_link_status}|${razorpay_payment_id}`
+    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex')
+    if (secret && expected === razorpay_signature) {
+      db.updateOrder(order.id, { razorpay_payment_id, payment_status: 'paid' })
+      printQueue.enqueue(order.id)
+      const fresh = db.getOrder(order.id)
+      notify.sendOrderConfirmationSms(fresh)
+      notify.sendOrderConfirmationEmail(fresh)
+      mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+    }
+  }
+  return res.redirect(`/track/${razorpay_payment_link_reference_id || ''}`)
+})
+
 // Razorpay webhook — secondary source of truth for payment status.
 app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) => {
   const secret = process.env.RAZORPAY_KEY_SECRET || ''
@@ -1733,7 +1863,25 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
     const event = JSON.parse(req.body.toString())
     console.log('Razorpay webhook event:', event.event)
     const payment = event.payload && event.payload.payment && event.payload.payment.entity
-    if (payment && payment.order_id) {
+    // Payment Link orders don't have a razorpay_order_id on our side at
+    // creation (see createPaymentLinkForOrder) — reference_id (our own order
+    // id) is what ties the webhook back to the right order instead.
+    const paymentLink = event.payload && event.payload.payment_link && event.payload.payment_link.entity
+    if (event.event === 'payment_link.paid' && paymentLink && paymentLink.reference_id) {
+      const order = db.getOrder(paymentLink.reference_id)
+      if (order && order.payment_status !== 'paid') {
+        db.updateOrder(order.id, {
+          razorpay_payment_id: payment ? payment.id : null,
+          payment_status: 'paid',
+          order_status: 'Payment Successful'
+        })
+        printQueue.enqueue(order.id)
+        const fresh = db.getOrder(order.id)
+        notify.sendOrderConfirmationSms(fresh)
+        notify.sendOrderConfirmationEmail(fresh)
+        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+      }
+    } else if (payment && payment.order_id) {
       const order = db.db.prepare('SELECT * FROM orders WHERE razorpay_order_id = ?').get(payment.order_id)
       if (order && order.payment_status !== 'paid') {
         db.updateOrder(order.id, {

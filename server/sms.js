@@ -34,4 +34,24 @@ async function sendOrderConfirmationSms(order) {
   })
 }
 
-module.exports = { sendOrderConfirmationSms }
+// Separate DLT template from order-confirmation — India's carrier-side
+// filtering is content-locked per template, so a differently-worded message
+// needs its own registered template/SID before it can actually deliver.
+// Until TWILIO_PAYMENT_LINK_TEMPLATE_SID is set, this just logs — the admin
+// can still copy/share the link manually from the dashboard.
+async function sendPaymentLinkSms(order, linkUrl) {
+  if (!order || !order.customer_mobile) return
+  const client = getClient()
+  if (!client || !process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID) {
+    console.log(`[sms] stub -> ${order.customer_mobile}: pay for order ${order.id} at ${linkUrl}`)
+    return
+  }
+  await client.messages.create({
+    to: toE164India(order.customer_mobile),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+    contentSid: process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID,
+    contentVariables: JSON.stringify({ '1': order.id, '2': linkUrl })
+  })
+}
+
+module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms }
