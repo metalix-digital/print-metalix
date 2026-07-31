@@ -148,6 +148,9 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .file-list li{padding:4px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .dl-btn{background:none;border:1.5px solid var(--orange);color:var(--orange);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;flex-shrink:0;}
 .dl-btn:hover{background:var(--orange);color:#fff;}
+.file-actions{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;}
+.print-file-btn{background:none;border:1.5px solid var(--ink2);color:var(--ink2);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;flex-shrink:0;}
+.print-file-btn:hover{background:var(--ink2);color:var(--card);}
 .jobsheet-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
 .jobsheet-btn{background:var(--btn-dark);border:1.5px solid var(--btn-dark);color:#fff;border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
 .jobsheet-btn:hover{background:var(--btn-dark-hover);}
@@ -353,6 +356,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 /* action buttons */
 .dl-btn{border-radius:8px;font-weight:600;transition:.15s;}
 .dl-btn:hover{background:var(--orange);color:#fff;}
+.print-file-btn{border-radius:8px;transition:.15s;}
 .jobsheet-btn{border-radius:9px;transition:.15s;}
 .jobsheet-btn:hover{opacity:.9;}
 .file-list{list-style:none;margin:6px 0 2px;}
@@ -1371,7 +1375,7 @@ const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
 // (across every page size) once pricing loads, so order rows show real names.
 let PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, paperType){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, paperType, fileType){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
   const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
   const orientationText = orientation ? ' · ' + (orientation === 'landscape' ? 'Landscape' : 'Portrait') : '';
@@ -1379,10 +1383,20 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
   const paperTypeText = paperType ? ' · ' + (PAPER_TYPE_LABELS[paperType] || paperType) : '';
   const copiesText = copies != null ? ' · ' + copies + ' cop' + (copies === 1 ? 'y' : 'ies') : '';
   const passwordText = password ? '<div class="subtle">🔒 Password: <strong>' + password.replace(/</g, '&lt;') + '</strong></div>' : '';
-  const action = deleted
-    ? '<span class="subtle">File auto-deleted after 3 days</span>'
-    : '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + fileName.replace(/"/g, '&quot;') + '">Download</button>';
-  return '<li><span>' + fileName + meta + modeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> ' + action + '</li>';
+  let action;
+  if (deleted) {
+    action = '<span class="subtle">File auto-deleted after 3 days</span>';
+  } else {
+    const nameAttr = fileName.replace(/"/g, '&quot;');
+    // Direct print opens the file inline and calls the browser's print
+    // dialog — only PDFs render inline reliably; a raw DOCX/PPTX original
+    // would just show as a download prompt inside the print iframe instead.
+    const printBtn = fileType === 'pdf'
+      ? '<button class="print-file-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + nameAttr + '">🖨 Print</button>'
+      : '';
+    action = printBtn + '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + nameAttr + '">Download</button>';
+  }
+  return '<li><span>' + fileName + meta + modeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> <span class="file-actions">' + action + '</span></li>';
 }
 
 function filesDetailHtml(o){
@@ -1390,11 +1404,11 @@ function filesDetailHtml(o){
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
   if (!files || !files.length) {
     return '<div><strong>File:</strong></div><ul class="file-list">' +
-      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at) +
+      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, null, o.file_type) +
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.paperType)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.paperType, f.fileType)).join('') +
     '</ul>';
 }
 
@@ -1417,6 +1431,35 @@ async function downloadOrderFile(orderId, fileId, fileName){
     URL.revokeObjectURL(url);
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Download failed.');
+  }
+}
+
+// Loads the file into a hidden iframe and triggers the browser's own print
+// dialog — same technique as jobsheet.html's merged-PDF print, but for one
+// original file directly (e.g. to reprint a single page after a misfeed,
+// without regenerating the whole job sheet).
+async function printOrderFile(orderId, fileId, fileName){
+  try {
+    const res = await adminFetch('/api/admin/orders/' + orderId + '/files/' + fileId + '/download');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || 'File not available for printing.');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0';
+    iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    iframe.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    };
+    setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 60000);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not open file for printing.');
   }
 }
 
@@ -1576,6 +1619,12 @@ function renderOrders(orders){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       downloadOrderFile(btn.dataset.order, btn.dataset.file, btn.dataset.name);
+    });
+  });
+  body.querySelectorAll('.print-file-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      printOrderFile(btn.dataset.order, btn.dataset.file, btn.dataset.name);
     });
   });
   body.querySelectorAll('.del-order-btn').forEach((btn) => {

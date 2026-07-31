@@ -826,26 +826,31 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
         // aspect ratio, centered), using A4 portrait or landscape to match the
         // source page's orientation. Guarantees the whole job sheet prints on A4.
         const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
-        for (const idx of srcDoc.getPageIndices()) {
-          // Content-less pages can't be embedded (pdf-lib throws at save), so
-          // detect them and emit a blank A4 sheet — preserving page count/order.
-          let hasContents = false
-          try { hasContents = !!srcDoc.getPage(idx).node.Contents() } catch (e) { hasContents = false }
-          if (!hasContents) { merged.addPage([A4_PT.width, A4_PT.height]); continue }
-          try {
-            const [ep] = await merged.embedPdf(srcDoc, [idx])
-            const pw = ep.width
-            const ph = ep.height
-            const landscape = pw > ph
-            const pageW = landscape ? A4_PT.height : A4_PT.width
-            const pageH = landscape ? A4_PT.width : A4_PT.height
-            const scale = Math.min(pageW / pw, pageH / ph)
-            const w = pw * scale
-            const h = ph * scale
-            const pg = merged.addPage([pageW, pageH])
-            pg.drawPage(ep, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h })
-          } catch (pageErr) {
-            merged.addPage([A4_PT.width, A4_PT.height])
+        // The job sheet is what staff actually print from — it must contain
+        // as many copies of the file as the customer paid for, not just one.
+        const numCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
+        for (let copyNum = 0; copyNum < numCopies; copyNum++) {
+          for (const idx of srcDoc.getPageIndices()) {
+            // Content-less pages can't be embedded (pdf-lib throws at save), so
+            // detect them and emit a blank A4 sheet — preserving page count/order.
+            let hasContents = false
+            try { hasContents = !!srcDoc.getPage(idx).node.Contents() } catch (e) { hasContents = false }
+            if (!hasContents) { merged.addPage([A4_PT.width, A4_PT.height]); continue }
+            try {
+              const [ep] = await merged.embedPdf(srcDoc, [idx])
+              const pw = ep.width
+              const ph = ep.height
+              const landscape = pw > ph
+              const pageW = landscape ? A4_PT.height : A4_PT.width
+              const pageH = landscape ? A4_PT.width : A4_PT.height
+              const scale = Math.min(pageW / pw, pageH / ph)
+              const w = pw * scale
+              const h = ph * scale
+              const pg = merged.addPage([pageW, pageH])
+              pg.drawPage(ep, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h })
+            } catch (pageErr) {
+              merged.addPage([A4_PT.width, A4_PT.height])
+            }
           }
         }
       } catch (err) {
