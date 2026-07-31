@@ -737,6 +737,25 @@ function listArchivedOrders(locationId) {
   return db.prepare('SELECT * FROM orders WHERE archived_at IS NOT NULL ORDER BY archived_at DESC').all()
 }
 
+// There's no dedicated customers table — the Customers view is a GROUP BY
+// over orders.customer_mobile (see listCustomers below), so "editing a
+// customer" means rewriting their name/mobile/email on every one of their
+// own (non-archived) orders. Returns the number of order rows touched (0 if
+// the mobile matched nothing, so the caller can 404).
+function updateCustomerByMobile(mobile, { name, newMobile, email }, locationId) {
+  const sets = []
+  const setParams = {}
+  if (name != null) { sets.push('customer_name = @name'); setParams.name = name }
+  if (newMobile != null) { sets.push('customer_mobile = @newMobile'); setParams.newMobile = newMobile }
+  if (email !== undefined) { sets.push('customer_email = @email'); setParams.email = email || null }
+  if (!sets.length) return 0
+  const clauses = ['customer_mobile = @mobile', 'archived_at IS NULL']
+  if (locationId) clauses.push('location_id = @locationId')
+  const info = db.prepare(`UPDATE orders SET ${sets.join(', ')}, updated_at = @updatedAt WHERE ${clauses.join(' AND ')}`)
+    .run({ ...setParams, mobile, locationId, updatedAt: Date.now() })
+  return info.changes
+}
+
 // Archives every non-archived order for a mobile (the admin "customer" identity,
 // since the Customers view is grouped by mobile). Returns the affected rows.
 // locationId: a branch admin only archives this customer's orders placed at
@@ -931,6 +950,7 @@ module.exports = {
   restoreOrder,
   listArchivedOrders,
   archiveCustomerByMobile,
+  updateCustomerByMobile,
   deleteOrder,
   listArchivedBefore,
   listOrders,

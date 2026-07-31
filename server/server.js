@@ -947,6 +947,31 @@ app.delete('/api/admin/customers/:mobile', requireAdmin, requireTab('customers')
   return res.json({ archived: true, archivedOrders: orders.length })
 })
 
+// Edits a customer's name/mobile/email — rewritten onto every one of their
+// own orders, since that's the only place this data lives (see
+// updateCustomerByMobile in db.js). Changing the mobile silently merges this
+// customer with whoever already has the new number, same as the Customers
+// list's own grouping — the client warns about that before submitting.
+app.patch('/api/admin/customers/:mobile', requireAdmin, requireTab('customers'), express.json(), (req, res) => {
+  const { name, mobile: newMobile, email } = req.body || {}
+  if (newMobile != null && !/^\d{10}$/.test(String(newMobile))) {
+    return res.status(400).json({ error: 'invalid_mobile', message: 'Mobile must be a 10-digit number.' })
+  }
+  const changed = db.updateCustomerByMobile(req.params.mobile, { name, newMobile, email }, scopeLocation(req))
+  if (!changed) return res.status(404).json({ error: 'not_found' })
+  return res.json({ updated: true, ordersUpdated: changed })
+})
+
+app.post('/api/admin/customers/bulk-archive', requireAdmin, requireTab('customers'), express.json(), (req, res) => {
+  const { mobiles } = req.body || {}
+  if (!Array.isArray(mobiles) || !mobiles.length) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Select at least one customer.' })
+  }
+  const locationId = scopeLocation(req)
+  const archivedOrders = mobiles.reduce((sum, m) => sum + db.archiveCustomerByMobile(m, locationId).length, 0)
+  return res.json({ archived: true, count: mobiles.length, archivedOrders })
+})
+
 // Archive management: list, restore, or permanently delete now.
 app.get('/api/admin/archive', requireAdmin, requireTab('archive'), (req, res) => {
   return res.json({ orders: db.listArchivedOrders(scopeLocation(req)), retentionDays: 30 })

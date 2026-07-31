@@ -489,10 +489,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="filters">
         <input type="text" id="customerSearch" placeholder="Search by name, mobile, or email" />
       </div>
+      <div class="bulk-bar hidden" id="custBulkBar">
+        <span class="count"><b id="custBulkCount">0</b> selected</span>
+        <button class="b-del" id="custBulkArchive" type="button">Archive</button>
+        <button class="b-clear" id="custBulkClear" type="button">Clear</button>
+      </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th></th></tr></thead>
-          <tbody id="customersBody"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
+          <thead><tr>
+            <th class="cbcol"><input type="checkbox" class="cb" id="custSelectAll" title="Select all" /></th>
+            <th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th></th>
+          </tr></thead>
+          <tbody id="customersBody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1741,28 +1749,126 @@ async function saveStages(){
 
 /* -- CUSTOMERS -- */
 let allCustomers = [];
+const selectedCustomers = new Set();
+
+function updateCustBulkBar(){
+  const bar = document.getElementById('custBulkBar');
+  bar.classList.toggle('hidden', selectedCustomers.size === 0);
+  document.getElementById('custBulkCount').textContent = selectedCustomers.size;
+}
 
 function renderCustomers(customers){
   const body = document.getElementById('customersBody');
   if (!customers.length){
-    body.innerHTML = '<tr><td colspan="7" class="empty">' + (allCustomers.length ? 'No customers match your search' : 'No customers yet') + '</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">' + (allCustomers.length ? 'No customers match your search' : 'No customers yet') + '</td></tr>';
     return;
   }
-  body.innerHTML = customers.map((c) => (
-    '<tr>' +
-      '<td>' + escHtml(c.customer_name || '—') + '</td>' +
-      '<td>' + escHtml(c.customer_mobile || '—') + '</td>' +
-      '<td>' + escHtml(c.customer_email || '—') + '</td>' +
+  body.innerHTML = customers.map((c) => {
+    const mobile = c.customer_mobile || '';
+    return '<tr>' +
+      '<td class="cbcol"><input type="checkbox" class="cb cust-cb" data-mobile="' + escHtml(mobile) + '"' + (selectedCustomers.has(mobile) ? ' checked' : '') + (mobile ? '' : ' disabled') + ' /></td>' +
+      '<td><input type="text" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="name" data-orig="' + escHtml(c.customer_name || '') + '" value="' + escHtml(c.customer_name || '') + '" /></td>' +
+      '<td><input type="text" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="mobile" data-orig="' + escHtml(mobile) + '" value="' + escHtml(mobile) + '" maxlength="10" /></td>' +
+      '<td><input type="email" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="email" data-orig="' + escHtml(c.customer_email || '') + '" value="' + escHtml(c.customer_email || '') + '" /></td>' +
       '<td>' + escHtml(c.order_count) + '</td>' +
       '<td>₹' + escHtml(c.total_spent) + '</td>' +
       '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
-      '<td><button class="del-cust-btn" data-mobile="' + escHtml(c.customer_mobile || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
-    '</tr>'
-  )).join('');
+      '<td><button class="del-cust-btn" data-mobile="' + escHtml(mobile) + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
+    '</tr>';
+  }).join('');
   body.querySelectorAll('.del-cust-btn').forEach((btn) => {
     btn.addEventListener('click', () => deleteCustomer(btn.dataset.mobile, btn.dataset.name, btn.dataset.count));
   });
+  body.querySelectorAll('.cust-cb').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedCustomers.add(cb.dataset.mobile); else selectedCustomers.delete(cb.dataset.mobile);
+      updateCustBulkBar();
+    });
+  });
+  body.querySelectorAll('.cust-edit').forEach((input) => {
+    input.addEventListener('blur', () => saveCustomerField(input));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+  });
 }
+
+async function saveCustomerField(input){
+  const origMobile = input.dataset.mobile;
+  const field = input.dataset.field;
+  const value = input.value.trim();
+  if (value === input.dataset.orig) return; // unchanged
+  if (!origMobile) { input.value = input.dataset.orig; return; } // no mobile on file — nothing to key the update on
+  if (field === 'mobile' && !/^\d{10}$/.test(value)) {
+    showToastError('Mobile must be a 10-digit number.');
+    input.value = input.dataset.orig;
+    return;
+  }
+  if (field === 'mobile') {
+    const ok = await showConfirmModal(
+      '<h3 class="modal-title">Change this customer\'s mobile number?</h3>' +
+      '<p class="modal-sub">This updates their number on every past order. If another customer already has this number, their order histories will merge.</p>' +
+      '<table class="modal-meta"><tr><td class="k">From</td><td class="v">' + escHtml(origMobile) + '</td></tr><tr><td class="k">To</td><td class="v">' + escHtml(value) + '</td></tr></table>',
+      'Change number'
+    );
+    if (!ok) { input.value = input.dataset.orig; return; }
+  }
+  const payload = {};
+  payload[field === 'mobile' ? 'mobile' : field] = value;
+  try {
+    const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(origMobile), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Update failed');
+    showFlash('Customer updated');
+    loadCustomers();
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      showToastError(err.message || 'Could not update customer.');
+      input.value = input.dataset.orig;
+    }
+  }
+}
+
+function showToastError(message){
+  if (typeof showFlash === 'function') showFlash(message); else alert(message);
+}
+
+document.getElementById('custSelectAll').addEventListener('change', (e) => {
+  document.querySelectorAll('.cust-cb:not(:disabled)').forEach((cb) => {
+    cb.checked = e.target.checked;
+    if (e.target.checked) selectedCustomers.add(cb.dataset.mobile); else selectedCustomers.delete(cb.dataset.mobile);
+  });
+  updateCustBulkBar();
+});
+document.getElementById('custBulkClear').addEventListener('click', () => {
+  selectedCustomers.clear();
+  document.querySelectorAll('.cust-cb').forEach((cb) => { cb.checked = false; });
+  document.getElementById('custSelectAll').checked = false;
+  updateCustBulkBar();
+});
+document.getElementById('custBulkArchive').addEventListener('click', async () => {
+  const mobiles = Array.from(selectedCustomers);
+  if (!mobiles.length) return;
+  const ok = await showConfirmModal(
+    '<h3 class="modal-title">Archive ' + mobiles.length + ' customer' + (mobiles.length === 1 ? '' : 's') + '?</h3>' +
+    '<p class="modal-sub">Archives all of their orders — recoverable for 30 days from the Archive tab.</p>',
+    'Archive', true
+  );
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/customers/bulk-archive', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobiles })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Archive failed');
+    selectedCustomers.clear();
+    updateCustBulkBar();
+    loadCustomers(); loadOrders(); loadArchive();
+    showFlash('Archived ' + mobiles.length + ' customer' + (mobiles.length === 1 ? '' : 's'));
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert(err.message || 'Archive failed.');
+  }
+});
 
 function filterCustomers(){
   const q = document.getElementById('customerSearch').value.trim().toLowerCase();
@@ -1787,7 +1893,7 @@ async function loadCustomers(){
     allCustomers = data.customers || [];
     filterCustomers();
   } catch (err) {
-    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load customers</td></tr>';
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="8" class="empty">Failed to load customers</td></tr>';
   }
 }
 
