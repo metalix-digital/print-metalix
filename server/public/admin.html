@@ -507,7 +507,6 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn" data-tab="blog" data-super-only>Blog</button>
     <button class="tab-btn" data-tab="archive">Archive</button>
     <button class="tab-btn" data-tab="feedback">Feedback</button>
-    <button class="tab-btn hidden" data-tab="mybranch" id="tabMyBranch">My Branch</button>
     <button class="tab-btn" data-tab="staff" data-super-only>Staff</button>
     <button class="tab-btn" data-tab="settings" data-super-only>Settings</button>
   </nav>
@@ -633,12 +632,6 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <thead><tr><th>Order</th><th>Customer</th><th>Rating</th><th>Comment</th><th>Submitted</th></tr></thead>
           <tbody id="feedbackBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
         </table>
-      </div>
-    </div>
-
-    <div class="panel" id="panel-mybranch">
-      <div class="settings-form" id="myBranchForm">
-        <div class="loading">Loading…</div>
       </div>
     </div>
 
@@ -1024,8 +1017,8 @@ let currentAdmin = null;
 // Must match server.js's BRANCH_TABS — the only tabs a branch_admin can ever
 // be granted/restricted; Pricing/Locations/Stages/Settings/Staff are always
 // super-admin-only regardless of this list.
-const BRANCH_TAB_KEYS = ['orders', 'customers', 'archive', 'feedback', 'mybranch'];
-const BRANCH_TAB_LABELS = { orders: 'Orders', customers: 'Customers', archive: 'Archive', feedback: 'Feedback', mybranch: 'My Branch' };
+const BRANCH_TAB_KEYS = ['orders', 'customers', 'archive', 'feedback'];
+const BRANCH_TAB_LABELS = { orders: 'Orders', customers: 'Customers', archive: 'Archive', feedback: 'Feedback' };
 
 async function showDash(){
   document.getElementById('loginWrap').classList.add('hidden');
@@ -1041,7 +1034,6 @@ async function showDash(){
   branchTag.classList.toggle('hidden', !isBranch);
   if (isBranch) branchTag.textContent = currentAdmin.locationName;
   document.querySelectorAll('.tab-btn[data-super-only]').forEach((btn) => btn.classList.toggle('hidden', isBranch));
-  document.getElementById('tabMyBranch').classList.toggle('hidden', !isBranch);
   // null allowedTabs = no restriction configured (this staff member sees
   // every branch tab); an array hides whichever ones it omits.
   const allowedTabs = currentAdmin.allowedTabs;
@@ -1078,9 +1070,7 @@ async function showDash(){
   loadArchive();
   await stagesAndFeedback;
   loadOrders();
-  if (isBranch) {
-    loadMyBranch();
-  } else {
+  if (!isBranch) {
     loadAnalytics(analyticsRangeDays);
     loadPricing();
     loadLocations();
@@ -2692,90 +2682,6 @@ function textFieldHtml(label, key, value, isTextarea){
   const inner = isTextarea ? (value || '') : '';
   return '<label class="field"><span>' + label + '</span>' +
     '<' + tag + ' data-key="' + key + '"' + valueAttr + '>' + inner + '</' + tag + '></label>';
-}
-
-/* -- MY BRANCH (branch admin only) -- */
-async function loadMyBranch(){
-  const form = document.getElementById('myBranchForm');
-  if (!form) return;
-  // Everything (fetch + the HTML-building below) is inside this one try —
-  // previously the fetch was guarded but a bad value reaching the template
-  // strings after it (e.g. a field the code assumed would always be present)
-  // threw past the guard and left the static "Loading…" markup on screen
-  // forever, with no error shown. Now any failure at all falls through to
-  // the catch below instead of hanging.
-  try {
-    const res = await adminFetch('/api/admin/my-location');
-    const data = await res.json();
-    if (!res.ok || !data.location) {
-      form.innerHTML = '<div class="empty">' + escHtml(data.message || "Your login isn't linked to an active branch — ask a super admin to assign one in the Staff tab.") + '</div>';
-      return;
-    }
-    const loc = data.location;
-    const shopOpen = loc.shopOpen !== false;
-    form.innerHTML =
-      '<div class="shop-toggle-box' + (shopOpen ? '' : ' closed') + '" id="branchToggleBox">' +
-        '<div><div class="stb-label">' + escHtml(loc.name) + ' is ' + (shopOpen ? 'Open' : 'Closed') + '</div>' +
-        '<div class="stb-sub">' + (shopOpen ? 'Customers can pick this branch at checkout.' : 'Customers see this branch as closed and can\'t select it.') + '</div></div>' +
-        '<label class="shop-switch"><input type="checkbox" id="branchOpenToggle"' + (shopOpen ? ' checked' : '') + '><span class="slider"></span></label>' +
-      '</div>' +
-      '<h2>Branch details</h2><div class="field-grid">' +
-        textFieldHtml('Address', 'address', loc.address) +
-        textFieldHtml('City', 'city', loc.city) +
-        textFieldHtml('Pincode', 'pincode', loc.pincode) +
-        textFieldHtml('Google Maps link', 'mapsUrl', loc.mapsUrl) +
-      '</div>' +
-      '<h2>Branch hours</h2><div class="field-grid">' +
-        textFieldHtml('Mon–Fri', 'weekdays', loc.storeTimings.weekdays) +
-        textFieldHtml('Saturday', 'saturday', loc.storeTimings.saturday) +
-        textFieldHtml('Sunday', 'sunday', loc.storeTimings.sunday) +
-      '</div>' +
-      '<button class="save-btn" id="saveMyBranchBtn">Save changes</button>' +
-      '<div id="myBranchMessage"></div>';
-
-    document.getElementById('saveMyBranchBtn').addEventListener('click', saveMyBranch);
-    document.getElementById('branchOpenToggle').addEventListener('change', (e) => {
-      const box = document.getElementById('branchToggleBox');
-      box.classList.toggle('closed', !e.target.checked);
-      box.querySelector('.stb-label').textContent = escHtml(loc.name) + ' is ' + (e.target.checked ? 'Open' : 'Closed');
-      box.querySelector('.stb-sub').textContent = e.target.checked
-        ? 'Customers can pick this branch at checkout.'
-        : 'Customers see this branch as closed and can\'t select it.';
-      saveMyBranch();
-    });
-  } catch (err) {
-    if (err.message !== 'unauthorized') form.innerHTML = '<div class="empty">Failed to load your branch.</div>';
-  }
-}
-
-const MY_BRANCH_HOURS_KEYS = ['weekdays', 'saturday', 'sunday'];
-
-async function saveMyBranch(){
-  const btn = document.getElementById('saveMyBranchBtn');
-  const msg = document.getElementById('myBranchMessage');
-  const storeTimings = {};
-  const profile = {};
-  document.querySelectorAll('#myBranchForm input[data-key]').forEach((input) => {
-    const key = input.dataset.key;
-    if (MY_BRANCH_HOURS_KEYS.includes(key)) storeTimings[key] = input.value;
-    else profile[key] = input.value;
-  });
-  const shopOpen = document.getElementById('branchOpenToggle').checked;
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  if (msg) { msg.textContent = ''; msg.className = 'save-message'; }
-  try {
-    const res = await adminFetch('/api/admin/my-location', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ shopOpen, storeTimings }, profile))
-    });
-    if (!res.ok) throw new Error('save_failed');
-    if (msg) msg.textContent = 'Saved.';
-  } catch (err) {
-    if (err.message !== 'unauthorized' && msg){ msg.textContent = 'Failed to save.'; msg.className = 'save-message error'; }
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
-  }
 }
 
 /* -- Blog tab -- */

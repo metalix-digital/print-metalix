@@ -577,13 +577,10 @@ function getLocationById(id) {
   return r ? rowToLocation(r) : null
 }
 
-// Identity fields (name/address/city/pincode/active/mapsUrl) — upserts by id
-// and deletes rows no longer present in `locations`, matching the admin
-// Locations tab's "send the whole list back" editing pattern. Deliberately
-// never touches shop_open/hours here; see updateLocationOperatingInfo for
-// those. Note: address/city/pincode/mapsUrl can *also* be updated by a branch
-// admin through their own self-serve panel (updateLocationOperatingInfo below)
-// — only name and active are exclusively super-admin, via this function.
+// Identity fields only (name/address/city/pincode/active) — upserts by id and
+// deletes rows no longer present in `locations`, matching the admin Locations
+// tab's "send the whole list back" editing pattern. Deliberately never
+// touches shop_open/hours here; see updateLocationOperatingInfo for those.
 function setLocations(locations) {
   const now = Date.now()
   const existingIds = new Set(db.prepare('SELECT id FROM locations').all().map((r) => r.id))
@@ -591,8 +588,7 @@ function setLocations(locations) {
 
   // Refuse to delete a branch that a staff login is still assigned to —
   // otherwise that branch_admin is silently orphaned (location_id pointing
-  // at a row that no longer exists), and their "My Branch" tab breaks with
-  // no indication why. Reassign them in Staff first.
+  // at a row that no longer exists). Reassign them in Staff first.
   const toRemove = [...existingIds].filter((id) => !incomingIds.has(id))
   if (toRemove.length) {
     const placeholders = toRemove.map(() => '?').join(',')
@@ -622,13 +618,9 @@ function setLocations(locations) {
   tx()
 }
 
-// Used by both the super admin's fuller location edit and a branch admin's
-// self-serve "my branch" panel — shop_open/hours plus the address/city/
-// pincode/mapsUrl "contact details" a branch admin may need to update day to
-// day (their shop moved counters, a wrong pincode, a stale Maps link). Never
-// touches name or active — a branch admin can't rename or deactivate their
-// own branch; that stays exclusively in setLocations (super admin only).
-function updateLocationOperatingInfo(id, { shopOpen, storeTimings, address, city, pincode, mapsUrl } = {}) {
+// Operating info only (shop_open/hours) — used by the super admin's Locations
+// save. Deliberately separate from setLocations' identity fields above.
+function updateLocationOperatingInfo(id, { shopOpen, storeTimings } = {}) {
   const sets = []
   const params = { id, updated_at: Date.now() }
   if (shopOpen !== undefined) { sets.push('shop_open = @shop_open'); params.shop_open = shopOpen ? 1 : 0 }
@@ -637,10 +629,6 @@ function updateLocationOperatingInfo(id, { shopOpen, storeTimings, address, city
     if (storeTimings.saturday !== undefined) { sets.push('hours_saturday = @hours_saturday'); params.hours_saturday = storeTimings.saturday }
     if (storeTimings.sunday !== undefined) { sets.push('hours_sunday = @hours_sunday'); params.hours_sunday = storeTimings.sunday }
   }
-  if (address !== undefined) { sets.push('address = @address'); params.address = address }
-  if (city !== undefined) { sets.push('city = @city'); params.city = city }
-  if (pincode !== undefined) { sets.push('pincode = @pincode'); params.pincode = pincode }
-  if (mapsUrl !== undefined) { sets.push('maps_url = @maps_url'); params.maps_url = mapsUrl }
   if (!sets.length) return getLocationById(id)
   db.prepare(`UPDATE locations SET ${sets.join(', ')}, updated_at = @updated_at WHERE id = @id`).run(params)
   return getLocationById(id)
