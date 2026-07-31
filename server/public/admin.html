@@ -2649,8 +2649,18 @@ function textFieldHtml(label, key, value, isTextarea){
 async function loadMyBranch(){
   const form = document.getElementById('myBranchForm');
   if (!form) return;
-  const res = await adminFetch('/api/admin/my-location');
-  const data = await res.json();
+  let data;
+  try {
+    const res = await adminFetch('/api/admin/my-location');
+    data = await res.json();
+    if (!res.ok || !data.location) {
+      form.innerHTML = '<div class="empty">' + escHtml(data.message || "Your login isn't linked to an active branch — ask a super admin to assign one in the Staff tab.") + '</div>';
+      return;
+    }
+  } catch (err) {
+    if (err.message !== 'unauthorized') form.innerHTML = '<div class="empty">Failed to load your branch.</div>';
+    return;
+  }
   const loc = data.location;
   const shopOpen = loc.shopOpen !== false;
   form.innerHTML =

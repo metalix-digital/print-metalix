@@ -1230,7 +1230,12 @@ app.put('/api/admin/locations', requireSuperAdmin, express.json(), (req, res) =>
       mapsUrl
     })
   }
-  db.setLocations(clean)
+  try {
+    db.setLocations(clean)
+  } catch (err) {
+    if (err.code === 'location_has_staff') return res.status(400).json({ error: err.code, message: err.message })
+    throw err
+  }
   // Identity fields (above) and operating info (shopOpen/hours) are separate
   // updates in db.js so a branch admin's own PUT (below) can never touch
   // identity fields — but the super admin's single request here can include

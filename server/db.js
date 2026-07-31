@@ -585,6 +585,22 @@ function setLocations(locations) {
   const now = Date.now()
   const existingIds = new Set(db.prepare('SELECT id FROM locations').all().map((r) => r.id))
   const incomingIds = new Set(locations.map((l) => l.id))
+
+  // Refuse to delete a branch that a staff login is still assigned to —
+  // otherwise that branch_admin is silently orphaned (location_id pointing
+  // at a row that no longer exists), and their "My Branch" tab breaks with
+  // no indication why. Reassign them in Staff first.
+  const toRemove = [...existingIds].filter((id) => !incomingIds.has(id))
+  if (toRemove.length) {
+    const placeholders = toRemove.map(() => '?').join(',')
+    const staffStillAssigned = db.prepare(`SELECT username FROM admin_users WHERE location_id IN (${placeholders})`).all(...toRemove)
+    if (staffStillAssigned.length) {
+      const err = new Error(`Can't remove this branch — staff still assigned to it: ${staffStillAssigned.map((s) => s.username).join(', ')}. Reassign them in the Staff tab first.`)
+      err.code = 'location_has_staff'
+      throw err
+    }
+  }
+
   const tx = db.transaction(() => {
     for (const l of locations) {
       const params = { id: l.id, name: l.name, address: l.address || '', city: l.city || '', pincode: l.pincode || '', active: l.active ? 1 : 0, maps_url: l.mapsUrl || '', now }
