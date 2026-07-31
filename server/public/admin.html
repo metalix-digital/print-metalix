@@ -88,6 +88,7 @@ tr.order-row:hover{background:var(--paper);}
 .detail>div:first-child{margin-top:0;}
 .detail>.file-list{margin:4px 0 12px;}
 select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;font-family:'Inter',sans-serif;}
+select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;font-family:'Inter',sans-serif;background:var(--card);color:var(--ink);cursor:pointer;}
 
 .pricing-form{background:var(--card);border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
 .pricing-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
@@ -199,6 +200,14 @@ tr.order-row.sel{background:var(--orange-soft);}
 .cust-name{font-weight:600;}
 .amt{font-weight:700;font-variant-numeric:tabular-nums;}
 .placed{color:var(--ink3);font-size:12.5px;white-space:nowrap;}
+
+tr.cust-row{transition:background .12s;}
+tr.cust-row:hover{background:var(--paper);}
+.cust-email{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2);}
+td.num{font-variant-numeric:tabular-nums;color:var(--ink2);}
+.cust-actions{display:flex;gap:8px;white-space:nowrap;}
+.edit-cust-btn{background:var(--card);border:1.5px solid var(--line);color:var(--ink2);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
+.edit-cust-btn:hover{border-color:var(--orange);color:var(--orange);}
 
 /* colored status select (looks like a pill, still editable) */
 select.status-select{border-radius:999px;padding:6px 26px 6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
@@ -814,6 +823,35 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="editCustomerModal">
+  <div class="modal-card blog-modal" role="dialog" aria-modal="true" style="max-width:440px;">
+    <div class="blog-modal-head">
+      <h3 class="modal-title">Edit customer</h3>
+      <button class="blog-modal-close" id="editCustomerModalClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="blog-modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="ecName" placeholder="Full name" />
+      </div>
+      <div class="field">
+        <label>Mobile</label>
+        <input type="text" id="ecMobile" placeholder="10-digit mobile" maxlength="10" />
+      </div>
+      <div class="field">
+        <label>Email <span class="opt">(optional)</span></label>
+        <input type="email" id="ecEmail" placeholder="customer@email.com" />
+      </div>
+      <p class="detail" id="ecMobileNote" style="margin:0;">Changing the mobile number moves this customer's full order history under the new number.</p>
+      <div class="save-message hidden" id="editCustomerModalMsg"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="editCustomerModalCancel" type="button">Cancel</button>
+      <button class="modal-ok" id="editCustomerModalSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* -- THEME TOGGLE -- */
 (function(){
@@ -1203,6 +1241,20 @@ async function deleteOrdersFlow(ids, single){
   }
 }
 
+// Active branches, for the per-order "assign a branch" control in the detail
+// view — fetched once (public endpoint, same one the checkout page uses) and
+// cached, since it only changes when someone edits the Locations tab.
+let orderBranchOptions = null;
+async function ensureBranchOptions(){
+  if (orderBranchOptions) return orderBranchOptions;
+  try {
+    const res = await fetch('/api/locations');
+    const data = await res.json();
+    orderBranchOptions = data.locations || [];
+  } catch (err) { orderBranchOptions = []; }
+  return orderBranchOptions;
+}
+
 async function loadOrders(){
   const body = document.getElementById('ordersBody');
   const search = document.getElementById('orderSearch').value.trim();
@@ -1214,6 +1266,7 @@ async function loadOrders(){
   if (status) params.set('status', status);
   if (location) params.set('location', location);
   try {
+    await ensureBranchOptions();
     const res = await adminFetch('/api/admin/orders?' + params.toString());
     const data = await res.json();
     renderOrders(data.orders || []);
@@ -1222,6 +1275,18 @@ async function loadOrders(){
   }
 }
 document.getElementById('orderBranchFilter').addEventListener('change', loadOrders);
+
+function branchSelectHtml(order){
+  const options = orderBranchOptions || [];
+  const hasCurrent = order.location_id && options.some((l) => l.id === order.location_id);
+  return '<select class="branch-assign-select" data-order="' + escHtml(order.id) + '">' +
+    '<option value="">No branch assigned</option>' +
+    // A branch that's since been deactivated/removed still shows (using its
+    // last-known name) so an order's history never silently loses context.
+    (hasCurrent || !order.location_id ? '' : '<option value="' + escHtml(order.location_id) + '" selected>' + escHtml(order.location_name || order.location_id) + ' (inactive)</option>') +
+    options.map((l) => '<option value="' + escHtml(l.id) + '"' + (l.id === order.location_id ? ' selected' : '') + '>' + escHtml(l.name) + '</option>').join('') +
+    '</select>';
+}
 
 function statusSelectHtml(order){
   const statuses = getStatusesForOrder(order);
@@ -1387,7 +1452,7 @@ function renderOrders(orders){
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
       filesDetailHtml(o) +
       '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
-      (o.location_name ? '<div><strong>Branch:</strong> ' + escHtml(o.location_name) + '</div>' : '') +
+      '<div><strong>Branch:</strong> ' + branchSelectHtml(o) + '</div>' +
       '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
@@ -1498,6 +1563,31 @@ function renderOrders(orders){
           body: JSON.stringify({ order_status: 'Printing' })
         });
         loadOrders();
+      }
+    });
+  });
+  body.querySelectorAll('select.branch-assign-select').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', async () => {
+      const locationId = sel.value;
+      sel.disabled = true;
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(sel.dataset.order), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_id: locationId || null })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Could not update branch');
+        ordersById[sel.dataset.order] = data.order;
+        // Patch the summary row's branch chip in place instead of a full
+        // loadOrders() reload, so the still-open detail row stays open.
+        const chip = body.querySelector('tr[data-toggle="' + CSS.escape(sel.dataset.order) + '"] .branch-chip');
+        if (chip) chip.textContent = data.order.location_name || '—';
+        showFlash('Branch updated');
+      } catch (err) {
+        if (err.message !== 'unauthorized') alert(err.message || 'Could not update branch.');
+        loadOrders();
+      } finally {
+        sel.disabled = false;
       }
     });
   });
@@ -1861,19 +1951,25 @@ function renderCustomers(customers){
   }
   body.innerHTML = customers.map((c) => {
     const mobile = c.customer_mobile || '';
-    return '<tr>' +
+    return '<tr class="cust-row">' +
       '<td class="cbcol"><input type="checkbox" class="cb cust-cb" data-mobile="' + escHtml(mobile) + '"' + (selectedCustomers.has(mobile) ? ' checked' : '') + (mobile ? '' : ' disabled') + ' /></td>' +
-      '<td><input type="text" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="name" data-orig="' + escHtml(c.customer_name || '') + '" value="' + escHtml(c.customer_name || '') + '" /></td>' +
-      '<td><input type="text" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="mobile" data-orig="' + escHtml(mobile) + '" value="' + escHtml(mobile) + '" maxlength="10" /></td>' +
-      '<td><input type="email" class="cust-edit" data-mobile="' + escHtml(mobile) + '" data-field="email" data-orig="' + escHtml(c.customer_email || '') + '" value="' + escHtml(c.customer_email || '') + '" /></td>' +
-      '<td>' + escHtml(c.order_count) + '</td>' +
-      '<td>₹' + escHtml(c.total_spent) + '</td>' +
-      '<td>' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
-      '<td><button class="del-cust-btn" data-mobile="' + escHtml(mobile) + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button></td>' +
+      '<td><span class="cust-name">' + escHtml(c.customer_name || '—') + '</span></td>' +
+      '<td class="num">' + escHtml(mobile || '—') + '</td>' +
+      '<td class="cust-email" title="' + escHtml(c.customer_email || '') + '">' + escHtml(c.customer_email || '—') + '</td>' +
+      '<td class="num">' + escHtml(c.order_count) + '</td>' +
+      '<td class="amt">₹' + escHtml(c.total_spent) + '</td>' +
+      '<td class="placed">' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
+      '<td class="cust-actions">' +
+        '<button class="edit-cust-btn" data-mobile="' + escHtml(mobile) + '">✎ Edit</button>' +
+        '<button class="del-cust-btn" data-mobile="' + escHtml(mobile) + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button>' +
+      '</td>' +
     '</tr>';
   }).join('');
   body.querySelectorAll('.del-cust-btn').forEach((btn) => {
     btn.addEventListener('click', () => deleteCustomer(btn.dataset.mobile, btn.dataset.name, btn.dataset.count));
+  });
+  body.querySelectorAll('.edit-cust-btn').forEach((btn) => {
+    btn.addEventListener('click', () => openEditCustomerModal(allCustomers.find((c) => (c.customer_mobile || '') === btn.dataset.mobile)));
   });
   body.querySelectorAll('.cust-cb').forEach((cb) => {
     cb.addEventListener('change', () => {
@@ -1881,53 +1977,77 @@ function renderCustomers(customers){
       updateCustBulkBar();
     });
   });
-  body.querySelectorAll('.cust-edit').forEach((input) => {
-    input.addEventListener('blur', () => saveCustomerField(input));
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
-  });
 }
 
-async function saveCustomerField(input){
-  const origMobile = input.dataset.mobile;
-  const field = input.dataset.field;
-  const value = input.value.trim();
-  if (value === input.dataset.orig) return; // unchanged
-  if (!origMobile) { input.value = input.dataset.orig; return; } // no mobile on file — nothing to key the update on
-  if (field === 'mobile' && !/^\d{10}$/.test(value)) {
-    showToastError('Mobile must be a 10-digit number.');
-    input.value = input.dataset.orig;
+/* -- EDIT CUSTOMER (modal) -- */
+const editCustomerModal = document.getElementById('editCustomerModal');
+let ecOrigMobile = null;
+
+function openEditCustomerModal(customer){
+  if (!customer) return;
+  ecOrigMobile = customer.customer_mobile || '';
+  document.getElementById('ecName').value = customer.customer_name || '';
+  document.getElementById('ecMobile').value = ecOrigMobile;
+  document.getElementById('ecEmail').value = customer.customer_email || '';
+  document.getElementById('ecMobileNote').classList.add('hidden');
+  const msg = document.getElementById('editCustomerModalMsg');
+  msg.classList.add('hidden'); msg.textContent = '';
+  editCustomerModal.classList.remove('hidden');
+  editCustomerModal.classList.add('show');
+  document.getElementById('ecName').focus();
+}
+function closeEditCustomerModal(){
+  editCustomerModal.classList.remove('show');
+  editCustomerModal.classList.add('hidden');
+}
+document.getElementById('editCustomerModalClose').addEventListener('click', closeEditCustomerModal);
+document.getElementById('editCustomerModalCancel').addEventListener('click', closeEditCustomerModal);
+editCustomerModal.addEventListener('click', (e) => { if (e.target === editCustomerModal) closeEditCustomerModal(); });
+document.getElementById('ecMobile').addEventListener('input', () => {
+  document.getElementById('ecMobileNote').classList.toggle('hidden', document.getElementById('ecMobile').value.trim() === ecOrigMobile);
+});
+
+document.getElementById('editCustomerModalSave').addEventListener('click', async () => {
+  const msg = document.getElementById('editCustomerModalMsg');
+  msg.classList.add('hidden');
+  if (!ecOrigMobile) { closeEditCustomerModal(); return; } // no mobile on file — nothing to key the update on
+  const name = document.getElementById('ecName').value.trim();
+  const mobile = document.getElementById('ecMobile').value.trim();
+  const email = document.getElementById('ecEmail').value.trim();
+  if (!/^\d{10}$/.test(mobile)) {
+    msg.textContent = 'Mobile must be a 10-digit number.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
-  if (field === 'mobile') {
+  if (mobile !== ecOrigMobile) {
     const ok = await showConfirmModal(
       '<h3 class="modal-title">Change this customer\'s mobile number?</h3>' +
       '<p class="modal-sub">This updates their number on every past order. If another customer already has this number, their order histories will merge.</p>' +
-      '<table class="modal-meta"><tr><td class="k">From</td><td class="v">' + escHtml(origMobile) + '</td></tr><tr><td class="k">To</td><td class="v">' + escHtml(value) + '</td></tr></table>',
+      '<table class="modal-meta"><tr><td class="k">From</td><td class="v">' + escHtml(ecOrigMobile) + '</td></tr><tr><td class="k">To</td><td class="v">' + escHtml(mobile) + '</td></tr></table>',
       'Change number'
     );
-    if (!ok) { input.value = input.dataset.orig; return; }
+    if (!ok) return;
   }
-  const payload = {};
-  payload[field === 'mobile' ? 'mobile' : field] = value;
+  const saveBtn = document.getElementById('editCustomerModalSave');
+  saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
   try {
-    const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(origMobile), {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(ecOrigMobile), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mobile, email })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Update failed');
-    showFlash('Customer updated');
+    closeEditCustomerModal();
     loadCustomers();
+    showFlash('Customer updated');
   } catch (err) {
     if (err.message !== 'unauthorized') {
-      showToastError(err.message || 'Could not update customer.');
-      input.value = input.dataset.orig;
+      msg.textContent = err.message || 'Could not update customer.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
     }
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Save changes';
   }
-}
-
-function showToastError(message){
-  if (typeof showFlash === 'function') showFlash(message); else alert(message);
-}
+});
 
 document.getElementById('custSelectAll').addEventListener('change', (e) => {
   document.querySelectorAll('.cust-cb:not(:disabled)').forEach((cb) => {

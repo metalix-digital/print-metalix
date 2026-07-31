@@ -857,7 +857,8 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     order_status, failure_reason,
     customer_name, customer_mobile, customer_email,
     delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
-    files
+    files,
+    location_id
   } = req.body || {}
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
     return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
@@ -897,6 +898,14 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   if (delivery_city !== undefined) updates.delivery_city = delivery_city || null
   if (delivery_state !== undefined) updates.delivery_state = delivery_state || null
   if (delivery_pincode !== undefined) updates.delivery_pincode = delivery_pincode || null
+  // Pure bookkeeping (which branch fulfilled it) — never touches money, so
+  // it's allowed even on a paid order, unlike the content edits above.
+  if (location_id !== undefined) {
+    const loc = location_id ? db.getLocations().find((l) => l.id === location_id && l.active) : null
+    if (location_id && !loc) return res.status(400).json({ error: 'invalid_location', message: 'Unknown or inactive branch.' })
+    updates.location_id = loc ? loc.id : null
+    updates.location_name = loc ? loc.name : null
+  }
 
   // Anything that affects price (per-file print options, or the delivery
   // method/pincode the delivery charge is based on) triggers a full
