@@ -816,13 +816,99 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
 app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
-  const { order_status, failure_reason } = req.body || {}
+  const {
+    order_status, failure_reason,
+    customer_name, customer_mobile, customer_email,
+    delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
+    files
+  } = req.body || {}
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
     return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
   }
+  if (customer_mobile !== undefined && !/^\d{10}$/.test(String(customer_mobile))) {
+    return res.status(400).json({ error: 'invalid_mobile', message: 'Mobile must be a 10-digit number.' })
+  }
+  if (delivery_method === 'delivery' && (delivery_address !== undefined || delivery_pincode !== undefined)) {
+    const addr = delivery_address !== undefined ? delivery_address : order.delivery_address
+    const city = delivery_city !== undefined ? delivery_city : order.delivery_city
+    const state = delivery_state !== undefined ? delivery_state : order.delivery_state
+    const pin = delivery_pincode !== undefined ? delivery_pincode : order.delivery_pincode
+    if (!addr || !city || !state || !pin) return res.status(400).json({ error: 'missing_delivery_address' })
+  }
+
   const updates = {}
   if (order_status !== undefined) updates.order_status = order_status
   if (failure_reason !== undefined) updates.failure_reason = failure_reason
+  if (customer_name !== undefined) updates.customer_name = customer_name
+  if (customer_mobile !== undefined) updates.customer_mobile = customer_mobile
+  if (customer_email !== undefined) updates.customer_email = customer_email || null
+  if (delivery_method !== undefined) updates.delivery_method = delivery_method
+  if (delivery_address !== undefined) updates.delivery_address = delivery_address || null
+  if (delivery_city !== undefined) updates.delivery_city = delivery_city || null
+  if (delivery_state !== undefined) updates.delivery_state = delivery_state || null
+  if (delivery_pincode !== undefined) updates.delivery_pincode = delivery_pincode || null
+
+  // Anything that affects price (per-file print options, or the delivery
+  // method/pincode the delivery charge is based on) triggers a full
+  // recompute through the same pricing.calculate() used at order creation —
+  // never trust a client-supplied total.
+  const repricingNeeded = Array.isArray(files) || delivery_method !== undefined || delivery_pincode !== undefined
+  if (repricingNeeded) {
+    let currentFiles = []
+    try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
+    if (!currentFiles.length && order.file_path) {
+      currentFiles = [{
+        fileId: order.file_path, fileName: order.file_name, fileType: order.file_type,
+        pageCount: order.page_count, colorPageCount: 0,
+        printMode: order.print_mode, orientation: order.orientation,
+        printSide: order.print_side, paperType: order.paper_type, copies: order.copies
+      }]
+    }
+    const paperTypeConfig = db.getPricing()
+    const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
+    const defaultPaperType = paperTypeIds[0] || 'normal'
+    const VALID_MODES = ['auto', 'color', 'bw']
+    const VALID_SIDES = ['single', 'double']
+    const overridesById = new Map((files || []).map((f) => [f.fileId, f]))
+
+    const mergedFiles = currentFiles.map((f) => {
+      const o = overridesById.get(f.fileId) || {}
+      const printMode = VALID_MODES.includes(o.printMode) ? o.printMode : f.printMode
+      const printSide = printMode === 'color' ? 'single' : (VALID_SIDES.includes(o.printSide) ? o.printSide : f.printSide)
+      const paperType = paperTypeIds.includes(o.paperType) ? o.paperType : (paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType)
+      const copies = o.copies !== undefined ? Math.max(1, Math.min(999, Math.round(Number(o.copies)) || 1)) : f.copies
+      return { ...f, printMode, printSide, paperType, copies }
+    })
+
+    const pricingFiles = mergedFiles.map((f) => {
+      const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
+      return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, paperType: f.paperType }
+    })
+
+    const effectiveDeliveryMethod = delivery_method !== undefined ? delivery_method : order.delivery_method
+    const effectiveDeliveryPincode = delivery_pincode !== undefined ? delivery_pincode : order.delivery_pincode
+    const calc = pricing.calculate(paperTypeConfig, {
+      files: pricingFiles,
+      deliveryMethod: effectiveDeliveryMethod || 'pickup',
+      deliveryPincode: effectiveDeliveryPincode
+    })
+
+    const fileModes = new Set(mergedFiles.map((f) => f.printMode))
+    const fileSides = new Set(mergedFiles.map((f) => f.printSide))
+    const filePaperTypes = new Set(mergedFiles.map((f) => f.paperType))
+
+    updates.files_json = JSON.stringify(mergedFiles)
+    updates.print_mode = fileModes.size === 1 ? mergedFiles[0].printMode : 'mixed'
+    updates.print_side = fileSides.size === 1 ? mergedFiles[0].printSide : 'mixed'
+    updates.paper_type = filePaperTypes.size === 1 ? mergedFiles[0].paperType : 'mixed'
+    updates.copies = mergedFiles.reduce((sum, f) => sum + f.copies, 0)
+    updates.print_cost = calc.printCost
+    updates.delivery_charge = calc.deliveryCharge
+    updates.handling_charge = calc.handlingCharge
+    updates.gst_amount = calc.gstAmount
+    updates.total_amount = calc.totalAmount
+  }
+
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
   const updated = db.updateOrder(order.id, updates)
 
@@ -833,7 +919,15 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     printQueue.syncPrintJobStatus(updated.id, updated.order_status)
     emailStatusChange(updated, `${req.protocol}://${req.get('host')}`)
   }
-  return res.json({ order: updated })
+
+  // A repriced order that was already paid needs a human to reconcile the
+  // difference (collect more, or refund) — surfaced here, never auto-applied.
+  const priceChanged = updates.total_amount !== undefined && updates.total_amount !== order.total_amount
+  const paymentMismatch = (priceChanged && String(updated.payment_status).toLowerCase() === 'paid')
+    ? { previousTotal: order.total_amount, newTotal: updated.total_amount, difference: updated.total_amount - order.total_amount }
+    : null
+
+  return res.json({ order: updated, paymentMismatch })
 })
 
 // Whether reaching `status` should email the customer, per the admin-managed

@@ -748,6 +748,71 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="editOrderModal">
+  <div class="modal-card blog-modal new-order-modal" role="dialog" aria-modal="true">
+    <div class="blog-modal-head">
+      <h3 class="modal-title">Edit order <span id="eoOrderIdLabel"></span></h3>
+      <button class="blog-modal-close" id="editOrderModalClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="blog-modal-body">
+      <div class="field-grid">
+        <div class="field">
+          <label>Customer name</label>
+          <input type="text" id="eoCustomerName" />
+        </div>
+        <div class="field">
+          <label>Mobile</label>
+          <input type="text" id="eoCustomerMobile" maxlength="10" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Email <span class="opt">(optional)</span></label>
+        <input type="email" id="eoCustomerEmail" />
+      </div>
+
+      <div class="field">
+        <label>Files <span class="opt">(print options only — files themselves can't be changed here)</span></label>
+        <table class="no-file-table" id="eoFileTable">
+          <thead><tr><th>File</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th></tr></thead>
+          <tbody id="eoFileTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="field">
+        <label>Fulfilment</label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="eoDelivery" value="pickup" /><span>Collect from shop</span></label>
+          <label class="seg-opt"><input type="radio" name="eoDelivery" value="delivery" /><span>Home delivery</span></label>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="eoAddressFields">
+        <div class="field">
+          <label>Address</label>
+          <input type="text" id="eoAddrLine" placeholder="House no, street, locality" />
+        </div>
+        <div class="field">
+          <label>City</label>
+          <input type="text" id="eoAddrCity" placeholder="City" />
+        </div>
+        <div class="field">
+          <label>State</label>
+          <input type="text" id="eoAddrState" placeholder="State" />
+        </div>
+        <div class="field">
+          <label>PIN code</label>
+          <input type="text" id="eoAddrPincode" placeholder="6-digit PIN" maxlength="6" />
+        </div>
+      </div>
+
+      <div class="save-message hidden" id="editOrderModalMsg"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="editOrderModalCancel" type="button">Cancel</button>
+      <button class="modal-ok" id="editOrderModalSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* -- THEME TOGGLE -- */
 (function(){
@@ -1345,6 +1410,7 @@ function renderOrders(orders){
           ? '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="cash">💵 Collect Cash</button>' +
             '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>'
           : '') +
+        '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">✎ Edit order</button>' +
         '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Archive order</button>' +
       '</div>' +
     '</div></td></tr>'
@@ -1387,7 +1453,13 @@ function renderOrders(orders){
       collectPayment(btn.dataset.order, btn.dataset.mode);
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn)').forEach((btn) => {
+  body.querySelectorAll('.edit-order-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEditOrderModal(ordersById[btn.dataset.order]);
+    });
+  });
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
@@ -2742,6 +2814,149 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     }
   } finally {
     saveBtn.disabled = false; saveBtn.textContent = 'Create order';
+  }
+});
+
+/* -- EDIT ORDER (customer / delivery / print options on an existing order) -- */
+const editOrderModal = document.getElementById('editOrderModal');
+let eoCurrentOrder = null;
+let eoFiles = [];
+
+function eoFileRowHtml(f, idx){
+  const paperOptions = noPaperTypeOptions.map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+  return '<tr data-idx="' + idx + '">' +
+    '<td>' + escHtml(f.fileName || f.fileId || '') + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
+    '<td><select class="eo-f-paper">' + paperOptions + '</select></td>' +
+    '<td><select class="eo-f-mode"><option value="auto"' + (f.printMode === 'auto' ? ' selected' : '') + '>Auto</option><option value="color"' + (f.printMode === 'color' ? ' selected' : '') + '>Color</option><option value="bw"' + (f.printMode === 'bw' ? ' selected' : '') + '>B&amp;W</option></select></td>' +
+    '<td><select class="eo-f-side"' + (f.printMode === 'color' ? ' disabled' : '') + '><option value="single"' + (f.printSide === 'single' ? ' selected' : '') + '>Single</option><option value="double"' + (f.printSide === 'double' ? ' selected' : '') + '>Double</option></select></td>' +
+    '<td><input type="number" class="eo-f-copies" min="1" max="999" value="' + f.copies + '" /></td>' +
+  '</tr>';
+}
+function renderEoFileTable(){
+  document.getElementById('eoFileTableBody').innerHTML = eoFiles.map((f, i) => eoFileRowHtml(f, i)).join('');
+}
+document.getElementById('eoFileTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const f = eoFiles[Number(row.dataset.idx)];
+  if (!f) return;
+  if (e.target.classList.contains('eo-f-paper')) f.paperType = e.target.value;
+  if (e.target.classList.contains('eo-f-mode')){
+    f.printMode = e.target.value;
+    if (f.printMode === 'color') f.printSide = 'single';
+    renderEoFileTable();
+  }
+  if (e.target.classList.contains('eo-f-side')) f.printSide = e.target.value;
+  if (e.target.classList.contains('eo-f-copies')) f.copies = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+});
+
+document.querySelectorAll('input[name=eoDelivery]').forEach((r) => r.addEventListener('change', (e) => {
+  document.getElementById('eoAddressFields').classList.toggle('hidden', e.target.value !== 'delivery');
+}));
+
+async function openEditOrderModal(order){
+  if (!order) return;
+  eoCurrentOrder = order;
+  document.getElementById('eoOrderIdLabel').textContent = order.id;
+  document.getElementById('eoCustomerName').value = order.customer_name || '';
+  document.getElementById('eoCustomerMobile').value = order.customer_mobile || '';
+  document.getElementById('eoCustomerEmail').value = order.customer_email || '';
+
+  let files = [];
+  try { files = order.files_json ? JSON.parse(order.files_json) : []; } catch (e) { files = []; }
+  if (!files.length) {
+    files = [{ fileId: order.file_path, fileName: order.file_name, pageCount: order.page_count, printMode: order.print_mode, printSide: order.print_side, paperType: order.paper_type, copies: order.copies }];
+  }
+  eoFiles = files.map((f) => ({ ...f }));
+
+  try {
+    const res = await fetch('/api/pricing');
+    const cfg = await res.json();
+    noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
+    if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+  } catch (e) { /* keep whatever paper types were already loaded */ }
+  renderEoFileTable();
+
+  document.querySelector('input[name=eoDelivery][value=' + (order.delivery_method === 'delivery' ? 'delivery' : 'pickup') + ']').checked = true;
+  document.getElementById('eoAddressFields').classList.toggle('hidden', order.delivery_method !== 'delivery');
+  document.getElementById('eoAddrLine').value = order.delivery_address || '';
+  document.getElementById('eoAddrCity').value = order.delivery_city || '';
+  document.getElementById('eoAddrState').value = order.delivery_state || '';
+  document.getElementById('eoAddrPincode').value = order.delivery_pincode || '';
+
+  const msg = document.getElementById('editOrderModalMsg');
+  msg.classList.add('hidden'); msg.textContent = '';
+  editOrderModal.classList.remove('hidden');
+  editOrderModal.classList.add('show');
+}
+function closeEditOrderModal(){
+  editOrderModal.classList.remove('show');
+  editOrderModal.classList.add('hidden');
+}
+document.getElementById('editOrderModalClose').addEventListener('click', closeEditOrderModal);
+document.getElementById('editOrderModalCancel').addEventListener('click', closeEditOrderModal);
+editOrderModal.addEventListener('click', (e) => { if (e.target === editOrderModal) closeEditOrderModal(); });
+
+document.getElementById('editOrderModalSave').addEventListener('click', async () => {
+  if (!eoCurrentOrder) return;
+  const msg = document.getElementById('editOrderModalMsg');
+  msg.classList.add('hidden');
+  const customerName = document.getElementById('eoCustomerName').value.trim();
+  const customerMobile = document.getElementById('eoCustomerMobile').value.trim();
+  const customerEmail = document.getElementById('eoCustomerEmail').value.trim();
+  const deliveryMethod = document.querySelector('input[name=eoDelivery]:checked').value;
+
+  if (!customerName || !/^\d{10}$/.test(customerMobile)) {
+    msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  const deliveryAddress = document.getElementById('eoAddrLine').value.trim();
+  const deliveryCity = document.getElementById('eoAddrCity').value.trim();
+  const deliveryState = document.getElementById('eoAddrState').value.trim();
+  const deliveryPincode = document.getElementById('eoAddrPincode').value.trim();
+  if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !/^\d{6}$/.test(deliveryPincode))) {
+    msg.textContent = 'Fill in the full delivery address (with a valid 6-digit PIN code).';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+
+  const payload = {
+    customer_name: customerName,
+    customer_mobile: customerMobile,
+    customer_email: customerEmail || null,
+    delivery_method: deliveryMethod,
+    delivery_address: deliveryMethod === 'delivery' ? deliveryAddress : null,
+    delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
+    delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
+    delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
+    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies }))
+  };
+
+  const saveBtn = document.getElementById('editOrderModalSave');
+  saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(eoCurrentOrder.id), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || 'Could not save changes');
+    closeEditOrderModal();
+    loadOrders();
+    if (data.paymentMismatch) {
+      const m = data.paymentMismatch;
+      const diffText = m.difference > 0 ? ('collect ₹' + m.difference + ' more') : ('refund ₹' + Math.abs(m.difference));
+      showFlash('Order updated — was already paid ₹' + m.previousTotal + ', new total ₹' + m.newTotal + ' (' + diffText + ')');
+    } else {
+      showFlash('Order updated');
+    }
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      msg.textContent = err.message || 'Could not save changes.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+    }
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Save changes';
   }
 });
 
