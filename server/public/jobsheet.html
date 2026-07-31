@@ -28,6 +28,13 @@
 
   .sheet{ display:none; max-width:480px; margin:0 auto; background:var(--white); }
   .sheet.active{ display:block; }
+  /* Momentarily applied during fetchMergedPdfBlob()'s html2canvas capture —
+     the 480px on-screen preview above is a compact convenience size for
+     tabbing between sheets, not what actually gets printed. Capturing at
+     real A4 pixel width (210mm @ 96dpi) instead means the screenshot placed
+     onto the merged PDF's A4 page is already in the right proportions,
+     instead of being stretched/squished to fit. */
+  .sheet.capture-a4{ max-width:none; width:793.7px; }
 
   /* ===================== SHEET 1 ===================== */
   /* Ink-optimized: this sheet prints on paper for every order, so solid dark
@@ -47,7 +54,7 @@
   .s1-orderbadge .ob-value{ font-size:14.5px; font-weight:800; margin-top:4px; word-break:break-all; color:var(--steel); }
   .s1-orderbadge .ob-underline{ height:2px; width:32px; background:var(--orange); border-radius:2px; margin:6px auto 0; }
 
-  .s1-section{ padding:18px 20px; border-top:1px solid var(--mist); }
+  .s1-section{ padding:22px 20px; border-top:1px solid var(--mist); }
   .s1-section-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 12px; }
 
   .s1-infogrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
@@ -80,30 +87,39 @@
 
   /* ===================== SHEET 2 ===================== */
   /* Ink-optimized: dropped the solid dark hero fill and the radial-gradient
-     blob (heaviest ink users on this sheet) in favor of white + a thin rule. */
-  .s2-hero{ position:relative; background:var(--white); color:var(--steel); padding:54px 20px 40px; text-align:center; overflow:hidden; border-bottom:2px solid var(--steel); }
+     blob (heaviest ink users on this sheet) in favor of white + a thin rule.
+     Padding throughout is more generous than Sheet 1's — this is a single
+     promotional back page (not a dense spec sheet), so open, uncluttered
+     spacing reads as more premium and also happens to be what fills a full
+     A4 page properly (see .capture-a4 above and jsReorderQrBox below). */
+  .s2-hero{ position:relative; background:var(--white); color:var(--steel); padding:76px 20px 60px; text-align:center; overflow:hidden; border-bottom:2px solid var(--steel); }
   .s2-hero-inner{ position:relative; z-index:1; }
-  .s2-logo{ font-size:34px; font-weight:800; letter-spacing:-0.02em; margin:0; }
+  .s2-logo{ font-size:38px; font-weight:800; letter-spacing:-0.02em; margin:0; }
   .s2-logo .dot{ color:var(--orange); }
-  .s2-tagline{ font-size:13.5px; font-weight:600; color:#5B6472; margin:10px 0 0; letter-spacing:.03em; }
+  .s2-tagline{ font-size:14.5px; font-weight:600; color:#5B6472; margin:12px 0 0; letter-spacing:.03em; }
   .s2-hero-bar{ position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--orange); }
 
-  .s2-section{ padding:22px 20px; }
-  .s2-cardgrid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .s2-card{ background:var(--mist); border:1px solid var(--silver); border-radius:12px; padding:14px; }
-  .s2-card .c-icon{ font-size:18px; }
-  .s2-card .c-label{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8893A2; margin-top:6px; }
-  .s2-card .c-value{ font-size:13px; font-weight:700; color:var(--steel); margin-top:3px; line-height:1.35; }
+  .s2-section{ padding:34px 20px; }
+  .s2-cardgrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .s2-card{ background:var(--mist); border:1px solid var(--silver); border-radius:12px; padding:18px; }
+  .s2-card .c-icon{ font-size:20px; }
+  .s2-card .c-label{ font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8893A2; margin-top:8px; }
+  .s2-card .c-value{ font-size:13.5px; font-weight:700; color:var(--steel); margin-top:4px; line-height:1.4; }
 
-  .s2-services-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 12px; text-align:center; }
-  .s2-services{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .s2-services-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 14px; text-align:center; }
+  .s2-services{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   @media (min-width:600px){ .s2-services{ grid-template-columns:repeat(4,1fr); } }
-  .s2-service-tag{ background:var(--white); border:1.5px solid var(--silver); border-radius:999px; padding:9px 10px; text-align:center; font-size:11.5px; font-weight:700; color:var(--steel); }
+  .s2-service-tag{ background:var(--white); border:1.5px solid var(--silver); border-radius:999px; padding:11px 10px; text-align:center; font-size:12px; font-weight:700; color:var(--steel); }
 
-  .s2-cta{ background:var(--mist); padding:22px 20px; text-align:center; }
-  .s2-cta p{ margin:0; font-size:13px; font-weight:600; color:var(--steel); line-height:1.5; }
+  .s2-reorder{ text-align:center; padding:24px 20px; border-top:1px solid var(--mist); border-bottom:1px solid var(--mist); }
+  .s2-reorder-title{ font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#8893A2; margin:0 0 16px; }
+  .s2-reorder-qr{ display:inline-block; background:var(--white); border:1px solid var(--silver); border-radius:10px; padding:12px; }
+  .s2-reorder-sub{ font-size:12px; color:#5B6472; margin-top:12px; font-weight:600; }
 
-  .s2-footer{ background:var(--white); color:var(--steel); border-top:1.5px solid var(--silver); padding:20px 20px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:14px; }
+  .s2-cta{ background:var(--mist); padding:36px 20px; text-align:center; }
+  .s2-cta p{ margin:0; font-size:14px; font-weight:600; color:var(--steel); line-height:1.6; }
+
+  .s2-footer{ background:var(--white); color:var(--steel); border-top:1.5px solid var(--silver); padding:22px 20px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:14px; }
   .s2-footer-brand{ font-size:16px; font-weight:800; }
   .s2-footer-brand .sub{ font-size:11px; font-weight:500; color:#5B6472; margin-top:3px; }
   .s2-footer-pills{ display:flex; flex-wrap:wrap; gap:6px; }
@@ -258,6 +274,12 @@
       </div>
     </div>
 
+    <div class="s2-reorder">
+      <div class="s2-reorder-title">Scan To Order Again</div>
+      <div class="s2-reorder-qr" id="jsReorderQrBox"></div>
+      <div class="s2-reorder-sub">print.metalix.in</div>
+    </div>
+
     <div class="s2-cta">
       <p>⚡ Upload your file at print.metalix.in, configure &amp; pay via Razorpay — ready in just 3–4 hours.</p>
     </div>
@@ -345,6 +367,8 @@ function populate(order){
   document.getElementById('jsQrUrl').textContent = trackUrl;
   // eslint-disable-next-line no-undef
   new QRCode(document.getElementById('jsQrBox'), { text: trackUrl, width: 96, height: 96, colorDark: '#1A2332', colorLight: '#FFFFFF' });
+  // eslint-disable-next-line no-undef
+  new QRCode(document.getElementById('jsReorderQrBox'), { text: 'https://print.metalix.in/order', width: 110, height: 110, colorDark: '#1A2332', colorLight: '#FFFFFF' });
 }
 
 function sheets1and2Reset(activeSheet){
@@ -368,9 +392,11 @@ async function fetchMergedPdfBlob(order){
     for (const [key, el] of pairs) {
       sheet1.classList.remove('active'); sheet2.classList.remove('active');
       el.classList.add('active');
+      el.classList.add('capture-a4');
       await new Promise((r) => setTimeout(r, 80));
       const canvas = await html2canvas(el, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
       images[key] = canvas.toDataURL('image/jpeg', 0.85);
+      el.classList.remove('capture-a4');
     }
     sheets1and2Reset(wasActive);
 
