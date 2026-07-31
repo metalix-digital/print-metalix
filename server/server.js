@@ -1325,6 +1325,177 @@ app.post('/api/orders', express.json(), async (req, res) => {
   return res.json({ order, razorpayOrder, key: RAZORPAY_KEY_ID || '', simulated })
 })
 
+// Lets staff place an order for a customer who doesn't want to use the
+// website themselves (walk-in / phone order). Mirrors the validation and
+// pricing above, but never takes the online-Razorpay path — an admin-placed
+// order is always either "pay later" (cash/UPI on pickup or delivery, same
+// as customer COD) or "already collected" (paid in person right now), which
+// only an authenticated admin can declare — a customer-facing endpoint must
+// never accept an already-paid flag straight from the request body.
+app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json(), async (req, res) => {
+  const {
+    customerName, customerMobile, customerEmail,
+    files,
+    deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
+    deliveryTiming, scheduledAt,
+    locationId,
+    paymentStatus, paymentMode
+  } = req.body || {}
+
+  if (!customerName || !customerMobile) {
+    return res.status(400).json({ error: 'missing_customer_info' })
+  }
+  if (!Array.isArray(files) || !files.length) {
+    return res.status(400).json({ error: 'missing_file_info' })
+  }
+  const markPaidNow = paymentStatus === 'paid'
+  if (markPaidNow && !['cash', 'upi'].includes(paymentMode)) {
+    return res.status(400).json({ error: 'invalid_payment_mode', message: 'Payment mode must be cash or upi.' })
+  }
+
+  const VALID_MODES = ['auto', 'color', 'bw']
+  const VALID_ORIENTATIONS = ['portrait', 'landscape']
+  const VALID_SIDES = ['single', 'double']
+  const paperTypeConfig = db.getPricing()
+  const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
+  const defaultPaperType = paperTypeIds[0] || 'normal'
+  let totalFileSize = 0
+  const safeFiles = []
+  const pricingFiles = []
+  for (const f of files) {
+    const safeFileId = path.basename(String(f.fileId || ''))
+    if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
+      return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
+    }
+    const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
+    const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
+    const fileSide = fileMode === 'color' ? 'single' : (VALID_SIDES.includes(f.printSide) ? f.printSide : 'single')
+    const filePaperType = paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType
+    const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
+    const filePassword = String(f.password || '').trim().slice(0, 200) || null
+    const fileData = {
+      fileId: safeFileId,
+      fileName: f.fileName || safeFileId,
+      fileType: f.fileType || null,
+      pageCount: Number(f.pageCount) || 0,
+      colorPageCount: Number(f.colorPageCount) || 0,
+      fileSize: Number(f.fileSize) || 0,
+      printMode: fileMode,
+      orientation: fileOrientation,
+      printSide: fileSide,
+      paperType: filePaperType,
+      copies: fileCopies,
+      password: filePassword
+    }
+    const { colorPages, bwPages } = pricing.resolveFileColorPages(
+      { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
+      fileMode
+    )
+    pricingFiles.push({ colorPages, bwPages, copies: fileCopies, printSide: fileSide, paperType: filePaperType })
+    totalFileSize += fileData.fileSize
+    safeFiles.push(fileData)
+  }
+  if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
+    return res.status(400).json({ error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' })
+  }
+  if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !deliveryPincode)) {
+    return res.status(400).json({ error: 'missing_delivery_address' })
+  }
+
+  const MIN_SCHEDULE_LEAD_MS = 2 * 60 * 60 * 1000
+  const MAX_SCHEDULE_LEAD_MS = 7 * 24 * 60 * 60 * 1000
+  let resolvedDeliveryTiming = 'instant'
+  let resolvedScheduledAt = null
+  if (deliveryMethod === 'delivery') {
+    resolvedDeliveryTiming = deliveryTiming === 'scheduled' ? 'scheduled' : 'instant'
+    if (resolvedDeliveryTiming === 'scheduled') {
+      const ts = Number(scheduledAt)
+      const now = Date.now()
+      if (!Number.isFinite(ts) || ts < now + MIN_SCHEDULE_LEAD_MS || ts > now + MAX_SCHEDULE_LEAD_MS) {
+        return res.status(400).json({ error: 'invalid_scheduled_time', message: 'Choose a delivery time at least 2 hours from now, within the next 7 days.' })
+      }
+      resolvedScheduledAt = ts
+    }
+  }
+
+  const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
+  const fileModes = new Set(safeFiles.map((f) => f.printMode))
+  const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
+  const fileOrientations = new Set(safeFiles.map((f) => f.orientation))
+  const summaryOrientation = fileOrientations.size === 1 ? safeFiles[0].orientation : 'mixed'
+  const fileSides = new Set(safeFiles.map((f) => f.printSide))
+  const summarySide = fileSides.size === 1 ? safeFiles[0].printSide : 'mixed'
+  const filePaperTypes = new Set(safeFiles.map((f) => f.paperType))
+  const summaryPaperType = filePaperTypes.size === 1 ? safeFiles[0].paperType : 'mixed'
+  const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
+
+  const pricingConfig = db.getPricing()
+  const calc = pricing.calculate(pricingConfig, {
+    files: pricingFiles,
+    deliveryMethod: deliveryMethod || 'pickup',
+    deliveryPincode
+  })
+
+  const orderId = generateOrderId()
+  const fileNameSummary = safeFiles.length > 1
+    ? `${safeFiles[0].fileName} +${safeFiles.length - 1} more`
+    : safeFiles[0].fileName
+
+  // A branch admin can only place orders under their own branch; a super
+  // admin may pick one explicitly (or leave it unset for pickup-only shops).
+  const effectiveLocationId = req.admin.adminRole === 'branch_admin' ? req.admin.locationId : (locationId || null)
+  const chosenLocation = effectiveLocationId ? db.getLocations().find((l) => l.id === effectiveLocationId && l.active) : null
+
+  const order = db.createOrder({
+    id: orderId,
+    customer_id: null,
+    customer_name: customerName,
+    customer_mobile: customerMobile,
+    customer_email: customerEmail || null,
+    file_name: fileNameSummary,
+    file_path: safeFiles[0].fileId,
+    file_type: safeFiles[0].fileType,
+    page_count: totalPageCount,
+    files_json: JSON.stringify(safeFiles),
+    orientation: summaryOrientation,
+    print_mode: summaryMode,
+    print_side: summarySide,
+    copies: totalCopies,
+    paper_size: 'a4',
+    paper_type: summaryPaperType,
+    delivery_method: deliveryMethod || 'pickup',
+    delivery_address: deliveryAddress || null,
+    delivery_city: deliveryCity || null,
+    delivery_state: deliveryState || null,
+    delivery_pincode: deliveryPincode || null,
+    delivery_timing: resolvedDeliveryTiming,
+    scheduled_at: resolvedScheduledAt,
+    location_id: chosenLocation ? chosenLocation.id : (effectiveLocationId || null),
+    location_name: chosenLocation ? chosenLocation.name : null,
+    payment_method: 'cod',
+    print_cost: calc.printCost,
+    delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
+    gst_amount: calc.gstAmount,
+    total_amount: calc.totalAmount,
+    razorpay_order_id: null,
+    payment_status: markPaidNow ? 'paid' : 'pending',
+    order_status: 'Received',
+    created_at: Date.now()
+  })
+
+  if (markPaidNow) {
+    db.updateOrder(order.id, { payment_mode: paymentMode, payment_collected_at: Date.now() })
+  }
+
+  printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
+  const fresh = db.getOrder(order.id)
+  notify.sendOrderConfirmationSms(fresh)
+  notify.sendOrderConfirmationEmail(fresh)
+  mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+  return res.json({ order: fresh })
+})
+
 app.get('/api/orders/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
@@ -1393,7 +1564,12 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
 
   const { simulated, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body || {}
 
-  if (simulated) {
+  // Trust that an order is actually a simulated (no-Razorpay-configured) one
+  // from its own stored razorpay_order_id, never from the request body —
+  // otherwise anyone who knows an order ID could mark any real order "paid"
+  // for free by just sending { simulated: true }.
+  const isActuallySimulated = typeof order.razorpay_order_id === 'string' && order.razorpay_order_id.startsWith('SIM_')
+  if (simulated && isActuallySimulated) {
     db.updateOrder(order.id, {
       razorpay_payment_id: `SIM_PAY_${order.id}`,
       payment_status: 'paid'

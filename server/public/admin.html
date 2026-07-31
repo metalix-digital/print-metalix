@@ -359,6 +359,19 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .blog-modal .field input,.blog-modal .field textarea{width:100%;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);resize:vertical;}
 .blog-modal .field input:focus,.blog-modal .field textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
 .blog-modal .field textarea.mono{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;}
+.new-order-modal .field select{width:100%;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);}
+.new-order-modal .field select:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+.seg-row{display:flex;gap:10px;flex-wrap:wrap;}
+.seg-opt{display:flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:9px;padding:9px 13px;font-size:13px;color:var(--ink2);cursor:pointer;}
+.seg-opt:has(input:checked){border-color:var(--orange);color:var(--ink);background:var(--orange-soft);}
+.no-file-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+.no-file-note{font-size:12px;color:var(--ink3);}
+.no-file-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.no-file-table th{text-align:left;color:var(--ink3);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line);}
+.no-file-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.no-file-table select,.no-file-table input{width:100%;border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);}
+.no-file-table .no-file-remove{border:none;background:none;color:var(--ink3);cursor:pointer;font-size:15px;}
+.no-file-table .no-file-remove:hover{color:var(--red,#c0392b);}
 .blog-cover-row{display:flex;gap:14px;align-items:flex-start;}
 .blog-cover-preview{width:140px;height:80px;flex-shrink:0;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg);}
 .blog-cover-preview img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -452,6 +465,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <select id="orderBranchFilter" class="branch-col" data-super-only>
           <option value="">All branches</option>
         </select>
+        <button class="save-btn" id="newOrderBtn" type="button" style="margin-top:0;">+ New order</button>
       </div>
       <div class="bulk-bar hidden" id="bulkBar">
         <span class="count"><b id="bulkCount">0</b> selected</span>
@@ -635,6 +649,93 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="modal-actions">
       <button class="modal-cancel" id="blogModalCancel" type="button">Cancel</button>
       <button class="modal-ok" id="blogModalSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="newOrderModal">
+  <div class="modal-card blog-modal new-order-modal" role="dialog" aria-modal="true">
+    <div class="blog-modal-head">
+      <h3 class="modal-title">New order for a customer</h3>
+      <button class="blog-modal-close" id="newOrderModalClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="blog-modal-body">
+      <div class="field-grid">
+        <div class="field">
+          <label>Customer name</label>
+          <input type="text" id="noCustomerName" placeholder="Full name" />
+        </div>
+        <div class="field">
+          <label>Mobile</label>
+          <input type="text" id="noCustomerMobile" placeholder="10-digit mobile" maxlength="10" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Email <span class="opt">(optional — needed if you want them to get the confirmation email too)</span></label>
+        <input type="email" id="noCustomerEmail" placeholder="customer@email.com" />
+      </div>
+
+      <div class="field">
+        <label>Files</label>
+        <div class="no-file-controls">
+          <button class="btn-file" id="noFilePickBtn" type="button">📄 Choose files</button>
+          <input type="file" id="noFileInput" accept=".pdf,.doc,.docx,.ppt,.pptx" multiple class="hidden" />
+          <span class="no-file-note">PDF, DOC, DOCX, PPT, PPTX — up to 100 MB total</span>
+        </div>
+        <table class="no-file-table hidden" id="noFileTable">
+          <thead><tr><th>File</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
+          <tbody id="noFileTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="field">
+        <label>Fulfilment</label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="noDelivery" value="pickup" checked /><span>Collect from shop</span></label>
+          <label class="seg-opt"><input type="radio" name="noDelivery" value="delivery" /><span>Home delivery</span></label>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="noAddressFields">
+        <div class="field">
+          <label>Address</label>
+          <input type="text" id="noAddrLine" placeholder="House no, street, locality" />
+        </div>
+        <div class="field">
+          <label>City</label>
+          <input type="text" id="noAddrCity" placeholder="City" />
+        </div>
+        <div class="field">
+          <label>State</label>
+          <input type="text" id="noAddrState" placeholder="State" />
+        </div>
+        <div class="field">
+          <label>PIN code</label>
+          <input type="text" id="noAddrPincode" placeholder="6-digit PIN" maxlength="6" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Payment</label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="noPayment" value="later" checked /><span>Pay later (cash/UPI on pickup or delivery)</span></label>
+          <label class="seg-opt"><input type="radio" name="noPayment" value="paid" /><span>Already paid (cash/UPI collected now)</span></label>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="noPaidModeFields">
+        <div class="field">
+          <label>Collected via</label>
+          <select id="noPaymentMode">
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="save-message hidden" id="newOrderModalMsg"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="newOrderModalCancel" type="button">Cancel</button>
+      <button class="modal-ok" id="newOrderModalSave" type="button">Create order</button>
     </div>
   </div>
 </div>
@@ -2356,6 +2457,187 @@ async function saveSettings(){
     btn.textContent = 'Save settings';
   }
 }
+
+/* -- NEW ORDER (admin placing an order on behalf of a customer) -- */
+const newOrderModal = document.getElementById('newOrderModal');
+let noUploadedFiles = []; // { fileId, fileName, fileType, fileSize, pageCount, colorCount, paperType, printMode, printSide, copies }
+let noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+
+function noFileRowHtml(f, idx){
+  const paperOptions = noPaperTypeOptions.map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+  return '<tr data-idx="' + idx + '">' +
+    '<td>' + escHtml(f.fileName) + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
+    '<td><select class="no-f-paper">' + paperOptions + '</select></td>' +
+    '<td><select class="no-f-mode"><option value="auto"' + (f.printMode === 'auto' ? ' selected' : '') + '>Auto</option><option value="color"' + (f.printMode === 'color' ? ' selected' : '') + '>Color</option><option value="bw"' + (f.printMode === 'bw' ? ' selected' : '') + '>B&amp;W</option></select></td>' +
+    '<td><select class="no-f-side"' + (f.printMode === 'color' ? ' disabled' : '') + '><option value="single"' + (f.printSide === 'single' ? ' selected' : '') + '>Single</option><option value="double"' + (f.printSide === 'double' ? ' selected' : '') + '>Double</option></select></td>' +
+    '<td><input type="number" class="no-f-copies" min="1" max="999" value="' + f.copies + '" /></td>' +
+    '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
+  '</tr>';
+}
+
+function renderNoFileTable(){
+  const table = document.getElementById('noFileTable');
+  const body = document.getElementById('noFileTableBody');
+  if (!noUploadedFiles.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
+  table.classList.remove('hidden');
+  body.innerHTML = noUploadedFiles.map((f, i) => noFileRowHtml(f, i)).join('');
+}
+
+document.getElementById('noFileTableBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove]');
+  if (!btn) return;
+  noUploadedFiles.splice(Number(btn.dataset.remove), 1);
+  renderNoFileTable();
+});
+document.getElementById('noFileTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const f = noUploadedFiles[Number(row.dataset.idx)];
+  if (!f) return;
+  if (e.target.classList.contains('no-f-paper')) f.paperType = e.target.value;
+  if (e.target.classList.contains('no-f-mode')){
+    f.printMode = e.target.value;
+    if (f.printMode === 'color') f.printSide = 'single';
+    renderNoFileTable();
+  }
+  if (e.target.classList.contains('no-f-side')) f.printSide = e.target.value;
+  if (e.target.classList.contains('no-f-copies')) f.copies = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+});
+
+document.getElementById('noFilePickBtn').addEventListener('click', () => document.getElementById('noFileInput').click());
+document.getElementById('noFileInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  const msg = document.getElementById('newOrderModalMsg');
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Upload failed');
+      noUploadedFiles.push({
+        fileId: data.fileId, fileName: data.fileName, fileType: data.fileType, fileSize: data.fileSize,
+        pageCount: data.pageCount, colorCount: data.colorCount,
+        paperType: noPaperTypeOptions[0] ? noPaperTypeOptions[0].id : 'normal',
+        printMode: 'auto', printSide: 'single', copies: 1
+      });
+    } catch (err) {
+      msg.textContent = '"' + file.name + '" — ' + (err.message || 'upload failed');
+      msg.className = 'save-message error';
+      msg.classList.remove('hidden');
+    }
+  }
+  renderNoFileTable();
+});
+
+document.querySelectorAll('input[name=noDelivery]').forEach((r) => r.addEventListener('change', (e) => {
+  document.getElementById('noAddressFields').classList.toggle('hidden', e.target.value !== 'delivery');
+}));
+document.querySelectorAll('input[name=noPayment]').forEach((r) => r.addEventListener('change', (e) => {
+  document.getElementById('noPaidModeFields').classList.toggle('hidden', e.target.value !== 'paid');
+}));
+
+async function openNewOrderModal(){
+  noUploadedFiles = [];
+  renderNoFileTable();
+  document.getElementById('noCustomerName').value = '';
+  document.getElementById('noCustomerMobile').value = '';
+  document.getElementById('noCustomerEmail').value = '';
+  document.getElementById('noAddrLine').value = '';
+  document.getElementById('noAddrCity').value = '';
+  document.getElementById('noAddrState').value = '';
+  document.getElementById('noAddrPincode').value = '';
+  document.querySelector('input[name=noDelivery][value=pickup]').checked = true;
+  document.getElementById('noAddressFields').classList.add('hidden');
+  document.querySelector('input[name=noPayment][value=later]').checked = true;
+  document.getElementById('noPaidModeFields').classList.add('hidden');
+  document.getElementById('noPaymentMode').value = 'cash';
+  const msg = document.getElementById('newOrderModalMsg');
+  msg.classList.add('hidden'); msg.textContent = '';
+  try {
+    const res = await fetch('/api/pricing');
+    const cfg = await res.json();
+    noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
+    if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+  } catch (e) { /* keep the default option */ }
+  newOrderModal.classList.remove('hidden');
+  newOrderModal.classList.add('show');
+  document.getElementById('noCustomerName').focus();
+}
+function closeNewOrderModal(){
+  newOrderModal.classList.remove('show');
+  newOrderModal.classList.add('hidden');
+}
+document.getElementById('newOrderBtn').addEventListener('click', openNewOrderModal);
+document.getElementById('newOrderModalClose').addEventListener('click', closeNewOrderModal);
+document.getElementById('newOrderModalCancel').addEventListener('click', closeNewOrderModal);
+newOrderModal.addEventListener('click', (e) => { if (e.target === newOrderModal) closeNewOrderModal(); });
+
+document.getElementById('newOrderModalSave').addEventListener('click', async () => {
+  const msg = document.getElementById('newOrderModalMsg');
+  msg.classList.add('hidden');
+  const customerName = document.getElementById('noCustomerName').value.trim();
+  const customerMobile = document.getElementById('noCustomerMobile').value.trim();
+  const customerEmail = document.getElementById('noCustomerEmail').value.trim();
+  const deliveryMethod = document.querySelector('input[name=noDelivery]:checked').value;
+  const paymentChoice = document.querySelector('input[name=noPayment]:checked').value;
+
+  if (!customerName || !/^\d{10}$/.test(customerMobile)) {
+    msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  if (!noUploadedFiles.length) {
+    msg.textContent = 'Add at least one file.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  const deliveryAddress = document.getElementById('noAddrLine').value.trim();
+  const deliveryCity = document.getElementById('noAddrCity').value.trim();
+  const deliveryState = document.getElementById('noAddrState').value.trim();
+  const deliveryPincode = document.getElementById('noAddrPincode').value.trim();
+  if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !/^\d{6}$/.test(deliveryPincode))) {
+    msg.textContent = 'Fill in the full delivery address (with a valid 6-digit PIN code).';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+
+  const payload = {
+    customerName, customerMobile, customerEmail: customerEmail || undefined,
+    files: noUploadedFiles.map((f) => ({
+      fileId: f.fileId, fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize,
+      pageCount: f.pageCount, colorPageCount: f.colorCount,
+      printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies
+    })),
+    deliveryMethod,
+    deliveryAddress: deliveryMethod === 'delivery' ? deliveryAddress : undefined,
+    deliveryCity: deliveryMethod === 'delivery' ? deliveryCity : undefined,
+    deliveryState: deliveryMethod === 'delivery' ? deliveryState : undefined,
+    deliveryPincode: deliveryMethod === 'delivery' ? deliveryPincode : undefined,
+    paymentStatus: paymentChoice === 'paid' ? 'paid' : 'pending',
+    paymentMode: paymentChoice === 'paid' ? document.getElementById('noPaymentMode').value : undefined
+  };
+
+  const saveBtn = document.getElementById('newOrderModalSave');
+  saveBtn.disabled = true; saveBtn.textContent = 'Creating…';
+  try {
+    const res = await adminFetch('/api/admin/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || 'Could not create order');
+    msg.textContent = 'Order ' + data.order.id + ' created — ₹' + data.order.total_amount + ' total.';
+    msg.className = 'save-message'; msg.classList.remove('hidden');
+    loadOrders();
+    setTimeout(closeNewOrderModal, 1400);
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      msg.textContent = err.message || 'Could not create order.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+    }
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Create order';
+  }
+});
 
 if (getToken()) showDash(); else showLogin();
 </script>
