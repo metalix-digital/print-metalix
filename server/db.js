@@ -823,6 +823,53 @@ function listCustomers(locationId) {
   `).all(params)
 }
 
+// Daily revenue/order-count series (gap-filled — every day in range appears
+// even with zero orders, so charts never have to special-case missing dates)
+// plus range totals, for the admin Analytics tab. Same "confirmed order"
+// definition as listOrders/listCustomers: paid online or COD, not archived.
+// Day boundaries are UTC (SQLite's own 'unixepoch' grouping), not IST —
+// close enough for a trend chart, not worth the tz-conversion complexity.
+function getSalesAnalytics(days) {
+  const now = Date.now()
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const since = now - (days - 1) * DAY_MS
+
+  const rows = db.prepare(`
+    SELECT
+      date(created_at / 1000, 'unixepoch') as day,
+      SUM(total_amount) as revenue,
+      COUNT(*) as orders
+    FROM orders
+    WHERE (payment_status = 'paid' OR payment_method = 'cod')
+      AND archived_at IS NULL
+      AND created_at >= ?
+    GROUP BY day
+  `).all(since)
+  const byDay = new Map(rows.map((r) => [r.day, r]))
+
+  const daily = []
+  for (let i = 0; i < days; i++) {
+    const key = new Date(since + i * DAY_MS).toISOString().slice(0, 10)
+    const row = byDay.get(key)
+    daily.push({ day: key, revenue: row ? row.revenue : 0, orders: row ? row.orders : 0 })
+  }
+
+  const summary = db.prepare(`
+    SELECT
+      COUNT(*) as totalOrders,
+      COALESCE(SUM(total_amount), 0) as totalRevenue,
+      COALESCE(SUM(CASE WHEN payment_method = 'cod' THEN total_amount ELSE 0 END), 0) as codRevenue,
+      COALESCE(SUM(CASE WHEN payment_method != 'cod' THEN total_amount ELSE 0 END), 0) as onlineRevenue
+    FROM orders
+    WHERE (payment_status = 'paid' OR payment_method = 'cod')
+      AND archived_at IS NULL
+      AND created_at >= ?
+  `).get(since)
+  summary.avgOrderValue = summary.totalOrders ? Math.round(summary.totalRevenue / summary.totalOrders) : 0
+
+  return { daily, summary }
+}
+
 function createPrintJob(orderId) {
   const now = Date.now()
   const info = db.prepare('INSERT INTO print_jobs (order_id, status, created_at, updated_at) VALUES (?, ?, ?, ?)')
@@ -962,6 +1009,7 @@ module.exports = {
   listOrdersForCustomer,
   listOrdersForFileCleanup,
   listCustomers,
+  getSalesAnalytics,
   createPrintJob,
   updatePrintJob,
   getLatestPrintJobForOrder,

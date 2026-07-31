@@ -90,6 +90,49 @@ tr.order-row:hover{background:var(--paper);}
 select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;font-family:'Inter',sans-serif;}
 select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;font-family:'Inter',sans-serif;background:var(--card);color:var(--ink);cursor:pointer;}
 
+/* -- ANALYTICS -- */
+.analytics-filters{display:flex;gap:8px;margin-bottom:20px;}
+.range-btn{background:var(--card);border:1.5px solid var(--line);color:var(--ink2);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
+.range-btn:hover{border-color:var(--line-hover);}
+.range-btn.active{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d);}
+.stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
+.stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
+.stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+.stat-tile .stat-value{font-size:26px;font-weight:800;color:var(--ink);margin-top:6px;font-family:'Sora',sans-serif;}
+.chart-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 24px;margin-bottom:20px;max-width:900px;}
+.chart-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:14px;}
+.chart-wrap{position:relative;width:100%;}
+.chart-wrap svg{display:block;width:100%;height:auto;overflow:visible;}
+.chart-empty{color:var(--ink3);font-size:13px;padding:20px 0;}
+.viz-root{
+  /* Validated via the dataviz skill's palette validator against this app's
+     card surfaces — light: #FF6600/#1D4ED8 (orange/info); dark needs its own
+     darker/desaturated-enough pair (below) since --orange and --info's own
+     dark-mode text values read too light as solid chart fills. */
+  --series-1: var(--orange);
+  --series-2: var(--info);
+  --chart-grid: var(--line);
+  --chart-axis: var(--line-hover);
+  --chart-text-muted: var(--ink3);
+  --chart-text-secondary: var(--ink2);
+  --chart-surface: var(--card);
+}
+[data-theme="dark"] .viz-root{
+  --series-1: var(--orange-d);
+  --series-2: #3987e5;
+}
+.chart-tooltip{position:absolute;pointer-events:none;background:var(--btn-dark);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.5;box-shadow:var(--shadow);white-space:nowrap;transform:translate(-50%,-115%);z-index:10;opacity:0;transition:opacity .1s;}
+.chart-tooltip.show{opacity:1;}
+.chart-tooltip .tt-value{font-weight:700;font-variant-numeric:tabular-nums;}
+.chart-tooltip .tt-label{color:#C7C4C0;margin-left:6px;}
+.chart-crosshair{stroke:var(--chart-axis);stroke-width:1;pointer-events:none;}
+.chart-dot-ring{fill:var(--chart-surface);}
+.split-bar-track{display:flex;height:24px;border-radius:6px;overflow:hidden;background:var(--line-soft);margin-bottom:12px;}
+.split-bar-seg{height:100%;transition:width .2s;}
+.split-legend{display:flex;gap:20px;flex-wrap:wrap;}
+.split-legend-item{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink2);}
+.split-legend-swatch{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+
 .pricing-form{background:var(--card);border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
 .pricing-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
 .pricing-form h2:first-child{margin-top:0;}
@@ -453,6 +496,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
   <nav class="tabs">
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
+    <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
     <button class="tab-btn" data-tab="pricing" data-super-only>Pricing</button>
     <button class="tab-btn" data-tab="locations" data-super-only>Locations</button>
     <button class="tab-btn" data-tab="stages" data-super-only>Stages</button>
@@ -511,6 +555,29 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           </tr></thead>
           <tbody id="customersBody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-analytics">
+      <div class="analytics-filters">
+        <button class="range-btn" data-days="7">Last 7 days</button>
+        <button class="range-btn active" data-days="30">Last 30 days</button>
+        <button class="range-btn" data-days="90">Last 90 days</button>
+      </div>
+      <div class="stat-tiles" id="analyticsStats">
+        <div class="loading">Loading…</div>
+      </div>
+      <div class="viz-root chart-card">
+        <h3 class="chart-title">Revenue</h3>
+        <div class="chart-wrap" id="revenueChart"></div>
+      </div>
+      <div class="viz-root chart-card">
+        <h3 class="chart-title">Orders</h3>
+        <div class="chart-wrap" id="ordersChart"></div>
+      </div>
+      <div class="viz-root chart-card">
+        <h3 class="chart-title">Payment method split</h3>
+        <div class="chart-wrap" id="paymentSplitChart"></div>
       </div>
     </div>
 
@@ -1010,6 +1077,7 @@ async function showDash(){
   if (isBranch) {
     loadMyBranch();
   } else {
+    loadAnalytics(analyticsRangeDays);
     loadPricing();
     loadLocations();
     loadStages();
@@ -1642,6 +1710,188 @@ function renderOrders(orders){
     });
   });
 }
+
+/* -- ANALYTICS -- */
+let analyticsRangeDays = 30;
+
+function fmtCompact(n){
+  n = Number(n) || 0;
+  if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(Math.round(n));
+}
+function fmtMoney(n){
+  return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+}
+function fmtDateShort(dayStr){
+  const d = new Date(dayStr + 'T00:00:00Z');
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+// Picks a clean per-gridline step (1/2/5/10 × a power of ten) so axis labels
+// read as round numbers instead of e.g. "₹1,342". For an integer series
+// (order counts), the step is rounded up to a whole number instead — a
+// fractional step (e.g. 0.5) rounds two adjacent gridlines to the same
+// displayed integer, which reads as a duplicate label.
+function axisStep(max, steps, integer){
+  const rough = Math.max(max, 1) / steps;
+  if (integer) return Math.max(1, Math.ceil(rough));
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const residual = rough / magnitude;
+  const niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+  return niceResidual * magnitude;
+}
+
+// Single-series line/area chart with a crosshair + tooltip hover layer.
+// data: [{ day: 'YYYY-MM-DD', [opts.key]: number }, ...], gap-filled (every
+// day present) by the server so the line is always continuous.
+function renderLineChart(container, data, opts){
+  const W = 800, H = 220;
+  const padL = 54, padR = 12, padT = 14, padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const n = data.length;
+  const GRID_STEPS = 4;
+  const step = axisStep(Math.max(...data.map((d) => d[opts.key]), 1), GRID_STEPS, !!opts.integer);
+  const maxVal = step * GRID_STEPS;
+
+  const xAt = (i) => padL + (n <= 1 ? 0 : (i / (n - 1)) * plotW);
+  const yAt = (v) => padT + plotH - (v / maxVal) * plotH;
+
+  let gridLines = '';
+  for (let g = 0; g <= GRID_STEPS; g++){
+    const v = (maxVal / GRID_STEPS) * g;
+    const y = yAt(v);
+    gridLines += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" stroke="var(--chart-grid)" stroke-width="1"/>' +
+      '<text x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--chart-text-muted)">' + escHtml(opts.formatAxis(v)) + '</text>';
+  }
+
+  const linePoints = data.map((d, i) => xAt(i) + ',' + yAt(d[opts.key]));
+  const pathD = 'M' + linePoints.join(' L');
+  const areaD = pathD + ' L' + xAt(n - 1) + ',' + (padT + plotH) + ' L' + xAt(0) + ',' + (padT + plotH) + ' Z';
+
+  // ~5 evenly spread x-axis date labels (never one per day — too dense past
+  // a week of data), always anchored on the first and last day.
+  const labelCount = Math.min(5, n);
+  const labelIdxs = new Set();
+  for (let k = 0; k < labelCount; k++) labelIdxs.add(Math.round((k / (labelCount - 1 || 1)) * (n - 1)));
+  let xLabels = '';
+  labelIdxs.forEach((i) => {
+    xLabels += '<text x="' + xAt(i) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11" fill="var(--chart-text-muted)">' + escHtml(fmtDateShort(data[i].day)) + '</text>';
+  });
+
+  container.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '">' +
+      gridLines +
+      '<path d="' + areaD + '" fill="' + opts.color + '" fill-opacity="0.1" stroke="none"/>' +
+      '<path d="' + pathD + '" fill="none" stroke="' + opts.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      xLabels +
+      '<line class="chart-crosshair" x1="0" x2="0" y1="' + padT + '" y2="' + (padT + plotH) + '" style="opacity:0"/>' +
+      '<circle class="chart-dot" r="6" fill="' + opts.color + '" stroke="var(--chart-surface)" stroke-width="2" style="opacity:0"/>' +
+      '<rect class="chart-hit" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent"/>' +
+    '</svg>' +
+    '<div class="chart-tooltip"></div>';
+
+  const svg = container.querySelector('svg');
+  const hitRect = container.querySelector('.chart-hit');
+  const crosshair = container.querySelector('.chart-crosshair');
+  const dot = container.querySelector('.chart-dot');
+  const tooltip = container.querySelector('.chart-tooltip');
+
+  function showAt(i){
+    const x = xAt(i), y = yAt(data[i][opts.key]);
+    crosshair.setAttribute('x1', x); crosshair.setAttribute('x2', x);
+    crosshair.style.opacity = 1;
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    dot.style.opacity = 1;
+    tooltip.style.left = (x / W * 100) + '%';
+    tooltip.style.top = (y / H * 100) + '%';
+    tooltip.innerHTML = '';
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'tt-value';
+    valueSpan.textContent = opts.formatTooltip(data[i][opts.key]);
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'tt-label';
+    labelSpan.textContent = fmtDateShort(data[i].day);
+    tooltip.appendChild(valueSpan);
+    tooltip.appendChild(labelSpan);
+    tooltip.classList.add('show');
+  }
+  function hide(){
+    crosshair.style.opacity = 0;
+    dot.style.opacity = 0;
+    tooltip.classList.remove('show');
+  }
+  hitRect.addEventListener('pointermove', (e) => {
+    const rect = svg.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width * W;
+    let nearest = 0, best = Infinity;
+    for (let i = 0; i < n; i++){
+      const d = Math.abs(xAt(i) - relX);
+      if (d < best){ best = d; nearest = i; }
+    }
+    showAt(nearest);
+  });
+  hitRect.addEventListener('pointerleave', hide);
+}
+
+function renderAnalyticsStats(summary){
+  const wrap = document.getElementById('analyticsStats');
+  const onlinePct = summary.totalRevenue ? Math.round((summary.onlineRevenue / summary.totalRevenue) * 100) : 0;
+  wrap.innerHTML =
+    '<div class="stat-tile"><div class="stat-label">Total revenue</div><div class="stat-value">' + fmtMoney(summary.totalRevenue) + '</div></div>' +
+    '<div class="stat-tile"><div class="stat-label">Total orders</div><div class="stat-value">' + escHtml(summary.totalOrders) + '</div></div>' +
+    '<div class="stat-tile"><div class="stat-label">Avg order value</div><div class="stat-value">' + fmtMoney(summary.avgOrderValue) + '</div></div>' +
+    '<div class="stat-tile"><div class="stat-label">Paid online</div><div class="stat-value">' + onlinePct + '%</div></div>';
+}
+
+// Part-to-whole comparison of just 2 categories reads better as a single
+// stacked bar + legend than a pie chart (see dataviz skill: "single ratio
+// / 2 slices → not a pie").
+function renderPaymentSplit(summary){
+  const wrap = document.getElementById('paymentSplitChart');
+  const total = summary.codRevenue + summary.onlineRevenue;
+  if (!total){
+    wrap.innerHTML = '<div class="chart-empty">No confirmed orders in this range yet.</div>';
+    return;
+  }
+  const codPct = (summary.codRevenue / total) * 100;
+  const onlinePct = 100 - codPct;
+  wrap.innerHTML =
+    '<div class="split-bar-track">' +
+      '<div class="split-bar-seg" style="width:' + codPct + '%;background:var(--series-1);"></div>' +
+      '<div class="split-bar-seg" style="width:' + onlinePct + '%;background:var(--series-2);"></div>' +
+    '</div>' +
+    '<div class="split-legend">' +
+      '<div class="split-legend-item"><span class="split-legend-swatch" style="background:var(--series-1);"></span>Cash/UPI on delivery — ' + fmtMoney(summary.codRevenue) + ' (' + Math.round(codPct) + '%)</div>' +
+      '<div class="split-legend-item"><span class="split-legend-swatch" style="background:var(--series-2);"></span>Paid online — ' + fmtMoney(summary.onlineRevenue) + ' (' + Math.round(onlinePct) + '%)</div>' +
+    '</div>';
+}
+
+async function loadAnalytics(days){
+  analyticsRangeDays = days || analyticsRangeDays;
+  document.querySelectorAll('.range-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === analyticsRangeDays));
+  try {
+    const res = await adminFetch('/api/admin/analytics/sales?days=' + analyticsRangeDays);
+    const data = await res.json();
+    renderAnalyticsStats(data.summary);
+    renderLineChart(document.getElementById('revenueChart'), data.daily, {
+      key: 'revenue', color: 'var(--series-1)',
+      formatAxis: (v) => '₹' + fmtCompact(v), formatTooltip: fmtMoney
+    });
+    renderLineChart(document.getElementById('ordersChart'), data.daily, {
+      key: 'orders', color: 'var(--series-1)', integer: true,
+      formatAxis: fmtCompact, formatTooltip: (v) => v + (v === 1 ? ' order' : ' orders')
+    });
+    renderPaymentSplit(data.summary);
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      document.getElementById('analyticsStats').innerHTML = '<div class="chart-empty">Failed to load analytics.</div>';
+    }
+  }
+}
+document.querySelectorAll('.range-btn').forEach((btn) => {
+  btn.addEventListener('click', () => loadAnalytics(Number(btn.dataset.days)));
+});
 
 /* -- LOCATIONS (branches) -- */
 let locationsDraft = [];

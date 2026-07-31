@@ -1292,6 +1292,13 @@ app.get('/api/admin/customers', requireAdmin, requireTab('customers'), (req, res
   return res.json({ customers: db.listCustomers(scopeLocation(req)) })
 })
 
+// Sales analytics — super-admin only (matches Pricing/Locations/Settings),
+// no branch scoping since there's no branch-restricted UI for it yet.
+app.get('/api/admin/analytics/sales', requireSuperAdmin, (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
+  return res.json(db.getSalesAnalytics(days))
+})
+
 app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab('orders'), (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
