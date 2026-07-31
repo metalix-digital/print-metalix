@@ -643,6 +643,10 @@ const rTotal = document.getElementById('rTotal');
 
 const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+// Must match the server's multer limit (server/server.js) — otherwise a
+// single large file passes this check only to fail server-side upload with
+// a raw, unfriendly error instead of this clear message.
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 let pricingConfig = null;
 // Paper types are admin-managed and delivered in pricingConfig.rates.a4 as an
 // ordered list of { id, label, bw, color }. These helpers read that list so the
@@ -1165,6 +1169,10 @@ async function uploadFiles(fileArray){
     const ext = fileExt(file.name);
     if(!ALLOWED_EXT.includes(ext)){
       trayError.textContent = `"${file.name}" — only PDF, DOC, DOCX, PPT and PPTX files are allowed`;
+      continue;
+    }
+    if(file.size > MAX_FILE_BYTES){
+      trayError.textContent = `"${file.name}" is over 50 MB — split it into smaller files`;
       continue;
     }
     if(runningTotal + file.size > MAX_TOTAL_BYTES){

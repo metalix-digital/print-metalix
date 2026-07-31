@@ -175,6 +175,19 @@ ensureColumn('locations', 'maps_url', 'TEXT')
 // to their existing tab set — this is additive, not a default lockdown).
 ensureColumn('admin_users', 'allowed_tabs', 'TEXT')
 
+// orders had no indexes beyond the implicit primary key on id — every list/
+// filter query (listOrders, listCustomers, archived-orders, file-cleanup,
+// per-branch scoping) was a full table scan, worsening as orders accumulate.
+// These cover the columns actually filtered/sorted on above.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+  CREATE INDEX IF NOT EXISTS idx_orders_archived_at ON orders(archived_at);
+  CREATE INDEX IF NOT EXISTS idx_orders_location_id ON orders(location_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_customer_mobile ON orders(customer_mobile);
+  CREATE INDEX IF NOT EXISTS idx_orders_order_status ON orders(order_status);
+  CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
+`)
+
 // Paper types are an admin-managed list: each entry is
 // { id, label, bw: { single, double }, color: { single } }. The `id` is a
 // stable slug used on stored orders and in lookups; `label` is the editable
@@ -364,25 +377,18 @@ function setSiteSettings(settings) {
     .run('site', JSON.stringify(settings))
 }
 
-// The single admin credential lives in the settings table (key 'admin_auth')
-// as { username, password_hash } — a bcrypt hash, same as customer passwords.
-// It is seeded once from ADMIN_USERNAME/ADMIN_PASSWORD env (see server.js) so a
-// fresh DB starts with the operator's configured login and can then be changed
-// or reset entirely from the web without touching .env again.
+// The legacy single-admin credential lived in the settings table (key
+// 'admin_auth') as { username, password_hash }. Read-only now — its only
+// remaining purpose is as the one-time migration source into admin_users
+// (see seedAdminAuth in server.js, which ensures the first super_admin row
+// always exists on boot); nothing writes to this key anymore.
 function getAdminAuth() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_auth')
   return row ? JSON.parse(row.value) : null
 }
 
-function setAdminAuth({ username, password_hash }) {
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-    .run('admin_auth', JSON.stringify({ username, password_hash }))
-}
-
 // Multi-admin accounts (super_admin sees every location; branch_admin is
-// scoped to one location_id). getAdminAuth/setAdminAuth above stay in place
-// purely as the migration source — see seedAdminAuth in server.js, which
-// ensures the first super_admin row always exists on boot.
+// scoped to one location_id).
 function countAdminUsers() {
   return db.prepare('SELECT COUNT(*) as n FROM admin_users').get().n
 }
@@ -691,6 +697,35 @@ function updateOrder(id, updates) {
   db.prepare(`UPDATE orders SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
     .run({ ...updates, id, updated_at: Date.now() })
   return getOrder(id)
+}
+
+// Atomically marks an order paid — the UPDATE only touches rows still unpaid
+// (payment_status != 'paid'), so if two payment-confirmation paths race for
+// the same order (verify-payment vs. the payment-link callback vs. the
+// webhook — any two can arrive close together for the same order), only the
+// first one's write takes effect. Returns null when the caller lost the
+// race, so it can skip a duplicate print-queue enqueue + SMS/email.
+function markOrderPaid(id, updates = {}) {
+  const fields = { ...updates, payment_status: 'paid' }
+  const setClause = Object.keys(fields).map((f) => `${f} = @${f}`).join(', ')
+  const result = db.prepare(`UPDATE orders SET ${setClause}, updated_at = @updated_at WHERE id = @id AND payment_status != 'paid'`)
+    .run({ ...fields, id, updated_at: Date.now() })
+  return result.changes > 0 ? getOrder(id) : null
+}
+
+// Every fileId referenced by any order, any status — lets fileRetention's
+// orphaned-upload sweep tell "still needed by some order" apart from
+// "uploaded (e.g. an abandoned checkout) but never attached to one."
+function getAllOrderFileIds() {
+  const ids = new Set()
+  const rows = db.prepare('SELECT files_json, file_path FROM orders').all()
+  for (const row of rows) {
+    if (row.files_json) {
+      try { JSON.parse(row.files_json).forEach((f) => { if (f.fileId) ids.add(f.fileId) }) } catch (err) { /* ignore malformed row */ }
+    }
+    if (row.file_path) ids.add(row.file_path)
+  }
+  return ids
 }
 
 function listOrdersForFileCleanup() {
@@ -1012,6 +1047,7 @@ module.exports = {
   createOrder,
   getOrder,
   updateOrder,
+  markOrderPaid,
   archiveOrder,
   restoreOrder,
   listArchivedOrders,
@@ -1022,6 +1058,7 @@ module.exports = {
   listOrders,
   listOrdersForCustomer,
   listOrdersForFileCleanup,
+  getAllOrderFileIds,
   listCustomers,
   getSalesAnalytics,
   createPrintJob,
@@ -1035,7 +1072,6 @@ module.exports = {
   getSiteSettings,
   setSiteSettings,
   getAdminAuth,
-  setAdminAuth,
   countAdminUsers,
   createAdminUser,
   getAdminUserById,

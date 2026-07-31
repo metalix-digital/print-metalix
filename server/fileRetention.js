@@ -30,6 +30,32 @@ function cleanupExpiredFiles() {
   return orders.length
 }
 
+// Files land in uploads/ the moment they're picked (before checkout even
+// starts, so they can be analyzed/priced) — an abandoned checkout (closed
+// tab, never placed an order) leaves that file behind forever, since it's
+// never attached to any order for cleanupExpiredFiles() above to find. This
+// sweeps uploads/ directly: anything old enough that no legitimate
+// in-progress checkout could still need it, and not referenced by any order.
+const ORPHANED_UPLOAD_AGE_MS = 48 * 60 * 60 * 1000
+
+function cleanupOrphanedUploads() {
+  let entries
+  try { entries = fs.readdirSync(uploadsDir) } catch (err) { return 0 }
+  const referenced = db.getAllOrderFileIds()
+  const cutoff = Date.now() - ORPHANED_UPLOAD_AGE_MS
+  let removed = 0
+  for (const name of entries) {
+    if (referenced.has(name)) continue
+    const filePath = path.join(uploadsDir, name)
+    let stat
+    try { stat = fs.statSync(filePath) } catch (err) { continue }
+    if (!stat.isFile() || stat.mtimeMs > cutoff) continue
+    try { fs.unlinkSync(filePath) } catch (err) { continue }
+    removed++
+  }
+  return removed
+}
+
 // Archived orders are kept for a grace period, then permanently removed.
 const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -46,4 +72,4 @@ function purgeExpiredArchive() {
   return orders.length
 }
 
-module.exports = { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive }
+module.exports = { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads }

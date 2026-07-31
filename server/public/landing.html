@@ -1230,10 +1230,12 @@ function applySettings(s){
 
 }
 
+// Same escaping rules as admin.html/blog.html's escHtml — kept as its own
+// copy (no shared module between these static pages) but must behave
+// identically, since a DOM-textContent-based version here previously left
+// quotes unescaped, unsafe if this output were ever placed in an attribute.
 function escHtmlLanding(str){
-  const div = document.createElement('div');
-  div.textContent = str == null ? '' : String(str);
-  return div.innerHTML;
+  return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 let reviewsData = [];

@@ -169,7 +169,7 @@ themeToggle.addEventListener('click', () => {
   syncThemeIcon();
 });
 
-function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function formatDate(ms){ return ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
 function readingTime(excerpt){
   const words = (excerpt || '').split(/\s+/).filter(Boolean).length;

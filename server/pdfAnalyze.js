@@ -50,47 +50,55 @@ async function analyzePdfBuffer(buffer) {
   const data = new Uint8Array(buffer)
   const loadingTask = pdfjsLib.getDocument({ data, standardFontDataUrl: STANDARD_FONT_DATA_URL })
   const doc = await loadingTask.promise
-  const n = doc.numPages
+  try {
+    const n = doc.numPages
 
-  const flags = []
-  const pageThumbnails = []
-  let thumbnail = null
-  const canvasFactory = new NodeCanvasFactory(createCanvas)
+    const flags = []
+    const pageThumbnails = []
+    let thumbnail = null
+    const canvasFactory = new NodeCanvasFactory(createCanvas)
 
-  for (let i = 1; i <= n; i++) {
-    const page = await doc.getPage(i)
-    const viewport = page.getViewport({ scale: 1 })
-    const maxDim = 800
-    const scale = Math.max(1, Math.min(2, maxDim / viewport.width))
-    const vp = page.getViewport({ scale })
-    const canvasAndContext = canvasFactory.create(Math.floor(vp.width), Math.floor(vp.height))
-    await page.render({ canvasContext: canvasAndContext.context, viewport: vp, canvasFactory }).promise
+    for (let i = 1; i <= n; i++) {
+      const page = await doc.getPage(i)
+      const viewport = page.getViewport({ scale: 1 })
+      const maxDim = 800
+      const scale = Math.max(1, Math.min(2, maxDim / viewport.width))
+      const vp = page.getViewport({ scale })
+      const canvasAndContext = canvasFactory.create(Math.floor(vp.width), Math.floor(vp.height))
+      await page.render({ canvasContext: canvasAndContext.context, viewport: vp, canvasFactory }).promise
 
-    // Already rendering every page for the color-detection pass below, so
-    // keeping each page's image too (for the customer-facing preview) is
-    // free CPU-wise — only cost is response payload size, capped above.
-    const pageImg = i <= MAX_PREVIEW_PAGES ? canvasAndContext.canvas.toDataURL('image/png') : null
-    if (pageImg) pageThumbnails.push(pageImg)
-    if (i === 1) thumbnail = pageImg
+      // Already rendering every page for the color-detection pass below, so
+      // keeping each page's image too (for the customer-facing preview) is
+      // free CPU-wise — only cost is response payload size, capped above.
+      const pageImg = i <= MAX_PREVIEW_PAGES ? canvasAndContext.canvas.toDataURL('image/png') : null
+      if (pageImg) pageThumbnails.push(pageImg)
+      if (i === 1) thumbnail = pageImg
 
-    const imgData = canvasAndContext.context.getImageData(0, 0, canvasAndContext.width, canvasAndContext.height)
-    const dataArr = imgData.data
-    let colored = 0
-    let total = 0
-    const step = 4
-    for (let k = 0; k < dataArr.length; k += 4 * step) {
-      const r = dataArr[k]
-      const g = dataArr[k + 1]
-      const b = dataArr[k + 2]
-      total++
-      if (Math.abs(r - g) > 12 || Math.abs(r - b) > 12 || Math.abs(g - b) > 12) colored++
+      const imgData = canvasAndContext.context.getImageData(0, 0, canvasAndContext.width, canvasAndContext.height)
+      const dataArr = imgData.data
+      let colored = 0
+      let total = 0
+      const step = 4
+      for (let k = 0; k < dataArr.length; k += 4 * step) {
+        const r = dataArr[k]
+        const g = dataArr[k + 1]
+        const b = dataArr[k + 2]
+        total++
+        if (Math.abs(r - g) > 12 || Math.abs(r - b) > 12 || Math.abs(g - b) > 12) colored++
+      }
+      flags.push(total > 0 && colored / total > 0.03)
+      canvasFactory.destroy(canvasAndContext)
     }
-    flags.push(total > 0 && colored / total > 0.03)
-    canvasFactory.destroy(canvasAndContext)
-  }
 
-  const colorCount = flags.filter(Boolean).length
-  return { pageCount: n, colorCount, colorFlags: flags, thumbnail, pageThumbnails, previewTruncated: n > MAX_PREVIEW_PAGES }
+    const colorCount = flags.filter(Boolean).length
+    return { pageCount: n, colorCount, colorFlags: flags, thumbnail, pageThumbnails, previewTruncated: n > MAX_PREVIEW_PAGES }
+  } finally {
+    // Without this, pdfjs keeps the parsed document (and its worker-side
+    // state) alive for the life of the process — on a server analyzing every
+    // uploaded print job, that leaks memory per upload, worse for large
+    // bulk (200-page) files.
+    doc.destroy()
+  }
 }
 
 module.exports = { analyzePdfBuffer }

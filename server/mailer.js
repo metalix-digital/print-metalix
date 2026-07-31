@@ -1,6 +1,7 @@
 // Real email delivery via Gmail SMTP (app password). Falls back to a
 // console-log stub — same pattern as notify.js — when GMAIL_USER/
 // GMAIL_APP_PASSWORD aren't set (e.g. local dev without those secrets).
+const { formatRupees } = require('./format')
 let cachedTransporter = null
 function getTransporter() {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return null
@@ -168,7 +169,7 @@ function orderStatusTemplate(order, trackUrl, opts) {
   }
   const name = order.customer_name ? String(order.customer_name).split(' ')[0] : 'there'
   const pill = `<span style="display:inline-block;padding:5px 12px;border-radius:999px;background:${copy.accent};color:#ffffff;font-size:12px;font-weight:700;letter-spacing:.02em;">${order.order_status}</span>`
-  const total = (order.total_amount === 0 || order.total_amount) ? `₹${order.total_amount}` : '—'
+  const total = (order.total_amount === 0 || order.total_amount) ? `₹${formatRupees(order.total_amount)}` : '—'
   // Once completed, "Track your order" is moot — the tracking page shows a
   // rating form instead, so point the button there.
   const isCompleted = order.order_status === 'Completed'
@@ -280,22 +281,22 @@ async function sendNewOrderAlertEmail(order) {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;margin-bottom:8px;">
         ${row('Order ID', esc(order.id))}
         ${row('Customer', esc(order.customer_name) + (order.customer_mobile ? ' · ' + esc(order.customer_mobile) : ''))}
-        ${row('Total', `₹${order.total_amount}` + (isCod ? ' (pay on delivery)' : ' (paid online)'))}
+        ${row('Total', `₹${formatRupees(order.total_amount)}` + (isCod ? ' (pay on delivery)' : ' (paid online)'))}
         ${row('Fulfilment', esc(deliveryLine) + (order.location_name ? ' · ' + esc(order.location_name) : ''))}
       </table>
     </td></tr>
     <tr><td style="padding:4px 40px 34px 40px;">${button('Open admin dashboard', 'https://print.metalix.in/admin')}</td></tr>
   </table>`
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Sent automatically whenever a new order is confirmed.</p>`
-  const html = renderEmailShell({ preheader: `Order ${order.id} — ₹${order.total_amount}`, badge: 'New order', cardHtml, footerHtml })
-  const text = `New order arrived\n\nOrder ID: ${order.id}\nCustomer: ${order.customer_name} (${order.customer_mobile})\nTotal: ₹${order.total_amount} (${isCod ? 'pay on delivery' : 'paid online'})\nFulfilment: ${deliveryLine}${order.location_name ? ' · ' + order.location_name : ''}\n\nOpen admin dashboard: https://print.metalix.in/admin`
+  const html = renderEmailShell({ preheader: `Order ${order.id} — ₹${formatRupees(order.total_amount)}`, badge: 'New order', cardHtml, footerHtml })
+  const text = `New order arrived\n\nOrder ID: ${order.id}\nCustomer: ${order.customer_name} (${order.customer_mobile})\nTotal: ₹${formatRupees(order.total_amount)} (${isCod ? 'pay on delivery' : 'paid online'})\nFulfilment: ${deliveryLine}${order.location_name ? ' · ' + order.location_name : ''}\n\nOpen admin dashboard: https://print.metalix.in/admin`
 
   const transporter = getTransporter()
   if (!transporter) {
-    console.log(`[mailer] stub -> ${to}: new order ${order.id} (₹${order.total_amount})`)
+    console.log(`[mailer] stub -> ${to}: new order ${order.id} (₹${formatRupees(order.total_amount)})`)
     return
   }
-  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to, subject: `New order ${order.id} — ₹${order.total_amount}`, html, text })
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to, subject: `New order ${order.id} — ₹${formatRupees(order.total_amount)}`, html, text })
 }
 
 // ---- Order confirmation (sent once, to the customer, right at placement) --
@@ -305,17 +306,18 @@ async function sendNewOrderAlertEmail(order) {
 // triggers. Must therefore be the one place delivery timing/address actually
 // gets communicated for a scheduled delivery.
 
+// Customers always pick a delivery slot in IST, so this must render in IST
+// regardless of what timezone the server process itself happens to be
+// running in (a bare Date.getHours()/getMinutes() would use the server's
+// local time, which is UTC by default on most cloud VMs — 5:30h off).
 function formatScheduledTime(ms) {
   if (!ms) return ''
-  const d = new Date(ms)
-  const day = d.getDate()
-  const month = d.toLocaleString('en-US', { month: 'short' })
-  let h = d.getHours()
-  const m = String(d.getMinutes()).padStart(2, '0')
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  h = h % 12
-  if (h === 0) h = 12
-  return `${day} ${month} · ${h}:${m} ${ampm}`
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true
+  }).formatToParts(new Date(ms))
+  const get = (type) => (parts.find((p) => p.type === type) || {}).value || ''
+  return `${get('day')} ${get('month')} · ${get('hour')}:${get('minute')} ${get('dayPeriod').toUpperCase()}`
 }
 
 function orderConfirmationTemplate(order, trackUrl) {
@@ -349,18 +351,18 @@ function orderConfirmationTemplate(order, trackUrl) {
     <tr><td style="padding:18px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;">
         ${row('Order ID', esc(order.id))}
-        ${row('Total', `₹${order.total_amount}` + (isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'))}
+        ${row('Total', `₹${formatRupees(order.total_amount)}` + (isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'))}
         ${row('Fulfilment', fulfilmentLines.map(esc).join('<br>'))}
       </table>
     </td></tr>
   </table>`
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
-  const html = renderEmailShell({ preheader: `Order ${order.id} confirmed — ₹${order.total_amount}`, accent: BRAND.green, cardHtml, footerHtml })
+  const html = renderEmailShell({ preheader: `Order ${order.id} confirmed — ₹${formatRupees(order.total_amount)}`, accent: BRAND.green, cardHtml, footerHtml })
   const text = [
     'Order confirmed!', '',
     `Hi ${name}, we've got your order — it's queued for printing now.`, '',
     `Order ID: ${order.id}`,
-    `Total: ₹${order.total_amount}${isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'}`,
+    `Total: ₹${formatRupees(order.total_amount)}${isCod ? ' (pay on ' + (isDelivery ? 'delivery' : 'pickup') + ')' : ' (paid online)'}`,
     `Fulfilment: ${fulfilmentLines.join(' · ')}`,
     `\nTrack your order: ${trackUrl}`,
     "\nThis is an automated message from Metalix Print — please don't reply."

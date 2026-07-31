@@ -126,7 +126,6 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .chart-tooltip .tt-value{font-weight:700;font-variant-numeric:tabular-nums;}
 .chart-tooltip .tt-label{color:#C7C4C0;margin-left:6px;}
 .chart-crosshair{stroke:var(--chart-axis);stroke-width:1;pointer-events:none;}
-.chart-dot-ring{fill:var(--chart-surface);}
 .split-bar-track{display:flex;height:24px;border-radius:6px;overflow:hidden;background:var(--line-soft);margin-bottom:12px;}
 .split-bar-seg{height:100%;transition:width .2s;}
 .split-legend{display:flex;gap:20px;flex-wrap:wrap;}
@@ -1456,7 +1455,7 @@ async function printOrderFile(orderId, fileId, fileName){
 let ordersById = {};
 let feedbackByOrderId = {};
 
-function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 // Total pages to print across all files, counting copies. Null if unknown.
 function orderTotalPages(o){

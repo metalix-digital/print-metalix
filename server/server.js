@@ -93,6 +93,35 @@ function requireCustomer(req, res, next) {
   }
 }
 
+// In-memory login-attempt limiter — no external dependency needed for a
+// single-process deploy. Keyed by IP + the identifier being tried, so
+// brute-forcing one account (or spraying many accounts from one IP) both
+// get slowed down; cleared on a successful login. A periodic sweep below
+// drops expired entries so the Map can't grow unbounded.
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000
+const LOGIN_ATTEMPT_MAX = 8
+const loginAttempts = new Map() // key -> { count, firstAttemptAt }
+
+function checkLoginRateLimit(key) {
+  const now = Date.now()
+  const entry = loginAttempts.get(key)
+  if (!entry || now - entry.firstAttemptAt > LOGIN_ATTEMPT_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAttemptAt: now })
+    return false
+  }
+  entry.count += 1
+  return entry.count > LOGIN_ATTEMPT_MAX
+}
+function clearLoginRateLimit(key) {
+  loginAttempts.delete(key)
+}
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of loginAttempts) {
+    if (now - entry.firstAttemptAt > LOGIN_ATTEMPT_WINDOW_MS) loginAttempts.delete(key)
+  }
+}, LOGIN_ATTEMPT_WINDOW_MS).unref()
+
 // Decode a customer token without rejecting the request if absent/invalid —
 // used where login is optional (e.g. order creation works for guests too).
 function getOptionalCustomerId(req) {
@@ -118,7 +147,7 @@ const sms = require('./sms')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
-const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive } = require('./fileRetention')
+const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads } = require('./fileRetention')
 const { buildInvoicePdf } = require('./invoice')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
@@ -356,9 +385,10 @@ app.put('/api/admin/settings', requireSuperAdmin, express.json(), (req, res) => 
 })
 
 // --- Admin authentication -------------------------------------------------
-// The admin credential (login id + bcrypt password hash) lives in the DB via
-// db.getAdminAuth/setAdminAuth so it can be changed or reset from the web. It's
-// seeded once at startup from env (see seedAdminAuth at the bottom of the file).
+// Admin credentials (login id + bcrypt password hash) live in the admin_users
+// table, changeable/resettable from the web. The first super_admin row is
+// seeded once at startup from env or migrated from the legacy single-admin
+// credential (see seedAdminAuth at the bottom of the file).
 // The forgot-password link always goes to this fixed, server-side address — the
 // client never supplies a destination, so a stranger can't redirect the reset.
 const ADMIN_RESET_EMAIL = process.env.ADMIN_RESET_EMAIL || 'support@metalix.in'
@@ -368,10 +398,15 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   if (!username || !password) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
   }
+  const rlKey = `admin:${req.ip}:${String(username).toLowerCase()}`
+  if (checkLoginRateLimit(rlKey)) {
+    return res.status(429).json({ error: 'too_many_attempts', message: 'Too many login attempts. Please try again in a few minutes.' })
+  }
   const admin = db.getAdminUserByUsername(username)
   if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect login ID or password.' })
   }
+  clearLoginRateLimit(rlKey)
   const token = jwt.sign({ role: 'admin', sub: admin.id, adminRole: admin.role, locationId: admin.location_id || null }, getJwtSecret(), { expiresIn: '12h' })
   return res.json({ token })
 })
@@ -538,6 +573,15 @@ app.post('/api/admin/blog', requireSuperAdmin, express.json(), (req, res) => {
   return res.json({ post })
 })
 
+// Cover images are only ever uploaded via /api/admin/blog/upload-cover into
+// blog-uploads (an external http(s) URL is also a valid cover_image, but
+// nothing on disk to clean up for those) — path.basename guards against a
+// crafted value ever escaping that directory.
+function deleteBlogCoverIfLocal(coverImage) {
+  if (!coverImage || !coverImage.startsWith('/blog-uploads/')) return
+  fs.unlink(path.join(blogUploadsDir, path.basename(coverImage)), () => {})
+}
+
 app.put('/api/admin/blog/:id', requireSuperAdmin, express.json(), (req, res) => {
   const existing = db.getBlogPostById(req.params.id)
   if (!existing) return res.status(404).json({ error: 'not_found' })
@@ -548,6 +592,10 @@ app.put('/api/admin/blog/:id', requireSuperAdmin, express.json(), (req, res) => 
   const conflict = db.getBlogPostBySlug(slug)
   if (conflict && conflict.id !== existing.id) return res.status(409).json({ error: 'slug_taken', message: 'That URL slug is already used by another post.' })
   const post = db.updateBlogPost(existing.id, { slug, ...fields })
+  // Replacing the cover leaves the old upload orphaned on disk otherwise.
+  if (existing.cover_image && existing.cover_image !== fields.cover_image) {
+    deleteBlogCoverIfLocal(existing.cover_image)
+  }
   return res.json({ post })
 })
 
@@ -555,6 +603,7 @@ app.delete('/api/admin/blog/:id', requireSuperAdmin, (req, res) => {
   const existing = db.getBlogPostById(req.params.id)
   if (!existing) return res.status(404).json({ error: 'not_found' })
   db.deleteBlogPost(existing.id)
+  deleteBlogCoverIfLocal(existing.cover_image)
   return res.json({ deleted: true })
 })
 
@@ -592,10 +641,15 @@ app.post('/api/auth/login', express.json(), async (req, res) => {
   if (!identifier || !password) {
     return res.status(400).json({ error: 'missing_fields' })
   }
+  const rlKey = `customer:${req.ip}:${String(identifier).toLowerCase()}`
+  if (checkLoginRateLimit(rlKey)) {
+    return res.status(429).json({ error: 'too_many_attempts', message: 'Too many login attempts. Please try again in a few minutes.' })
+  }
   const user = db.findUserByIdentifier(identifier)
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect email/mobile or password.' })
   }
+  clearLoginRateLimit(rlKey)
   const token = jwt.sign({ role: 'customer', sub: user.id }, getJwtSecret(), { expiresIn: '30d' })
   return res.json({ token, user: publicUser(user) })
 })
@@ -989,6 +1043,10 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     const fileSides = new Set(mergedFiles.map((f) => f.printSide))
     const filePaperTypes = new Set(mergedFiles.map((f) => f.paperType))
 
+    // Bake each file's actual charged amount/labels in now, so an invoice
+    // printed later reflects what was charged even if rates change meanwhile.
+    mergedFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+
     updates.files_json = JSON.stringify(mergedFiles)
     updates.print_mode = fileModes.size === 1 ? mergedFiles[0].printMode : 'mixed'
     updates.print_side = fileSides.size === 1 ? mergedFiles[0].printSide : 'mixed'
@@ -1354,23 +1412,13 @@ app.put('/api/admin/pricing', requireSuperAdmin, express.json(), (req, res) => {
 // (or a simulated one if no live keys are configured).
 const MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
 
-app.post('/api/orders', express.json(), async (req, res) => {
-  const {
-    customerName, customerMobile, customerEmail,
-    files,
-    deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
-    deliveryTiming, scheduledAt,
-    locationId, paymentMethod
-  } = req.body || {}
-  const isCod = paymentMethod === 'cod'
-
-  if (!customerName || !customerMobile) {
-    return res.status(400).json({ error: 'missing_customer_info' })
-  }
-  if (!Array.isArray(files) || !files.length) {
-    return res.status(400).json({ error: 'missing_file_info' })
-  }
-
+// Shared by POST /api/orders (customer checkout) and POST /api/admin/orders
+// (staff-placed order) — both validate/normalize the raw `files` input,
+// resolve delivery timing, and price the order identically; only what
+// happens next (payment method, who owns the order) differs between them.
+// Returns { error, message? } on the first invalid file/input (caller
+// responds with that as a 400), otherwise the validated, priced result.
+function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt }) {
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
@@ -1385,7 +1433,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
   for (const f of files) {
     const safeFileId = path.basename(String(f.fileId || ''))
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
-      return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
+      return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
     }
     const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
     const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
@@ -1417,10 +1465,10 @@ app.post('/api/orders', express.json(), async (req, res) => {
     safeFiles.push(fileData)
   }
   if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
-    return res.status(400).json({ error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' })
+    return { error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' }
   }
   if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !deliveryPincode)) {
-    return res.status(400).json({ error: 'missing_delivery_address' })
+    return { error: 'missing_delivery_address' }
   }
 
   // Instant delivery matches the existing 3-4hr TAT with no extra input needed;
@@ -1436,7 +1484,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
       const ts = Number(scheduledAt)
       const now = Date.now()
       if (!Number.isFinite(ts) || ts < now + MIN_SCHEDULE_LEAD_MS || ts > now + MAX_SCHEDULE_LEAD_MS) {
-        return res.status(400).json({ error: 'invalid_scheduled_time', message: 'Choose a delivery time at least 2 hours from now, within the next 7 days.' })
+        return { error: 'invalid_scheduled_time', message: 'Choose a delivery time at least 2 hours from now, within the next 7 days.' }
       }
       resolvedScheduledAt = ts
     }
@@ -1459,6 +1507,36 @@ app.post('/api/orders', express.json(), async (req, res) => {
     deliveryMethod: deliveryMethod || 'pickup',
     deliveryPincode
   })
+  // Bake each file's actual charged amount/labels in now, so an invoice
+  // printed later reflects what was charged even if rates change meanwhile.
+  safeFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+
+  return {
+    safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide,
+    summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt
+  }
+}
+
+app.post('/api/orders', express.json(), async (req, res) => {
+  const {
+    customerName, customerMobile, customerEmail,
+    files,
+    deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
+    deliveryTiming, scheduledAt,
+    locationId, paymentMethod
+  } = req.body || {}
+  const isCod = paymentMethod === 'cod'
+
+  if (!customerName || !customerMobile) {
+    return res.status(400).json({ error: 'missing_customer_info' })
+  }
+  if (!Array.isArray(files) || !files.length) {
+    return res.status(400).json({ error: 'missing_file_info' })
+  }
+
+  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
+  if (built.error) return res.status(400).json({ error: built.error, message: built.message })
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
@@ -1575,88 +1653,9 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     return res.status(400).json({ error: 'invalid_payment_mode', message: 'Payment mode must be cash or upi.' })
   }
 
-  const VALID_MODES = ['auto', 'color', 'bw']
-  const VALID_ORIENTATIONS = ['portrait', 'landscape']
-  const VALID_SIDES = ['single', 'double']
-  const paperTypeConfig = db.getPricing()
-  const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
-  const defaultPaperType = paperTypeIds[0] || 'normal'
-  let totalFileSize = 0
-  const safeFiles = []
-  const pricingFiles = []
-  for (const f of files) {
-    const safeFileId = path.basename(String(f.fileId || ''))
-    if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
-      return res.status(400).json({ error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' })
-    }
-    const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
-    const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
-    const fileSide = fileMode === 'color' ? 'single' : (VALID_SIDES.includes(f.printSide) ? f.printSide : 'single')
-    const filePaperType = paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType
-    const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
-    const filePassword = String(f.password || '').trim().slice(0, 200) || null
-    const fileData = {
-      fileId: safeFileId,
-      fileName: f.fileName || safeFileId,
-      fileType: f.fileType || null,
-      pageCount: Number(f.pageCount) || 0,
-      colorPageCount: Number(f.colorPageCount) || 0,
-      fileSize: Number(f.fileSize) || 0,
-      printMode: fileMode,
-      orientation: fileOrientation,
-      printSide: fileSide,
-      paperType: filePaperType,
-      copies: fileCopies,
-      password: filePassword
-    }
-    const { colorPages, bwPages } = pricing.resolveFileColorPages(
-      { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
-      fileMode
-    )
-    pricingFiles.push({ colorPages, bwPages, copies: fileCopies, printSide: fileSide, paperType: filePaperType })
-    totalFileSize += fileData.fileSize
-    safeFiles.push(fileData)
-  }
-  if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
-    return res.status(400).json({ error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' })
-  }
-  if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !deliveryPincode)) {
-    return res.status(400).json({ error: 'missing_delivery_address' })
-  }
-
-  const MIN_SCHEDULE_LEAD_MS = 2 * 60 * 60 * 1000
-  const MAX_SCHEDULE_LEAD_MS = 7 * 24 * 60 * 60 * 1000
-  let resolvedDeliveryTiming = 'instant'
-  let resolvedScheduledAt = null
-  if (deliveryMethod === 'delivery') {
-    resolvedDeliveryTiming = deliveryTiming === 'scheduled' ? 'scheduled' : 'instant'
-    if (resolvedDeliveryTiming === 'scheduled') {
-      const ts = Number(scheduledAt)
-      const now = Date.now()
-      if (!Number.isFinite(ts) || ts < now + MIN_SCHEDULE_LEAD_MS || ts > now + MAX_SCHEDULE_LEAD_MS) {
-        return res.status(400).json({ error: 'invalid_scheduled_time', message: 'Choose a delivery time at least 2 hours from now, within the next 7 days.' })
-      }
-      resolvedScheduledAt = ts
-    }
-  }
-
-  const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
-  const fileModes = new Set(safeFiles.map((f) => f.printMode))
-  const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
-  const fileOrientations = new Set(safeFiles.map((f) => f.orientation))
-  const summaryOrientation = fileOrientations.size === 1 ? safeFiles[0].orientation : 'mixed'
-  const fileSides = new Set(safeFiles.map((f) => f.printSide))
-  const summarySide = fileSides.size === 1 ? safeFiles[0].printSide : 'mixed'
-  const filePaperTypes = new Set(safeFiles.map((f) => f.paperType))
-  const summaryPaperType = filePaperTypes.size === 1 ? safeFiles[0].paperType : 'mixed'
-  const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
-
-  const pricingConfig = db.getPricing()
-  const calc = pricing.calculate(pricingConfig, {
-    files: pricingFiles,
-    deliveryMethod: deliveryMethod || 'pickup',
-    deliveryPincode
-  })
+  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
+  if (built.error) return res.status(400).json({ error: built.error, message: built.message })
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   const fileNameSummary = safeFiles.length > 1
@@ -1825,10 +1824,8 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   // for free by just sending { simulated: true }.
   const isActuallySimulated = typeof order.razorpay_order_id === 'string' && order.razorpay_order_id.startsWith('SIM_')
   if (simulated && isActuallySimulated) {
-    db.updateOrder(order.id, {
-      razorpay_payment_id: `SIM_PAY_${order.id}`,
-      payment_status: 'paid'
-    })
+    const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id: `SIM_PAY_${order.id}` })
+    if (!paidOrder) return res.json({ order: db.getOrder(order.id) }) // lost the race — already confirmed elsewhere
     printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
@@ -1844,11 +1841,8 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
     return res.status(400).json({ error: 'invalid_signature' })
   }
 
-  db.updateOrder(order.id, {
-    razorpay_payment_id,
-    razorpay_signature,
-    payment_status: 'paid'
-  })
+  const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id, razorpay_signature })
+  if (!paidOrder) return res.json({ order: db.getOrder(order.id) }) // lost the race — already confirmed elsewhere
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
   const fresh = db.getOrder(order.id)
   notify.sendOrderConfirmationSms(fresh)
@@ -1873,12 +1867,14 @@ app.get('/api/payment-links/callback', (req, res) => {
     const payload = `${razorpay_payment_link_id}|${razorpay_payment_link_reference_id}|${razorpay_payment_link_status}|${razorpay_payment_id}`
     const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex')
     if (secret && expected === razorpay_signature) {
-      db.updateOrder(order.id, { razorpay_payment_id, payment_status: 'paid' })
-      printQueue.enqueue(order.id)
-      const fresh = db.getOrder(order.id)
-      notify.sendOrderConfirmationSms(fresh)
-      notify.sendOrderConfirmationEmail(fresh)
-      mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+      const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id })
+      if (paidOrder) {
+        printQueue.enqueue(order.id)
+        const fresh = db.getOrder(order.id)
+        notify.sendOrderConfirmationSms(fresh)
+        notify.sendOrderConfirmationEmail(fresh)
+        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+      }
     }
   }
   return res.redirect(`/track/${razorpay_payment_link_reference_id || ''}`)
@@ -1902,31 +1898,33 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
     const paymentLink = event.payload && event.payload.payment_link && event.payload.payment_link.entity
     if (event.event === 'payment_link.paid' && paymentLink && paymentLink.reference_id) {
       const order = db.getOrder(paymentLink.reference_id)
-      if (order && order.payment_status !== 'paid') {
-        db.updateOrder(order.id, {
+      if (order) {
+        const paidOrder = db.markOrderPaid(order.id, {
           razorpay_payment_id: payment ? payment.id : null,
-          payment_status: 'paid',
           order_status: 'Payment Successful'
         })
-        printQueue.enqueue(order.id)
-        const fresh = db.getOrder(order.id)
-        notify.sendOrderConfirmationSms(fresh)
-        notify.sendOrderConfirmationEmail(fresh)
-        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        if (paidOrder) {
+          printQueue.enqueue(order.id)
+          const fresh = db.getOrder(order.id)
+          notify.sendOrderConfirmationSms(fresh)
+          notify.sendOrderConfirmationEmail(fresh)
+          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        }
       }
     } else if (payment && payment.order_id) {
       const order = db.db.prepare('SELECT * FROM orders WHERE razorpay_order_id = ?').get(payment.order_id)
-      if (order && order.payment_status !== 'paid') {
-        db.updateOrder(order.id, {
+      if (order) {
+        const paidOrder = db.markOrderPaid(order.id, {
           razorpay_payment_id: payment.id,
-          payment_status: 'paid',
           order_status: 'Payment Successful'
         })
-        printQueue.enqueue(order.id)
-        const fresh = db.getOrder(order.id)
-        notify.sendOrderConfirmationSms(fresh)
-        notify.sendOrderConfirmationEmail(fresh)
-        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        if (paidOrder) {
+          printQueue.enqueue(order.id)
+          const fresh = db.getOrder(order.id)
+          notify.sendOrderConfirmationSms(fresh)
+          notify.sendOrderConfirmationEmail(fresh)
+          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        }
       }
     }
     res.status(200).json({ ok: true })
@@ -2606,6 +2604,8 @@ loadSecretsIntoEnv().then(async () => {
   app.listen(PORT, () => console.log(`Running on ${PORT}`))
   cleanupExpiredFiles()
   setInterval(cleanupExpiredFiles, 60 * 60 * 1000)
+  cleanupOrphanedUploads()
+  setInterval(cleanupOrphanedUploads, 6 * 60 * 60 * 1000)
   purgeExpiredArchive()
   setInterval(purgeExpiredArchive, 6 * 60 * 60 * 1000)
   backupDatabase()

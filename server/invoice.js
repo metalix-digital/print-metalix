@@ -6,6 +6,7 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib')
 const db = require('./db')
 const pricing = require('./pricing')
+const { formatRupees } = require('./format')
 
 const ORANGE = rgb(1, 0.4, 0)
 const INK = rgb(0.1, 0.13, 0.22)
@@ -14,15 +15,19 @@ const LINE = rgb(0.85, 0.84, 0.79)
 const SOFT = rgb(0.97, 0.96, 0.93)
 const WHITE = rgb(1, 1, 1)
 
-function money(n) { return 'Rs. ' + (Number(n) || 0).toLocaleString('en-IN') }
+function money(n) { return 'Rs. ' + formatRupees(n) }
 
-// Per-file paper type label, colour label, and cost — recomputed from the
-// *current* admin pricing rates, since no historical rate snapshot is kept
-// per order (matches the same per-file rate lookup pricing.calculate() uses
-// at order time; only drifts from what was actually charged if the admin
-// changes rates in the narrow window between an order being placed and
-// completed — the order's own TOTAL below is unaffected either way).
+// Per-file paper type label, colour label, and cost. Orders created after
+// pricing.calculate() started returning a fileBreakdown (see pricing.js)
+// have this baked into files_json at order time, so the invoice always
+// matches what was actually charged, even if the admin changes rates
+// before the invoice is printed. Older orders that predate that change
+// don't have it stored, so fall back to recomputing from *current* rates —
+// only those can drift from what was actually charged.
 function fileLineItem(f, pages, copies, paperTypes) {
+  if (f.amount != null && f.paperLabel != null && f.colorLabel != null) {
+    return { paperLabel: f.paperLabel, colorLabel: f.colorLabel, amount: f.amount }
+  }
   const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]
   const paperLabel = rates ? rates.label : (f.paperType || 'Paper')
   const { colorPages, bwPages } = pricing.resolveFileColorPages(
@@ -88,7 +93,7 @@ async function buildInvoicePdf(order) {
   y -= 26
 
   // Meta row
-  const dateStr = new Date(order.completed_at || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const dateStr = new Date(order.completed_at || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
   text('INVOICE NO', M, y, 8.5, bold, MUTED)
   text('DATE', M + 200, y, 8.5, bold, MUTED)
   text('PAYMENT', M + 340, y, 8.5, bold, MUTED)

@@ -36,17 +36,25 @@ function calculateDeliveryCharge(config, { deliveryMethod, deliveryPincode, preD
 // printing side are all resolved per-file by the caller (client estimate
 // and server authoritative calc both do this the same way) so a single
 // order can mix per-file settings correctly.
+//
+// Also returns fileBreakdown (one entry per input file, same order, null for
+// an unrecognized paper type) — the per-file paper label / colour split /
+// amount actually charged at calculation time. Callers that persist an
+// order should store this alongside each file so an invoice generated later
+// reflects what was actually charged, not whatever the admin's rates happen
+// to be when the invoice is printed (rates can change in between).
 function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   let printCost = 0
   let colorPages = 0
   let bwPages = 0
   const paperTypes = Array.isArray(config.rates.a4) ? config.rates.a4 : []
+  const fileBreakdown = []
   ;(files || []).forEach((f) => {
     const side = f.printSide === 'double' ? 'double' : 'single'
     // Match the file's paper type by id, falling back to the first configured
     // type so an unknown/removed id still prices instead of crashing.
     const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]
-    if (!rates) return
+    if (!rates) { fileBreakdown.push(null); return }
     const copies = Math.max(1, f.copies || 1)
     const c = f.colorPages || 0
     const b = f.bwPages || 0
@@ -54,7 +62,13 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
     bwPages += b * copies
     // Colour is single-sided only, so colour pages always price at the single
     // rate (there is no colour double-sided rate); B&W still varies by side.
-    printCost += (c * (rates.color.single || 0) + b * rates.bw[side]) * copies
+    const fileAmount = (c * (rates.color.single || 0) + b * rates.bw[side]) * copies
+    printCost += fileAmount
+    fileBreakdown.push({
+      paperLabel: rates.label,
+      colorLabel: c && b ? `${c} colour + ${b} B/W` : (c ? 'Colour' : 'Black & White'),
+      amount: Math.round(fileAmount)
+    })
   })
   printCost = Math.round(printCost)
 
@@ -68,7 +82,7 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   const gstAmount = Math.round((subtotal * (config.gstPercent || 0)) / 100)
   const totalAmount = subtotal + gstAmount
 
-  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, gstAmount, totalAmount }
+  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, gstAmount, totalAmount, fileBreakdown }
 }
 
 // Resolves a single file's effective color/bw page split given its
