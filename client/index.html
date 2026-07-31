@@ -403,6 +403,14 @@ __GTM_NOSCRIPT__
       </div>
 
       <div class="opt-group">
+        <span class="opt-label">Notes for us (optional)</span>
+        <div class="field" id="fieldNotes">
+          <label for="customerNotes">Instructions for our team</label>
+          <textarea id="customerNotes" placeholder="e.g. staple the pages, call before delivery, print double-sided even if not selected above…" maxlength="500" rows="3"></textarea>
+        </div>
+      </div>
+
+      <div class="opt-group">
         <span class="opt-label">Payment</span>
         <div class="seg">
           <label><input type="radio" name="payment" value="online" checked><span class="pill">Pay online now</span></label>
@@ -1384,7 +1392,8 @@ function buildOrderPayload(){
     deliveryTiming: state.deliveryMethod === 'delivery' ? state.deliveryTiming : undefined,
     scheduledAt: state.deliveryMethod === 'delivery' && state.deliveryTiming === 'scheduled' ? state.scheduledAt : undefined,
     locationId: getSelectedBranchId(),
-    paymentMethod: state.paymentMethod
+    paymentMethod: state.paymentMethod,
+    notes: document.getElementById('customerNotes').value.trim() || undefined
   };
 }
 

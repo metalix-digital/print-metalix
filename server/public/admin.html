@@ -812,6 +812,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
       </div>
 
+      <div class="field">
+        <label>Notes <span class="opt">(optional — visible to staff, shown on the job sheet)</span></label>
+        <textarea id="noNotes" maxlength="500" rows="2"></textarea>
+      </div>
+
       <div class="save-message hidden" id="newOrderModalMsg"></div>
     </div>
     <div class="modal-actions">
@@ -875,6 +880,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <label>PIN code</label>
           <input type="text" id="eoAddrPincode" placeholder="6-digit PIN" maxlength="6" />
         </div>
+      </div>
+
+      <div class="field">
+        <label>Notes <span class="opt">(optional — visible to staff, shown on the job sheet)</span></label>
+        <textarea id="eoNotes" maxlength="500" rows="2"></textarea>
       </div>
 
       <div class="save-message hidden" id="editOrderModalMsg"></div>
@@ -1550,6 +1560,7 @@ function renderOrders(orders){
       '<td><span class="placed">' + (o.created_at ? escHtml(new Date(o.created_at).toLocaleString()) : '—') + '</span></td>' +
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
+      (o.notes ? '<div style="background:var(--orange-soft);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:10px;"><strong>📝 Customer notes:</strong> ' + escHtml(o.notes).replace(/\n/g, '<br>') + '</div>' : '') +
       filesDetailHtml(o) +
       '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
       '<div><strong>Branch:</strong> ' + branchSelectHtml(o) + '</div>' +
@@ -3110,6 +3121,7 @@ async function openNewOrderModal(){
   document.querySelector('input[name=noPayment][value=later]').checked = true;
   document.getElementById('noPaidModeFields').classList.add('hidden');
   document.getElementById('noPaymentMode').value = 'cash';
+  document.getElementById('noNotes').value = '';
   const msg = document.getElementById('newOrderModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   try {
@@ -3173,7 +3185,8 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     deliveryState: deliveryMethod === 'delivery' ? deliveryState : undefined,
     deliveryPincode: deliveryMethod === 'delivery' ? deliveryPincode : undefined,
     paymentStatus: paymentChoice === 'paid' ? 'paid' : (paymentChoice === 'link' ? 'link' : 'pending'),
-    paymentMode: paymentChoice === 'paid' ? document.getElementById('noPaymentMode').value : undefined
+    paymentMode: paymentChoice === 'paid' ? document.getElementById('noPaymentMode').value : undefined,
+    notes: document.getElementById('noNotes').value.trim() || undefined
   };
 
   const saveBtn = document.getElementById('newOrderModalSave');
@@ -3247,6 +3260,7 @@ async function openEditOrderModal(order){
   document.getElementById('eoCustomerName').value = order.customer_name || '';
   document.getElementById('eoCustomerMobile').value = order.customer_mobile || '';
   document.getElementById('eoCustomerEmail').value = order.customer_email || '';
+  document.getElementById('eoNotes').value = order.notes || '';
 
   let files = [];
   try { files = order.files_json ? JSON.parse(order.files_json) : []; } catch (e) { files = []; }
@@ -3316,7 +3330,8 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
     delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
     delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
-    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies }))
+    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies })),
+    notes: document.getElementById('eoNotes').value.trim() || null
   };
 
   const saveBtn = document.getElementById('editOrderModalSave');

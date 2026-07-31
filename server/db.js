@@ -168,6 +168,7 @@ ensureColumn('orders', 'delivery_timing', "TEXT DEFAULT 'instant'") // 'instant'
 ensureColumn('orders', 'scheduled_at', 'INTEGER') // epoch ms, set only when delivery_timing = 'scheduled'
 ensureColumn('orders', 'payment_link_id', 'TEXT')   // Razorpay Payment Link id, set when a link is generated for this order
 ensureColumn('orders', 'payment_link_url', 'TEXT')
+ensureColumn('orders', 'notes', 'TEXT') // optional free-text instructions from the customer (or added by staff) for whoever fulfils the order
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -663,7 +664,7 @@ function createOrder(order) {
       payment_method,
       delivery_timing, scheduled_at,
       print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
-      razorpay_order_id, payment_status, order_status,
+      razorpay_order_id, payment_status, order_status, notes,
       created_at, updated_at
     ) VALUES (
       @id, @customer_id, @customer_name, @customer_mobile, @customer_email,
@@ -674,10 +675,10 @@ function createOrder(order) {
       @payment_method,
       @delivery_timing, @scheduled_at,
       @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount,
-      @razorpay_order_id, @payment_status, @order_status,
+      @razorpay_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 

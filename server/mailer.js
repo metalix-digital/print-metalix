@@ -283,13 +283,14 @@ async function sendNewOrderAlertEmail(order) {
         ${row('Customer', esc(order.customer_name) + (order.customer_mobile ? ' · ' + esc(order.customer_mobile) : ''))}
         ${row('Total', `₹${formatRupees(order.total_amount)}` + (isCod ? ' (pay on delivery)' : ' (paid online)'))}
         ${row('Fulfilment', esc(deliveryLine) + (order.location_name ? ' · ' + esc(order.location_name) : ''))}
+        ${order.notes ? row('Customer notes', esc(order.notes).replace(/\n/g, '<br>')) : ''}
       </table>
     </td></tr>
     <tr><td style="padding:4px 40px 34px 40px;">${button('Open admin dashboard', 'https://print.metalix.in/admin')}</td></tr>
   </table>`
   const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Sent automatically whenever a new order is confirmed.</p>`
   const html = renderEmailShell({ preheader: `Order ${order.id} — ₹${formatRupees(order.total_amount)}`, badge: 'New order', cardHtml, footerHtml })
-  const text = `New order arrived\n\nOrder ID: ${order.id}\nCustomer: ${order.customer_name} (${order.customer_mobile})\nTotal: ₹${formatRupees(order.total_amount)} (${isCod ? 'pay on delivery' : 'paid online'})\nFulfilment: ${deliveryLine}${order.location_name ? ' · ' + order.location_name : ''}\n\nOpen admin dashboard: https://print.metalix.in/admin`
+  const text = `New order arrived\n\nOrder ID: ${order.id}\nCustomer: ${order.customer_name} (${order.customer_mobile})\nTotal: ₹${formatRupees(order.total_amount)} (${isCod ? 'pay on delivery' : 'paid online'})\nFulfilment: ${deliveryLine}${order.location_name ? ' · ' + order.location_name : ''}${order.notes ? '\nCustomer notes: ' + order.notes : ''}\n\nOpen admin dashboard: https://print.metalix.in/admin`
 
   const transporter = getTransporter()
   if (!transporter) {

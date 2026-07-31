@@ -339,7 +339,7 @@ function populate(order){
   document.getElementById('jsPrintMode').textContent = MODE_LABELS[order.print_mode] || order.print_mode || '—';
   document.getElementById('jsBinding').textContent = '—';
   document.getElementById('jsCopies').textContent = order.copies != null ? order.copies : '—';
-  document.getElementById('jsInstructions').textContent = '—';
+  document.getElementById('jsInstructions').textContent = order.notes || '—';
 
   const trackUrl = window.location.origin + '/track/' + order.id;
   document.getElementById('jsQrUrl').textContent = trackUrl;

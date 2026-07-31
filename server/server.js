@@ -945,7 +945,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     customer_name, customer_mobile, customer_email,
     delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
     files,
-    location_id
+    location_id, notes
   } = req.body || {}
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
     return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
@@ -985,6 +985,9 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   if (delivery_city !== undefined) updates.delivery_city = delivery_city || null
   if (delivery_state !== undefined) updates.delivery_state = delivery_state || null
   if (delivery_pincode !== undefined) updates.delivery_pincode = delivery_pincode || null
+  // Pure bookkeeping (staff-facing instructions, never affects money), so —
+  // like location_id below — it's allowed even on a paid order.
+  if (notes !== undefined) updates.notes = String(notes || '').trim().slice(0, 500) || null
   // Pure bookkeeping (which branch fulfilled it) — never touches money, so
   // it's allowed even on a paid order, unlike the content edits above.
   if (location_id !== undefined) {
@@ -1523,9 +1526,10 @@ app.post('/api/orders', express.json(), async (req, res) => {
     files,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
     deliveryTiming, scheduledAt,
-    locationId, paymentMethod
+    locationId, paymentMethod, notes
   } = req.body || {}
   const isCod = paymentMethod === 'cod'
+  const safeNotes = String(notes || '').trim().slice(0, 500) || null
 
   if (!customerName || !customerMobile) {
     return res.status(400).json({ error: 'missing_customer_info' })
@@ -1607,6 +1611,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     razorpay_order_id: isCod ? null : razorpayOrder.id,
     payment_status: isCod ? 'pending' : 'created',
     order_status: 'Received',
+    notes: safeNotes,
     created_at: Date.now()
   })
 
@@ -1638,8 +1643,9 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
     deliveryTiming, scheduledAt,
     locationId,
-    paymentStatus, paymentMode
+    paymentStatus, paymentMode, notes
   } = req.body || {}
+  const safeNotes = String(notes || '').trim().slice(0, 500) || null
 
   if (!customerName || !customerMobile) {
     return res.status(400).json({ error: 'missing_customer_info' })
@@ -1708,6 +1714,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     // same as an abandoned self-checkout never shows up either.
     payment_status: markPaidNow ? 'paid' : (wantsPaymentLink ? 'created' : 'pending'),
     order_status: 'Received',
+    notes: safeNotes,
     created_at: Date.now()
   })
 
