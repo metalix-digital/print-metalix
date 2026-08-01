@@ -127,16 +127,21 @@ async function buildInvoicePdf(order) {
   if (!files.length && order.file_name) {
     files = [{
       fileName: order.file_name, pageCount: order.page_count, copies: order.copies,
-      printMode: order.print_mode, printSide: order.print_side, paperType: order.paper_type,
+      printMode: order.print_mode, printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type,
       colorPageCount: order.color_page_count,
     }]
   }
-  let paperTypes = []
-  try { paperTypes = db.getPricing().rates.a4 || [] } catch (e) { paperTypes = [] }
+  let pricingConfig = {}
+  try { pricingConfig = db.getPricing() } catch (e) { pricingConfig = {} }
   for (const f of files) {
     const desc = String(f.fileName || 'Document')
     const pages = f.pageCount != null ? f.pageCount : (order.page_count || 0)
     const copies = f.copies || 1
+    // Legacy-order fallback only (see fileLineItem's comment) — new orders
+    // already have paperLabel/amount baked in, so f.pageSize doesn't need to
+    // be looked up here. Undefined f.pageSize (orders predating this field)
+    // falls through to rates.a4, its actual size at the time.
+    const paperTypes = (pricingConfig.rates && (pricingConfig.rates[f.pageSize] || pricingConfig.rates.a4)) || []
     const { paperLabel, colorLabel, amount } = fileLineItem(f, pages, copies, paperTypes)
     text(desc.length > 54 ? desc.slice(0, 51) + '...' : desc, M + 8, y, 10, font)
     right(pages + ' pg x ' + copies, width - M - 110, y, 10, font, MUTED)

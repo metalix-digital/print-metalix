@@ -319,6 +319,11 @@ document.getElementById('printBtn').addEventListener('click', () => window.print
 // Seeded with the built-in ids; merged with the live admin-managed paper-type
 // labels (across every page size) so custom types print with their real names.
 const PAPER_TYPE_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM)', premium: 'Premium digital color', mixed: 'Mixed' };
+// Page size id -> display label. A row's id can outlive a rename (e.g. id
+// 'letter' relabeled to '4R' for photo prints), so this must never be
+// skipped in favor of showing the raw id — that would print the wrong stock
+// name on the job sheet.
+const PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 'Legal', mixed: 'Mixed' };
 
 async function mergePaperTypeLabels(){
   try {
@@ -328,6 +333,7 @@ async function mergePaperTypeLabels(){
     Object.keys(p.rates || {}).forEach((size) => {
       if (Array.isArray(p.rates[size])) p.rates[size].forEach((t) => { if (t.id) PAPER_TYPE_LABELS[t.id] = t.label; });
     });
+    (p.pageSizes || []).forEach((s) => { if (s.id) PAGE_SIZE_LABELS[s.id] = s.label; });
   } catch (err) { /* fall back to built-in labels / raw id */ }
 }
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
@@ -356,7 +362,7 @@ function populate(order){
   const readyByMs = (order.updated_at || order.created_at) + READY_BY_WINDOW_MS;
   document.getElementById('jsReadyBy').textContent = formatDateTime(readyByMs);
 
-  document.getElementById('jsPaperSize').textContent = (order.paper_size || 'a4').toUpperCase();
+  document.getElementById('jsPaperSize').textContent = PAGE_SIZE_LABELS[order.paper_size] || (order.paper_size || 'a4').toUpperCase();
   document.getElementById('jsPaperType').textContent = PAPER_TYPE_LABELS[order.paper_type] || order.paper_type || '—';
   document.getElementById('jsPrintMode').textContent = MODE_LABELS[order.print_mode] || order.print_mode || '—';
   document.getElementById('jsBinding').textContent = '—';

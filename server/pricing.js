@@ -47,10 +47,13 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   let printCost = 0
   let colorPages = 0
   let bwPages = 0
-  const paperTypes = Array.isArray(config.rates.a4) ? config.rates.a4 : []
   const fileBreakdown = []
   ;(files || []).forEach((f) => {
     const side = f.printSide === 'double' ? 'double' : 'single'
+    // Paper types are resolved per file by page size — callers (server.js's
+    // buildPricedOrderFiles) are expected to have already validated f.pageSize
+    // against the admin's active page sizes before calling this.
+    const paperTypes = Array.isArray(config.rates[f.pageSize]) ? config.rates[f.pageSize] : []
     // Match the file's paper type by id, falling back to the first configured
     // type so an unknown/removed id still prices instead of crashing.
     const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]

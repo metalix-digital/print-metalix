@@ -813,6 +813,20 @@ app.get('/api/admin/orders/:id', requireAdmin, requireTab('orders'), (req, res) 
 // dependency) with the customer's actual print-ready document(s) into one
 // PDF — page 1 cover, middle pages the real document(s), last page branding.
 const A4_PT = { width: 595.28, height: 841.89 }
+const MM_TO_PT = 2.834645669
+// Physical page size for a source document's content, in PDF points — read
+// from the admin-owned pageSizes row (widthMm/heightMm) rather than a
+// hardcoded id lookup, since a row's id can outlive a rename (e.g. id
+// 'letter' relabeled to '4R' for photo prints) and must still size correctly.
+// Falls back to A4 if the row or its dimensions are missing.
+function sizePt(pricingConfig, id) {
+  const row = (pricingConfig.pageSizes || []).find((s) => s.id === id)
+  if (!row || !row.widthMm || !row.heightMm) return A4_PT
+  return {
+    width: Math.round(row.widthMm * MM_TO_PT * 100) / 100,
+    height: Math.round(row.heightMm * MM_TO_PT * 100) / 100
+  }
+}
 app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'), async (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
@@ -831,6 +845,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
   try {
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib')
     const merged = await PDFDocument.create()
+    const pricingConfig = db.getPricing()
 
     async function addImagePage(dataUrl) {
       const base64 = dataUrl.split(',')[1] || ''
@@ -881,9 +896,11 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
         continue
       }
       try {
-        // Normalize every document page onto an A4 sheet: fit-to-page (preserve
-        // aspect ratio, centered), using A4 portrait or landscape to match the
-        // source page's orientation. Guarantees the whole job sheet prints on A4.
+        // Normalize every document page onto the file's own chosen page size:
+        // fit-to-page (preserve aspect ratio, centered), portrait or landscape
+        // to match the source page's orientation. A pre-feature order has no
+        // f.pageSize — falls back to A4, its actual physical size at the time.
+        const filePt = sizePt(pricingConfig, f.pageSize || 'a4')
         const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
         // The job sheet is what staff actually print from — it must contain
         // as many copies of the file as the customer paid for, not just one.
@@ -891,24 +908,25 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
         for (let copyNum = 0; copyNum < numCopies; copyNum++) {
           for (const idx of srcDoc.getPageIndices()) {
             // Content-less pages can't be embedded (pdf-lib throws at save), so
-            // detect them and emit a blank A4 sheet — preserving page count/order.
+            // detect them and emit a blank sheet at the file's page size —
+            // preserving page count/order.
             let hasContents = false
             try { hasContents = !!srcDoc.getPage(idx).node.Contents() } catch (e) { hasContents = false }
-            if (!hasContents) { merged.addPage([A4_PT.width, A4_PT.height]); continue }
+            if (!hasContents) { merged.addPage([filePt.width, filePt.height]); continue }
             try {
               const [ep] = await merged.embedPdf(srcDoc, [idx])
               const pw = ep.width
               const ph = ep.height
               const landscape = pw > ph
-              const pageW = landscape ? A4_PT.height : A4_PT.width
-              const pageH = landscape ? A4_PT.width : A4_PT.height
+              const pageW = landscape ? filePt.height : filePt.width
+              const pageH = landscape ? filePt.width : filePt.height
               const scale = Math.min(pageW / pw, pageH / ph)
               const w = pw * scale
               const h = ph * scale
               const pg = merged.addPage([pageW, pageH])
               pg.drawPage(ep, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h })
             } catch (pageErr) {
-              merged.addPage([A4_PT.width, A4_PT.height])
+              merged.addPage([filePt.width, filePt.height])
             }
           }
         }
@@ -1015,12 +1033,11 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
         fileId: order.file_path, fileName: order.file_name, fileType: order.file_type,
         pageCount: order.page_count, colorPageCount: 0,
         printMode: order.print_mode, orientation: order.orientation,
-        printSide: order.print_side, paperType: order.paper_type, copies: order.copies
+        printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type, copies: order.copies
       }]
     }
     const paperTypeConfig = db.getPricing()
-    const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
-    const defaultPaperType = paperTypeIds[0] || 'normal'
+    const pageSizeIds = (paperTypeConfig.pageSizes || []).filter((s) => s.active).map((s) => s.id)
     const VALID_MODES = ['auto', 'color', 'bw']
     const VALID_SIDES = ['single', 'double']
     const overridesById = new Map((files || []).map((f) => [f.fileId, f]))
@@ -1029,14 +1046,20 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       const o = overridesById.get(f.fileId) || {}
       const printMode = VALID_MODES.includes(o.printMode) ? o.printMode : f.printMode
       const printSide = printMode === 'color' ? 'single' : (VALID_SIDES.includes(o.printSide) ? o.printSide : f.printSide)
-      const paperType = paperTypeIds.includes(o.paperType) ? o.paperType : (paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType)
+      // Page size is resolved before paper type since which paper types are
+      // valid depends on it. 'a4' is a legacy-data fallback only — f.pageSize
+      // is absent on files_json entries stored before this field existed.
+      const pageSize = pageSizeIds.includes(o.pageSize) ? o.pageSize : (pageSizeIds.includes(f.pageSize) ? f.pageSize : 'a4')
+      const sizePaperTypeIds = (paperTypeConfig.rates[pageSize] || paperTypeConfig.rates.a4 || []).map((t) => t.id)
+      const defaultPaperType = sizePaperTypeIds[0] || 'normal'
+      const paperType = sizePaperTypeIds.includes(o.paperType) ? o.paperType : (sizePaperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType)
       const copies = o.copies !== undefined ? Math.max(1, Math.min(999, Math.round(Number(o.copies)) || 1)) : f.copies
-      return { ...f, printMode, printSide, paperType, copies }
+      return { ...f, printMode, printSide, pageSize, paperType, copies }
     })
 
     const pricingFiles = mergedFiles.map((f) => {
       const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
-      return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, paperType: f.paperType }
+      return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType }
     })
 
     const effectiveDeliveryMethod = delivery_method !== undefined ? delivery_method : order.delivery_method
@@ -1050,6 +1073,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     const fileModes = new Set(mergedFiles.map((f) => f.printMode))
     const fileSides = new Set(mergedFiles.map((f) => f.printSide))
     const filePaperTypes = new Set(mergedFiles.map((f) => f.paperType))
+    const filePageSizes = new Set(mergedFiles.map((f) => f.pageSize))
 
     // Bake each file's actual charged amount/labels in now, so an invoice
     // printed later reflects what was charged even if rates change meanwhile.
@@ -1058,6 +1082,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     updates.files_json = JSON.stringify(mergedFiles)
     updates.print_mode = fileModes.size === 1 ? mergedFiles[0].printMode : 'mixed'
     updates.print_side = fileSides.size === 1 ? mergedFiles[0].printSide : 'mixed'
+    updates.paper_size = filePageSizes.size === 1 ? mergedFiles[0].pageSize : 'mixed'
     updates.paper_type = filePaperTypes.size === 1 ? mergedFiles[0].paperType : 'mixed'
     updates.copies = mergedFiles.reduce((sum, f) => sum + f.copies, 0)
     updates.print_cost = calc.printCost
@@ -1430,12 +1455,13 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
-  // Paper types are admin-managed, so the valid set comes from the live pricing
-  // config (its ids), not a hardcoded list. Required per file — the customer
-  // order page no longer pre-selects one, so a missing/unknown id here means
-  // the field was genuinely skipped, not just an absent optional input.
+  // Page sizes and paper types are both admin-managed, so the valid sets come
+  // from the live pricing config, not a hardcoded list. Both are required per
+  // file — the customer order page no longer pre-selects either, so a
+  // missing/unknown id here means the field was genuinely skipped. Page size
+  // is validated first since which paper types are valid depends on it.
   const paperTypeConfig = db.getPricing()
-  const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
+  const pageSizeIds = (paperTypeConfig.pageSizes || []).filter((s) => s.active).map((s) => s.id)
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
@@ -1444,6 +1470,11 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
       return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
     }
+    if (!pageSizeIds.includes(f.pageSize)) {
+      return { error: 'missing_page_size', message: 'Select a page size for every file.' }
+    }
+    const filePageSize = f.pageSize
+    const paperTypeIds = (paperTypeConfig.rates[filePageSize] || []).map((t) => t.id)
     if (!paperTypeIds.includes(f.paperType)) {
       return { error: 'missing_paper_type', message: 'Select a paper type for every file.' }
     }
@@ -1464,6 +1495,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
       printMode: fileMode,
       orientation: fileOrientation,
       printSide: fileSide,
+      pageSize: filePageSize,
       paperType: filePaperType,
       copies: fileCopies,
       password: filePassword
@@ -1472,7 +1504,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
       { pageCount: fileData.pageCount, colorCount: fileData.colorPageCount },
       fileMode
     )
-    pricingFiles.push({ colorPages, bwPages, copies: fileCopies, printSide: fileSide, paperType: filePaperType })
+    pricingFiles.push({ colorPages, bwPages, copies: fileCopies, printSide: fileSide, pageSize: filePageSize, paperType: filePaperType })
     totalFileSize += fileData.fileSize
     safeFiles.push(fileData)
   }
@@ -1511,6 +1543,8 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   const summarySide = fileSides.size === 1 ? safeFiles[0].printSide : 'mixed'
   const filePaperTypes = new Set(safeFiles.map((f) => f.paperType))
   const summaryPaperType = filePaperTypes.size === 1 ? safeFiles[0].paperType : 'mixed'
+  const filePageSizes = new Set(safeFiles.map((f) => f.pageSize))
+  const summaryPageSize = filePageSizes.size === 1 ? safeFiles[0].pageSize : 'mixed'
   const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
 
   const pricingConfig = db.getPricing()
@@ -1525,7 +1559,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
 
   return {
     safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide,
-    summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt
+    summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt
   }
 }
 
@@ -1549,7 +1583,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
 
   const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
-  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
@@ -1600,7 +1634,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     print_mode: summaryMode,
     print_side: summarySide,
     copies: totalCopies,
-    paper_size: 'a4', // A3 support removed — every order is A4 regardless of client input
+    paper_size: summaryPageSize,
     paper_type: summaryPaperType,
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,
@@ -1670,7 +1704,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
 
   const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
-  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   const fileNameSummary = safeFiles.length > 1
@@ -1697,7 +1731,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     print_mode: summaryMode,
     print_side: summarySide,
     copies: totalCopies,
-    paper_size: 'a4',
+    paper_size: summaryPageSize,
     paper_type: summaryPaperType,
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,

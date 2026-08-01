@@ -194,17 +194,23 @@ db.exec(`
 // stable slug used on stored orders and in lookups; `label` is the editable
 // display name. Colour is single-sided only, so there is no color.double rate.
 //
-// pageSizes is a separate admin-managed list of { id, label } that populates
-// the page-size dropdown in the print-rates table. Orders currently only use
-// A4 (see server.js), so this list is just letting rates be configured ahead
-// of exposing other sizes to customers — 'a4' must always be present.
+// pageSizes is a separate admin-managed list of { id, label, active, widthMm,
+// heightMm } that populates the page-size dropdown customers pick from per
+// file, and the per-size paper-type rates below. widthMm/heightMm are the
+// physical print dimensions — used to size job-sheet PDF pages and the
+// customer-facing print preview — and are deliberately admin-owned data, not
+// a hardcoded lookup keyed by id: renaming a row's label (e.g. "Letter" ->
+// "4R" for a photo size) never changes its id, so a static id->dimensions
+// table would silently keep sizing that row as the old physical size. 'a4'
+// must always be present and active — every order falls back to it.
 const DEFAULT_PRICING = {
   pageSizes: [
-    { id: 'a4', label: 'A4', active: true },
-    { id: 'a3', label: 'A3', active: true },
-    { id: 'a5', label: 'A5', active: true },
-    { id: 'letter', label: 'Letter', active: true },
-    { id: 'legal', label: 'Legal', active: true }
+    { id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297 },
+    { id: 'a3', label: 'A3', active: true, widthMm: 297, heightMm: 420 },
+    { id: 'a5', label: 'A5', active: true, widthMm: 148, heightMm: 210 },
+    { id: 'letter', label: 'Letter', active: true, widthMm: 215.9, heightMm: 279.4 },
+    { id: 'legal', label: 'Legal', active: true, widthMm: 215.9, heightMm: 355.6 },
+    { id: '4r', label: '4R (4×6 in photo)', active: true, widthMm: 101.6, heightMm: 152.4 }
   ],
   rates: {
     a4: [
@@ -236,6 +242,20 @@ function slugify(label) {
     .slice(0, 40)
 }
 
+// Fallback physical dimensions used only when a pageSizes row doesn't carry
+// its own widthMm/heightMm yet (rows saved before this field existed). Keyed
+// by id, so it's only ever correct for a row whose id still matches its
+// original meaning — a renamed row (id 'letter', label '4R') intentionally
+// does NOT get fixed by this table; the admin must set real dimensions for it.
+const STANDARD_SIZE_MM = {
+  a4: [210, 297],
+  a3: [297, 420],
+  a5: [148, 210],
+  letter: [215.9, 279.4],
+  legal: [215.9, 355.6],
+  '4r': [101.6, 152.4]
+}
+
 // Coerces an admin-supplied pageSizes array into the canonical shape: unique
 // non-empty ids/labels, with 'a4' always present and always active (it's
 // required by rates — every order is priced/placed against rates.a4).
@@ -251,9 +271,16 @@ function normalizePageSizes(list) {
     let n = 2
     while (seen.has(unique)) unique = `${id}-${n++}`
     seen.add(unique)
-    out.push({ id: unique, label, active: unique === 'a4' || row.active !== false })
+    const fallback = STANDARD_SIZE_MM[unique] || STANDARD_SIZE_MM.a4
+    out.push({
+      id: unique,
+      label,
+      active: unique === 'a4' || row.active !== false,
+      widthMm: num(row.widthMm, fallback[0]) || fallback[0],
+      heightMm: num(row.heightMm, fallback[1]) || fallback[1]
+    })
   })
-  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true })
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297 })
   return out
 }
 

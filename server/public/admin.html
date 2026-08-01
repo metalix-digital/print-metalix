@@ -763,7 +763,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <span class="no-file-note">PDF, DOC, DOCX, PPT, PPTX, JPG, PNG — up to 100 MB total</span>
         </div>
         <table class="no-file-table hidden" id="noFileTable">
-          <thead><tr><th>File</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
+          <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
           <tbody id="noFileTableBody"></tbody>
         </table>
       </div>
@@ -851,7 +851,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="field">
         <label>Files <span class="opt">(print options only — files themselves can't be changed here)</span></label>
         <table class="no-file-table" id="eoFileTable">
-          <thead><tr><th>File</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th></tr></thead>
+          <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th></tr></thead>
           <tbody id="eoFileTableBody"></tbody>
         </table>
       </div>
@@ -1373,12 +1373,17 @@ const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White' };
 // Seeded with the three built-in ids; merged with the live paper-type labels
 // (across every page size) once pricing loads, so order rows show real names.
 let PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digital color' };
+// Page size id -> display label. A row's id can outlive a rename (e.g. id
+// 'letter' relabeled to '4R' for photo prints), so this must never be
+// skipped in favor of showing the raw id.
+let PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 'Legal', mixed: 'Mixed' };
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, paperType, fileType){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType){
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
   const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
   const orientationText = orientation ? ' · ' + (orientation === 'landscape' ? 'Landscape' : 'Portrait') : '';
   const sideText = printSide ? ' · ' + (printSide === 'double' ? 'Double-sided' : 'Single-sided') : '';
+  const pageSizeText = pageSize ? ' · ' + (PAGE_SIZE_LABELS[pageSize] || pageSize) : '';
   const paperTypeText = paperType ? ' · ' + (PAPER_TYPE_LABELS[paperType] || paperType) : '';
   const copiesText = copies != null ? ' · ' + copies + ' cop' + (copies === 1 ? 'y' : 'ies') : '';
   const passwordText = password ? '<div class="subtle">🔒 Password: <strong>' + password.replace(/</g, '&lt;') + '</strong></div>' : '';
@@ -1395,7 +1400,7 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
       : '';
     action = printBtn + '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + nameAttr + '">Download</button>';
   }
-  return '<li><span>' + fileName + meta + modeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> <span class="file-actions">' + action + '</span></li>';
+  return '<li><span>' + fileName + meta + modeText + pageSizeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> <span class="file-actions">' + action + '</span></li>';
 }
 
 function filesDetailHtml(o){
@@ -1403,11 +1408,11 @@ function filesDetailHtml(o){
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
   if (!files || !files.length) {
     return '<div><strong>File:</strong></div><ul class="file-list">' +
-      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, null, o.file_type) +
+      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, o.paper_size, null, o.file_type) +
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.paperType, f.fileType)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType)).join('') +
     '</ul>';
 }
 
@@ -1562,7 +1567,7 @@ function renderOrders(orders){
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
       (o.notes ? '<div style="background:var(--orange-soft);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:10px;"><strong>📝 Customer notes:</strong> ' + escHtml(o.notes).replace(/\n/g, '<br>') + '</div>' : '') +
       filesDetailHtml(o) +
-      '<div><strong>Paper:</strong> ' + escHtml(o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
+      '<div><strong>Paper:</strong> ' + escHtml(PAGE_SIZE_LABELS[o.paper_size] || o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
       '<div><strong>Branch:</strong> ' + branchSelectHtml(o) + '</div>' +
       '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
@@ -2564,13 +2569,19 @@ function pageSizeOptionsHtml(selected){
 // One editable page-size <tr>. data-id preserves the stable id (mirrors
 // rateRowHtml) so renaming its label doesn't change the id stored on
 // rates/orders. A4 is required (rates.a4 always exists) so it's always active
-// and its row can't be removed.
+// and its row can't be removed. widthMm/heightMm are the physical print
+// dimensions — used to size the job-sheet PDF and the customer-facing print
+// preview — and are deliberately editable here rather than inferred from the
+// id, since renaming a row (e.g. "Letter" -> "4R" for a photo size) doesn't
+// change its id or these values automatically.
 function pageSizeRowHtml(row){
-  row = row || { id: '', label: '', active: true };
+  row = row || { id: '', label: '', active: true, widthMm: '', heightMm: '' };
   const isA4 = row.id === 'a4';
   const active = isA4 || row.active !== false;
   return '<tr class="page-size-row" data-id="' + escHtml(row.id || '') + '">' +
     '<td><input class="ps-label" type="text" placeholder="e.g. A2" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="ps-width" type="number" step="0.1" min="0" placeholder="mm" value="' + (row.widthMm || '') + '" /></td>' +
+    '<td class="col-rate"><input class="ps-height" type="number" step="0.1" min="0" placeholder="mm" value="' + (row.heightMm || '') + '" /></td>' +
     '<td><label class="loc-active"><input type="checkbox" class="ps-active"' + (active ? ' checked' : '') + (isA4 ? ' disabled' : '') + ' /> Active</label></td>' +
     '<td>' + (isA4
       ? '<button type="button" class="rate-remove" disabled title="A4 is required and can’t be removed">✕</button>'
@@ -2579,9 +2590,10 @@ function pageSizeRowHtml(row){
   '</tr>';
 }
 
-// Reads the "Page sizes" section's rows into the canonical {id,label,active}[]
-// shape (mirrors db.js normalizePageSizes so the client-computed ids the
-// "Print rates" dropdowns use pre-save match what the server will assign on save).
+// Reads the "Page sizes" section's rows into the canonical
+// {id,label,active,widthMm,heightMm}[] shape (mirrors db.js
+// normalizePageSizes so the client-computed ids the "Print rates" dropdowns
+// use pre-save match what the server will assign on save).
 function collectPageSizesFromForm(){
   const out = [];
   const seen = new Set();
@@ -2593,9 +2605,15 @@ function collectPageSizesFromForm(){
     let n = 2;
     while (seen.has(unique)) unique = id + '-' + (n++);
     seen.add(unique);
-    out.push({ id: unique, label, active: unique === 'a4' || tr.querySelector('.ps-active').checked });
+    out.push({
+      id: unique,
+      label,
+      active: unique === 'a4' || tr.querySelector('.ps-active').checked,
+      widthMm: Number(tr.querySelector('.ps-width').value) || 0,
+      heightMm: Number(tr.querySelector('.ps-height').value) || 0
+    });
   });
-  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true });
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297 });
   return out;
 }
 
@@ -2655,6 +2673,7 @@ async function loadPricing(){
   const p = await res.json();
 
   PAGE_SIZES = Array.isArray(p.pageSizes) && p.pageSizes.length ? p.pageSizes : PAGE_SIZES;
+  PAGE_SIZES.forEach((s) => { if (s.id) PAGE_SIZE_LABELS[s.id] = s.label; });
   const pageSizeRowsHtml = PAGE_SIZES.map(pageSizeRowHtml).join('');
 
   // Flatten rates (keyed by page size) into rows, A4 first.
@@ -2675,11 +2694,13 @@ async function loadPricing(){
 
   form.innerHTML =
     '<h2>Page sizes</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Sizes offered in the print rates table below. A4 is required and can’t be removed; customers currently order A4 only.</p>' +
-    '<div class="table-scroll"><table class="rate-table"><tbody id="pageSizeRows">' + pageSizeRowsHtml + '</tbody></table></div>' +
+    '<p class="detail" style="margin-bottom:12px;">Sizes customers can choose per file at checkout, and that feed the print rates table below. Width/Height set the physical print size (used for the job sheet and preview) — A4 is required and can’t be removed.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="pageSizeRows">' + pageSizeRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPageSize">+ Add page size</button>' +
     '<h2>Print rates</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only. Customers currently order A4 only.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only.</p>' +
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
       '<th>Page size</th><th>Paper type</th><th>B/W single (₹/page)</th><th>B/W double (₹/sheet)</th><th>Color single (₹/page)</th><th></th>' +
     '</tr></thead><tbody id="rateRows">' + rowsHtml.join('') + '</tbody></table></div>' +
@@ -3127,13 +3148,23 @@ async function saveSettings(){
 
 /* -- NEW ORDER (admin placing an order on behalf of a customer) -- */
 const newOrderModal = document.getElementById('newOrderModal');
-let noUploadedFiles = []; // { fileId, fileName, fileType, fileSize, pageCount, colorCount, paperType, printMode, printSide, copies }
-let noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+let noUploadedFiles = []; // { fileId, fileName, fileType, fileSize, pageCount, colorCount, pageSize, paperType, printMode, printSide, copies }
+// Shared with the Edit Order modal below — both fetch /api/pricing at their
+// own open-time into the same globals, same pattern as before this field existed.
+let noPricingConfig = { pageSizes: [], rates: {} };
+let noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
+let noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }]; // kept as the pre-pricing-load fallback; per-row options are otherwise resolved via noPaperOptionsForSize
+function noPaperOptionsForSize(pageSize){
+  const opts = (noPricingConfig.rates && noPricingConfig.rates[pageSize]) || [];
+  return opts.length ? opts : noPaperTypeOptions;
+}
 
 function noFileRowHtml(f, idx){
-  const paperOptions = noPaperTypeOptions.map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+  const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
+  const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
   return '<tr data-idx="' + idx + '">' +
     '<td>' + escHtml(f.fileName) + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
+    '<td><select class="no-f-size">' + sizeOptions + '</select></td>' +
     '<td><select class="no-f-paper">' + paperOptions + '</select></td>' +
     '<td><select class="no-f-mode"><option value="auto"' + (f.printMode === 'auto' ? ' selected' : '') + '>Auto</option><option value="color"' + (f.printMode === 'color' ? ' selected' : '') + '>Color</option><option value="bw"' + (f.printMode === 'bw' ? ' selected' : '') + '>B&amp;W</option></select></td>' +
     '<td><select class="no-f-side"' + (f.printMode === 'color' ? ' disabled' : '') + '><option value="single"' + (f.printSide === 'single' ? ' selected' : '') + '>Single</option><option value="double"' + (f.printSide === 'double' ? ' selected' : '') + '>Double</option></select></td>' +
@@ -3161,6 +3192,12 @@ document.getElementById('noFileTableBody').addEventListener('change', (e) => {
   if (!row) return;
   const f = noUploadedFiles[Number(row.dataset.idx)];
   if (!f) return;
+  if (e.target.classList.contains('no-f-size')){
+    f.pageSize = e.target.value;
+    const opts = noPaperOptionsForSize(f.pageSize);
+    f.paperType = opts[0] ? opts[0].id : '';
+    renderNoFileTable();
+  }
   if (e.target.classList.contains('no-f-paper')) f.paperType = e.target.value;
   if (e.target.classList.contains('no-f-mode')){
     f.printMode = e.target.value;
@@ -3186,7 +3223,8 @@ document.getElementById('noFileInput').addEventListener('change', async (e) => {
       noUploadedFiles.push({
         fileId: data.fileId, fileName: data.fileName, fileType: data.fileType, fileSize: data.fileSize,
         pageCount: data.pageCount, colorCount: data.colorCount,
-        paperType: noPaperTypeOptions[0] ? noPaperTypeOptions[0].id : 'normal',
+        pageSize: noPageSizeOptions[0] ? noPageSizeOptions[0].id : 'a4',
+        paperType: (noPaperOptionsForSize(noPageSizeOptions[0] ? noPageSizeOptions[0].id : 'a4')[0] || {}).id || 'normal',
         printMode: 'auto', printSide: 'single', copies: 1
       });
     } catch (err) {
@@ -3226,6 +3264,9 @@ async function openNewOrderModal(){
   try {
     const res = await fetch('/api/pricing');
     const cfg = await res.json();
+    noPricingConfig = cfg;
+    noPageSizeOptions = ((cfg.pageSizes || []).filter((s) => s.active)).map((s) => ({ id: s.id, label: s.label }));
+    if (!noPageSizeOptions.length) noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
     noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
   } catch (e) { /* keep the default option */ }
@@ -3276,7 +3317,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     files: noUploadedFiles.map((f) => ({
       fileId: f.fileId, fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize,
       pageCount: f.pageCount, colorPageCount: f.colorCount,
-      printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies
+      printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies
     })),
     deliveryMethod,
     deliveryAddress: deliveryMethod === 'delivery' ? deliveryAddress : undefined,
@@ -3321,9 +3362,11 @@ let eoCurrentOrder = null;
 let eoFiles = [];
 
 function eoFileRowHtml(f, idx){
-  const paperOptions = noPaperTypeOptions.map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+  const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
+  const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
   return '<tr data-idx="' + idx + '">' +
     '<td>' + escHtml(f.fileName || f.fileId || '') + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
+    '<td><select class="eo-f-size">' + sizeOptions + '</select></td>' +
     '<td><select class="eo-f-paper">' + paperOptions + '</select></td>' +
     '<td><select class="eo-f-mode"><option value="auto"' + (f.printMode === 'auto' ? ' selected' : '') + '>Auto</option><option value="color"' + (f.printMode === 'color' ? ' selected' : '') + '>Color</option><option value="bw"' + (f.printMode === 'bw' ? ' selected' : '') + '>B&amp;W</option></select></td>' +
     '<td><select class="eo-f-side"' + (f.printMode === 'color' ? ' disabled' : '') + '><option value="single"' + (f.printSide === 'single' ? ' selected' : '') + '>Single</option><option value="double"' + (f.printSide === 'double' ? ' selected' : '') + '>Double</option></select></td>' +
@@ -3338,6 +3381,12 @@ document.getElementById('eoFileTableBody').addEventListener('change', (e) => {
   if (!row) return;
   const f = eoFiles[Number(row.dataset.idx)];
   if (!f) return;
+  if (e.target.classList.contains('eo-f-size')){
+    f.pageSize = e.target.value;
+    const opts = noPaperOptionsForSize(f.pageSize);
+    f.paperType = opts[0] ? opts[0].id : '';
+    renderEoFileTable();
+  }
   if (e.target.classList.contains('eo-f-paper')) f.paperType = e.target.value;
   if (e.target.classList.contains('eo-f-mode')){
     f.printMode = e.target.value;
@@ -3364,13 +3413,16 @@ async function openEditOrderModal(order){
   let files = [];
   try { files = order.files_json ? JSON.parse(order.files_json) : []; } catch (e) { files = []; }
   if (!files.length) {
-    files = [{ fileId: order.file_path, fileName: order.file_name, pageCount: order.page_count, printMode: order.print_mode, printSide: order.print_side, paperType: order.paper_type, copies: order.copies }];
+    files = [{ fileId: order.file_path, fileName: order.file_name, pageCount: order.page_count, printMode: order.print_mode, printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type, copies: order.copies }];
   }
   eoFiles = files.map((f) => ({ ...f }));
 
   try {
     const res = await fetch('/api/pricing');
     const cfg = await res.json();
+    noPricingConfig = cfg;
+    noPageSizeOptions = ((cfg.pageSizes || []).filter((s) => s.active)).map((s) => ({ id: s.id, label: s.label }));
+    if (!noPageSizeOptions.length) noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
     noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
   } catch (e) { /* keep whatever paper types were already loaded */ }
@@ -3429,7 +3481,7 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
     delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
     delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
-    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, paperType: f.paperType, copies: f.copies })),
+    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies })),
     notes: document.getElementById('eoNotes').value.trim() || null
   };
 

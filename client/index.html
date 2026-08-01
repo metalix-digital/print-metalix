@@ -106,6 +106,16 @@ __GTM_HEAD__
   .preview-head .pv-close:hover{ background:var(--red); color:#fff; }
   .preview-body{ flex:1; overflow-y:auto; background:var(--paper-dim); display:flex; align-items:center; justify-content:center; padding:18px; min-height:0; }
   .preview-body img{ max-width:100%; max-height:70vh; box-shadow:0 4px 16px -8px rgba(26,34,56,.3); background:#fff; }
+  /* When a page size is known, .pv-page-frame gets a --pv-ratio custom
+     property (set in renderPreviewPage) so the previewed image is framed —
+     scaled to fit, centered, letterboxed — the same way the actual printed
+     page will be. Without a ratio it's a no-op wrapper (today's plain behavior). */
+  .pv-page-frame{ max-width:100%; max-height:70vh; display:flex; align-items:center; justify-content:center; }
+  /* max-height (not height) so aspect-ratio can freely resolve both
+     dimensions bounded by the container's max-width/max-height, instead of
+     fighting a fixed height that would force mismatched letterboxing. */
+  .pv-page-frame[style*="--pv-ratio"]{ aspect-ratio:var(--pv-ratio); background:#fff; box-shadow:0 4px 16px -8px rgba(26,34,56,.3); max-height:70vh; }
+  .pv-page-frame[style*="--pv-ratio"] img{ max-width:100%; max-height:100%; width:100%; height:100%; object-fit:contain; box-shadow:none; }
   .preview-truncated-note{ font-size:11.5px; color:var(--ink-soft); text-align:center; padding:8px 18px 0; }
   .preview-nav{ display:flex; align-items:center; justify-content:center; gap:16px; padding:14px 18px; border-top:1px solid var(--paper-dim); flex-shrink:0; }
   .preview-nav button{ width:34px; height:34px; border-radius:50%; border:1.5px solid var(--line-strong); background:var(--surface); color:var(--ink); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
@@ -509,7 +519,7 @@ __GTM_NOSCRIPT__
       <button class="pv-close" id="pvClose" type="button" aria-label="Close preview">✕</button>
     </div>
     <div class="preview-body">
-      <img id="pvImg" src="" alt="Document page preview" />
+      <div class="pv-page-frame" id="pvPageFrame"><img id="pvImg" src="" alt="Document page preview" /></div>
     </div>
     <div class="preview-truncated-note" id="pvTruncatedNote" style="display:none;">Preview shown for the first 60 pages only.</div>
     <div class="preview-nav">
@@ -657,23 +667,29 @@ const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 // a raw, unfriendly error instead of this clear message.
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 let pricingConfig = null;
-// Paper types are admin-managed and delivered in pricingConfig.rates.a4 as an
-// ordered list of { id, label, bw, color }. These helpers read that list so the
-// order form's dropdown, labels and rates stay in sync with the admin panel.
-function a4PaperTypes(){ return (pricingConfig && Array.isArray(pricingConfig.rates.a4)) ? pricingConfig.rates.a4 : []; }
-function defaultPaperTypeId(){ const list = a4PaperTypes(); return list.length ? list[0].id : 'normal'; }
-function paperTypeLabel(id){ const t = a4PaperTypes().find((x) => x.id === id); return t ? t.label : (id || 'Normal'); }
+// Page sizes and paper types are both admin-managed. pricingConfig.pageSizes
+// is an ordered list of { id, label, active, widthMm, heightMm }; rates[size]
+// is an ordered list of { id, label, bw, color } scoped to that page size.
+// These helpers keep the order form's dropdowns/labels/rates in sync with
+// the admin panel, resolved per file since each file has its own page size.
+function activePageSizes(){ return (pricingConfig && Array.isArray(pricingConfig.pageSizes)) ? pricingConfig.pageSizes.filter((s) => s.active) : []; }
+// Looks up the full list (not just active) so an order using a since-
+// deactivated size still shows its real label instead of a raw id.
+function pageSizeInfo(id){ return (pricingConfig && Array.isArray(pricingConfig.pageSizes)) ? pricingConfig.pageSizes.find((s) => s.id === id) : null; }
+function pageSizeLabel(id){ const s = pageSizeInfo(id); return s ? s.label : (id || '').toUpperCase(); }
+function paperTypesForSize(pageSize){ return (pricingConfig && pricingConfig.rates && Array.isArray(pricingConfig.rates[pageSize])) ? pricingConfig.rates[pageSize] : []; }
+function paperTypeLabel(pageSize, id){ const t = paperTypesForSize(pageSize).find((x) => x.id === id); return t ? t.label : (id || ''); }
 
 // Defaults applied to every newly uploaded file — each file's settings are
-// then fully independent (print mode, paper type, orientation, side, copies).
-// paperType is deliberately not defaulted here — it's a required field the
-// customer must actively choose (see validateForConfirm).
-const NEW_FILE_DEFAULTS = { printMode: 'bw', paperType: '', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
+// then fully independent (print mode, page size, paper type, orientation,
+// side, copies). pageSize/paperType are deliberately not defaulted here —
+// they're required fields the customer must actively choose (see
+// validateForConfirm); paper type also depends on which page size is picked.
+const NEW_FILE_DEFAULTS = { printMode: 'bw', pageSize: '', paperType: '', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
 
 let state = {
-  files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, paperType, orientation, printSide, copies, password}, ...]
+  files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, pageSize, paperType, orientation, printSide, copies, password}, ...]
   uploading: false,
-  paperSize: 'a4',
   deliveryMethod: 'pickup',
   deliveryTiming: 'instant',
   scheduledAt: null,
@@ -788,11 +804,19 @@ function sideSummaryLabel(){
   if(set.size > 1) return 'Mixed';
   return [...set][0] === 'double' ? 'Double' : 'Single';
 }
-function paperTypeSummaryLabel(){
-  if(!state.files.length) return paperTypeLabel(defaultPaperTypeId());
-  const set = new Set(state.files.map((f) => f.paperType || defaultPaperTypeId()));
+function pageSizeSummaryLabel(){
+  if(!state.files.length) return '—';
+  const set = new Set(state.files.map((f) => f.pageSize || ''));
   if(set.size > 1) return 'Mixed';
-  return paperTypeLabel([...set][0]);
+  return pageSizeLabel([...set][0]);
+}
+function paperTypeSummaryLabel(){
+  if(!state.files.length) return '—';
+  // Paper type is scoped to each file's own page size, so the label lookup
+  // (not just the id) must be resolved per file rather than off one global list.
+  const labels = new Set(state.files.map((f) => paperTypeLabel(f.pageSize, f.paperType)));
+  if(labels.size > 1) return 'Mixed';
+  return [...labels][0] || '—';
 }
 
 // Nudges the customer toward the free-delivery threshold while they're
@@ -824,9 +848,9 @@ function recalc(){
   rDetected.textContent = totalColor;
   rColorFinal.textContent = est.colorPages;
   rBwFinal.textContent = est.bwPages;
-  rPaper.textContent = state.paperSize.toUpperCase();
+  rPaper.textContent = pageSizeSummaryLabel();
   rPaperType.textContent = paperTypeSummaryLabel();
-  rPaperTypeRow.style.display = state.paperSize === 'a4' ? 'flex' : 'none';
+  rPaperTypeRow.style.display = state.files.length ? 'flex' : 'none';
   rSide.textContent = sideSummaryLabel();
   rCopies.textContent = copiesSummaryLabel();
   rPrintCost.textContent = '₹' + est.printCost;
@@ -938,7 +962,7 @@ function escapeAttr(s){
 
 function fileRate(f){
   if(!pricingConfig) return null;
-  const list = a4PaperTypes();
+  const list = paperTypesForSize(f.pageSize);
   return list.find((t) => t.id === f.paperType) || list[0] || null;
 }
 
@@ -978,10 +1002,17 @@ function renderFileList(){
           </select>
         </div>
         <div class="fcard-field">
+          <span class="fcard-field-label">Page size</span>
+          <select class="fselect fpagesize" data-index="${i}" aria-label="Page size for this file">
+            <option value="" ${f.pageSize?'':'selected'} disabled>Select page size</option>
+            ${activePageSizes().map((s) => `<option value="${escapeAttr(s.id)}" ${f.pageSize===s.id?'selected':''}>${escapeAttr(s.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fcard-field">
           <span class="fcard-field-label">Paper type</span>
-          <select class="fselect fpapertype" data-index="${i}" aria-label="Paper type for this file">
+          <select class="fselect fpapertype" data-index="${i}" aria-label="Paper type for this file" ${f.pageSize?'':'disabled'}>
             <option value="" ${f.paperType?'':'selected'} disabled>Select paper type</option>
-            ${a4PaperTypes().map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
+            ${paperTypesForSize(f.pageSize).map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
           </select>
         </div>
 
@@ -1042,6 +1073,18 @@ function renderFileList(){
       recalc();
     });
   });
+  fileList.querySelectorAll('.fpagesize').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', (e) => {
+      const index = Number(sel.dataset.index);
+      const f = state.files[index];
+      f.pageSize = e.target.value;
+      f.paperType = ''; // valid paper types just changed for this file
+      renderFileList();
+      recalc();
+      if(previewState.fileIndex === index) renderPreviewPage();
+    });
+  });
   fileList.querySelectorAll('.fpapertype').forEach((sel) => {
     sel.addEventListener('click', (e) => e.stopPropagation());
     sel.addEventListener('change', (e) => {
@@ -1093,12 +1136,39 @@ function renderFileList(){
 /* -- Document preview modal -- */
 const previewModal = document.getElementById('previewModal');
 const pvImg = document.getElementById('pvImg');
+const pvPageFrame = document.getElementById('pvPageFrame');
 const pvTitle = document.getElementById('pvTitle');
 const pvPageLabel = document.getElementById('pvPageLabel');
 const pvPrev = document.getElementById('pvPrev');
 const pvNext = document.getElementById('pvNext');
 const pvTruncatedNote = document.getElementById('pvTruncatedNote');
 const previewState = { fileIndex: -1, page: 0 };
+
+// Frames the previewed image at the file's chosen page size's aspect ratio —
+// scaled to fit and centered, the same "fit-to-page" treatment the actual
+// job-sheet PDF applies server-side — so the customer sees roughly what
+// they'll get before paying. No page size chosen yet -> today's plain
+// unframed behavior (handled by the CSS attribute selector on --pv-ratio).
+function applyPreviewFrame(pageSize){
+  const info = pageSizeInfo(pageSize);
+  if(!info || !info.widthMm || !info.heightMm){
+    pvPageFrame.style.removeProperty('--pv-ratio');
+    return;
+  }
+  // Normalize to portrait, then swap to match the actual image's own
+  // orientation once it loads — mirrors the server's landscape detection
+  // (server.js jobsheet-pdf endpoint) so the two never disagree.
+  const portraitW = Math.min(info.widthMm, info.heightMm);
+  const portraitH = Math.max(info.widthMm, info.heightMm);
+  const setRatio = () => {
+    const landscape = pvImg.naturalWidth > pvImg.naturalHeight;
+    const w = landscape ? portraitH : portraitW;
+    const h = landscape ? portraitW : portraitH;
+    pvPageFrame.style.setProperty('--pv-ratio', w + '/' + h);
+  };
+  if(pvImg.complete && pvImg.naturalWidth) setRatio();
+  else pvImg.addEventListener('load', setRatio, { once: true });
+}
 
 function renderPreviewPage(){
   const f = state.files[previewState.fileIndex];
@@ -1110,6 +1180,7 @@ function renderPreviewPage(){
   pvPrev.disabled = previewState.page === 0;
   pvNext.disabled = previewState.page === total - 1;
   pvTruncatedNote.style.display = f.previewTruncated ? '' : 'none';
+  applyPreviewFrame(f.pageSize);
 }
 
 function openPreview(index){
@@ -1292,6 +1363,17 @@ function validateForConfirm(){
   setFieldError('fieldName', !name); if(!name){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldName'; }
   setFieldError('fieldMobile', !mobileValid); if(!mobileValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldMobile'; }
   if(!state.files.length){ showToast('Please upload at least one document', true); ok = false; }
+  const missingPageSize = state.files.filter((f) => !f.pageSize);
+  if(missingPageSize.length){
+    fileList.querySelectorAll('.fpagesize').forEach((sel) => {
+      sel.classList.toggle('invalid', !state.files[Number(sel.dataset.index)].pageSize);
+    });
+    showToast('Select a page size for every file', true);
+    ok = false;
+    if(!firstInvalidFieldId){
+      fileList.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
   const missingPaperType = state.files.filter((f) => !f.paperType);
   if(missingPaperType.length){
     fileList.querySelectorAll('.fpapertype').forEach((sel) => {
@@ -1354,9 +1436,9 @@ confirmBtn.addEventListener('click', ()=>{
   document.getElementById('mOrientation').textContent = orientationSummaryLabel();
   document.getElementById('mMode').textContent = modeSummaryLabel();
   document.getElementById('mSide').textContent = sideSummaryLabel() === 'Mixed' ? 'Mixed' : (sideSummaryLabel() + ' side');
-  document.getElementById('mPaper').textContent = state.paperSize.toUpperCase();
+  document.getElementById('mPaper').textContent = pageSizeSummaryLabel();
   document.getElementById('mPaperType').textContent = paperTypeSummaryLabel();
-  document.getElementById('mPaperTypeRow').style.display = state.paperSize === 'a4' ? 'flex' : 'none';
+  document.getElementById('mPaperTypeRow').style.display = state.files.length ? 'flex' : 'none';
   document.getElementById('mCopies').textContent = copiesSummaryLabel();
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
   document.getElementById('mDeliveryTimingRow').style.display = state.deliveryMethod === 'delivery' ? 'flex' : 'none';
@@ -1395,6 +1477,7 @@ function buildOrderPayload(){
       printMode: f.printMode || 'bw',
       orientation: f.orientation || 'portrait',
       printSide: f.printSide || 'single',
+      pageSize: f.pageSize || '',
       paperType: f.paperType || '',
       copies: f.copies || 1,
       password: f.password || ''
