@@ -129,6 +129,7 @@ __GTM_HEAD__
   .fside-note{ display:block; margin-top:5px; font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; }
   .fselect{ width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:12.5px; font-family:'Inter',sans-serif; color:var(--ink); background:var(--paper-dim); cursor:pointer; }
   .fselect:focus{ outline:none; border-color:var(--orange); }
+  .fselect.invalid{ border-color:var(--red); }
   .fcopies{ display:flex; align-items:center; gap:0; background:var(--paper-dim); border:1px solid var(--line); border-radius:9px; padding:3px; width:100%; justify-content:space-between; }
   .fcopies button{ width:26px; height:26px; border-radius:6px; border:none; background:var(--surface); color:var(--ink); font-size:14px; font-weight:600; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(26,34,56,.08); transition: transform .12s ease; }
   .fcopies button:hover{ transform:scale(1.06); }
@@ -320,7 +321,7 @@ __GTM_NOSCRIPT__
               <svg viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="tray-title">Drop your documents here</div>
-            <div class="tray-sub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT or PPTX, multiple files up to 100 MB total</div>
+            <div class="tray-sub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT, PPTX, JPG or PNG, multiple files up to 100 MB total</div>
             <div class="tray-error" id="trayError"></div>
           </div>
 
@@ -336,7 +337,7 @@ __GTM_NOSCRIPT__
           </div>
         </div>
 
-        <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/gif" />
 
         <div class="btn-row">
           <button class="btn btn-primary" id="chooseBtn" type="button">Choose files</button>
@@ -344,7 +345,7 @@ __GTM_NOSCRIPT__
         </div>
 
         <div class="hint-strip">
-          <span class="hint-chip">PDF · DOC · DOCX · PPT · PPTX</span>
+          <span class="hint-chip">PDF · DOC · DOCX · PPT · PPTX · JPG · PNG</span>
           <span class="hint-chip">Up to 100 MB total</span>
         </div>
         <div class="file-privacy-note">🔒 Your files are deleted automatically 3 days after your order is completed.</div>
@@ -649,7 +650,7 @@ const rDeliveryHint = document.getElementById('rDeliveryHint');
 const rGst = document.getElementById('rGst');
 const rTotal = document.getElementById('rTotal');
 
-const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
+const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.webp', '.gif'];
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 // Must match the server's multer limit (server/server.js) — otherwise a
 // single large file passes this check only to fail server-side upload with
@@ -665,7 +666,9 @@ function paperTypeLabel(id){ const t = a4PaperTypes().find((x) => x.id === id); 
 
 // Defaults applied to every newly uploaded file — each file's settings are
 // then fully independent (print mode, paper type, orientation, side, copies).
-const NEW_FILE_DEFAULTS = { printMode: 'bw', paperType: 'normal', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
+// paperType is deliberately not defaulted here — it's a required field the
+// customer must actively choose (see validateForConfirm).
+const NEW_FILE_DEFAULTS = { printMode: 'bw', paperType: '', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
 
 let state = {
   files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, paperType, orientation, printSide, copies, password}, ...]
@@ -977,6 +980,7 @@ function renderFileList(){
         <div class="fcard-field">
           <span class="fcard-field-label">Paper type</span>
           <select class="fselect fpapertype" data-index="${i}" aria-label="Paper type for this file">
+            <option value="" ${f.paperType?'':'selected'} disabled>Select paper type</option>
             ${a4PaperTypes().map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
           </select>
         </div>
@@ -1176,7 +1180,7 @@ async function uploadFiles(fileArray){
   for(const file of fileArray){
     const ext = fileExt(file.name);
     if(!ALLOWED_EXT.includes(ext)){
-      trayError.textContent = `"${file.name}" — only PDF, DOC, DOCX, PPT and PPTX files are allowed`;
+      trayError.textContent = `"${file.name}" — only PDF, DOC, DOCX, PPT, PPTX, JPG and PNG files are allowed`;
       continue;
     }
     if(file.size > MAX_FILE_BYTES){
@@ -1205,7 +1209,7 @@ async function uploadFiles(fileArray){
     uploadProgressInner.style.width = '0%';
     try{
       const json = await uploadOneFile(validFiles[i]);
-      Object.assign(json, NEW_FILE_DEFAULTS, { paperType: defaultPaperTypeId() });
+      Object.assign(json, NEW_FILE_DEFAULTS);
       state.files.push(json);
       if(window.gtag) window.gtag('event', 'add_to_cart', {
         currency: 'INR', value: fileCost(json),
@@ -1288,6 +1292,17 @@ function validateForConfirm(){
   setFieldError('fieldName', !name); if(!name){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldName'; }
   setFieldError('fieldMobile', !mobileValid); if(!mobileValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldMobile'; }
   if(!state.files.length){ showToast('Please upload at least one document', true); ok = false; }
+  const missingPaperType = state.files.filter((f) => !f.paperType);
+  if(missingPaperType.length){
+    fileList.querySelectorAll('.fpapertype').forEach((sel) => {
+      sel.classList.toggle('invalid', !state.files[Number(sel.dataset.index)].paperType);
+    });
+    showToast('Select a paper type for every file', true);
+    ok = false;
+    if(!firstInvalidFieldId){
+      fileList.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
   if(state.deliveryMethod === 'delivery'){
     const addr = document.getElementById('addrLine').value.trim();
     const city = document.getElementById('addrCity').value.trim();
@@ -1380,7 +1395,7 @@ function buildOrderPayload(){
       printMode: f.printMode || 'bw',
       orientation: f.orientation || 'portrait',
       printSide: f.printSide || 'single',
-      paperType: f.paperType || defaultPaperTypeId(),
+      paperType: f.paperType || '',
       copies: f.copies || 1,
       password: f.password || ''
     })),

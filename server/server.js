@@ -208,7 +208,12 @@ const ALLOWED_EXTENSIONS = {
   '.doc': 'doc',
   '.docx': 'docx',
   '.ppt': 'ppt',
-  '.pptx': 'pptx'
+  '.pptx': 'pptx',
+  '.jpg': 'jpg',
+  '.jpeg': 'jpeg',
+  '.png': 'png',
+  '.webp': 'webp',
+  '.gif': 'gif'
 }
 
 const storage = multer.diskStorage({
@@ -1175,9 +1180,9 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, requireTab('orders'
     return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
   }
   const fresh = db.getOrder(order.id)
-  let smsSent = true
+  let smsSent = false
   try {
-    await sms.sendPaymentLinkSms(fresh, link.short_url)
+    smsSent = await sms.sendPaymentLinkSms(fresh, link.short_url)
   } catch (err) {
     smsSent = false
     console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
@@ -1426,10 +1431,11 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
   // Paper types are admin-managed, so the valid set comes from the live pricing
-  // config (its ids), not a hardcoded list. Unknown ids fall back to the first.
+  // config (its ids), not a hardcoded list. Required per file — the customer
+  // order page no longer pre-selects one, so a missing/unknown id here means
+  // the field was genuinely skipped, not just an absent optional input.
   const paperTypeConfig = db.getPricing()
   const paperTypeIds = (paperTypeConfig.rates.a4 || []).map((t) => t.id)
-  const defaultPaperType = paperTypeIds[0] || 'normal'
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
@@ -1438,11 +1444,14 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
       return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
     }
+    if (!paperTypeIds.includes(f.paperType)) {
+      return { error: 'missing_paper_type', message: 'Select a paper type for every file.' }
+    }
     const fileMode = VALID_MODES.includes(f.printMode) ? f.printMode : 'auto'
     const fileOrientation = VALID_ORIENTATIONS.includes(f.orientation) ? f.orientation : 'portrait'
     // Colour prints are single-sided only — enforce server-side regardless of input.
     const fileSide = fileMode === 'color' ? 'single' : (VALID_SIDES.includes(f.printSide) ? f.printSide : 'single')
-    const filePaperType = paperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType
+    const filePaperType = f.paperType
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {
@@ -1734,9 +1743,9 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
       db.deleteOrder(order.id)
       return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
     }
-    let smsSent = true
+    let smsSent = false
     try {
-      await sms.sendPaymentLinkSms(order, link.short_url)
+      smsSent = await sms.sendPaymentLinkSms(order, link.short_url)
     } catch (err) {
       smsSent = false
       console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
@@ -2001,7 +2010,7 @@ function isShopOpen() {
 // actually visible on the page, not just claims made in structured data.
 const FAQ_ITEMS = [
   { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
-  { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), and PowerPoint (.ppt/.pptx). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
+  { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), and photos (JPG/PNG). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
   { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹__PRICE_DELIVERY_LOCAL__ within our local PIN code (122505), ₹__PRICE_DELIVERY_GURUGRAM__ elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹__PRICE_FREE_DELIVERY_THRESHOLD__. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
   { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },

@@ -18,13 +18,17 @@ function toE164India(mobile) {
   return `+91${mobile}`
 }
 
+// Returns whether a real Twilio send happened (true) or the call fell back to
+// the console-log stub (false) — callers that surface delivery status to an
+// admin (e.g. the payment-link button) need this to avoid claiming "sent"
+// when nothing actually went out.
 async function sendOrderConfirmationSms(order) {
-  if (!order || !order.customer_mobile) return
+  if (!order || !order.customer_mobile) return false
   const trackUrl = `https://print.metalix.in/track/${order.id}`
   const client = getClient()
   if (!client || !process.env.TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID) {
     console.log(`[sms] stub -> ${order.customer_mobile}: order ${order.id} confirmed, track ${trackUrl}`)
-    return
+    return false
   }
   await client.messages.create({
     to: toE164India(order.customer_mobile),
@@ -32,6 +36,7 @@ async function sendOrderConfirmationSms(order) {
     contentSid: process.env.TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID,
     contentVariables: JSON.stringify({ '1': order.id, '2': trackUrl })
   })
+  return true
 }
 
 // Separate DLT template from order-confirmation — India's carrier-side
@@ -40,11 +45,11 @@ async function sendOrderConfirmationSms(order) {
 // Until TWILIO_PAYMENT_LINK_TEMPLATE_SID is set, this just logs — the admin
 // can still copy/share the link manually from the dashboard.
 async function sendPaymentLinkSms(order, linkUrl) {
-  if (!order || !order.customer_mobile) return
+  if (!order || !order.customer_mobile) return false
   const client = getClient()
   if (!client || !process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID) {
     console.log(`[sms] stub -> ${order.customer_mobile}: pay for order ${order.id} at ${linkUrl}`)
-    return
+    return false
   }
   await client.messages.create({
     to: toE164India(order.customer_mobile),
@@ -52,6 +57,7 @@ async function sendPaymentLinkSms(order, linkUrl) {
     contentSid: process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID,
     contentVariables: JSON.stringify({ '1': order.id, '2': linkUrl })
   })
+  return true
 }
 
 module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms }

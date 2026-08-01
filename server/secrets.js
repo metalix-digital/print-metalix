@@ -16,7 +16,8 @@ async function loadSecretsIntoEnv() {
     ['TWILIO_AUTH_TOKEN', 'twilio-auth-token'],
     ['TWILIO_PHONE_NUMBER', 'twilio-phone-number'],
     ['TWILIO_MESSAGING_SERVICE_SID', 'twilio-messaging-service-sid'],
-    ['TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID', 'twilio-order-confirmation-template-sid']
+    ['TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID', 'twilio-order-confirmation-template-sid'],
+    ['TWILIO_PAYMENT_LINK_TEMPLATE_SID', 'twilio-payment-link-template-sid']
   ].filter(([envVar]) => !process.env[envVar])
 
   if (!needed.length) return
@@ -39,11 +40,25 @@ async function loadSecretsIntoEnv() {
       return version.payload.data.toString('utf8')
     }
 
-    const values = await Promise.all(needed.map(([, secretName]) => fetchSecret(secretName)))
-    needed.forEach(([envVar], i) => { process.env[envVar] = values[i] })
-    console.log(`[secrets] loaded from Secret Manager: ${needed.map(([envVar]) => envVar).join(', ')}`)
+    // Each secret is fetched independently — one that doesn't exist yet (e.g.
+    // a feature whose secret hasn't been created in Secret Manager) must not
+    // block every other secret from loading.
+    const results = await Promise.allSettled(needed.map(([, secretName]) => fetchSecret(secretName)))
+    const loaded = []
+    const failed = []
+    results.forEach((result, i) => {
+      const [envVar] = needed[i]
+      if (result.status === 'fulfilled') {
+        process.env[envVar] = result.value
+        loaded.push(envVar)
+      } else {
+        failed.push(envVar)
+      }
+    })
+    if (loaded.length) console.log(`[secrets] loaded from Secret Manager: ${loaded.join(', ')}`)
+    if (failed.length) console.warn(`[secrets] not set in Secret Manager (skipped): ${failed.join(', ')}`)
   } catch (err) {
-    console.error('[secrets] could not load from Secret Manager, falling back to env:', err.message)
+    console.error('[secrets] could not reach Secret Manager, falling back to env:', err.message)
   }
 }
 
