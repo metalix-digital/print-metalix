@@ -1231,6 +1231,16 @@ function showFlash(msg){
   document.body.appendChild(f);
   setTimeout(() => f.remove(), 2800);
 }
+
+// Copied to the clipboard alongside a payment link (when SMS doesn't send,
+// or always as a fallback admin can share manually) — reads like a message
+// staff typed themselves, not a bare URL, since it gets pasted straight
+// into WhatsApp.
+function paymentLinkClipboardText(order, linkUrl){
+  const amount = order && order.total_amount != null ? '₹' + order.total_amount : '';
+  return 'Hi! Your Metalix Print order ' + (order && order.id || '') + (amount ? ' (' + amount + ')' : '') +
+    ' is ready — please complete the payment here: ' + linkUrl;
+}
 document.getElementById('selectAll').addEventListener('change', (e) => {
   const on = e.target.checked;
   document.querySelectorAll('.row-cb').forEach((cb) => {
@@ -1667,7 +1677,7 @@ function renderOrders(orders){
         const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order) + '/payment-link', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Could not create payment link');
-        try { await navigator.clipboard.writeText(data.linkUrl); } catch (err) { /* clipboard permission denied — link is still in the flash message */ }
+        try { await navigator.clipboard.writeText(paymentLinkClipboardText(data.order, data.linkUrl)); } catch (err) { /* clipboard permission denied — link is still in the flash message */ }
         showFlash('Payment link ' + (data.smsSent ? 'sent via SMS' : 'copied to clipboard (SMS not sent — share it manually)') + '.');
       } catch (err) {
         if (err.message !== 'unauthorized') alert(err.message || 'Could not create payment link.');
@@ -3421,7 +3431,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error || 'Could not create order');
     if (paymentChoice === 'link') {
-      try { await navigator.clipboard.writeText(data.linkUrl); } catch (e) { /* clipboard permission denied — link is still in the flash message */ }
+      try { await navigator.clipboard.writeText(paymentLinkClipboardText(data.order, data.linkUrl)); } catch (e) { /* clipboard permission denied — link is still in the flash message */ }
       closeNewOrderModal();
       loadOrders();
       showFlash('Order ' + data.order.id + ' created — payment link ' + (data.smsSent ? 'sent via SMS' : 'copied to clipboard (SMS not sent — share it manually)') + '.');
