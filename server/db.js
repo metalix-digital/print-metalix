@@ -205,12 +205,12 @@ db.exec(`
 // must always be present and active — every order falls back to it.
 const DEFAULT_PRICING = {
   pageSizes: [
-    { id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297 },
-    { id: 'a3', label: 'A3', active: true, widthMm: 297, heightMm: 420 },
-    { id: 'a5', label: 'A5', active: true, widthMm: 148, heightMm: 210 },
-    { id: 'letter', label: 'Letter', active: true, widthMm: 215.9, heightMm: 279.4 },
-    { id: 'legal', label: 'Legal', active: true, widthMm: 215.9, heightMm: 355.6 },
-    { id: '4r', label: '4R (4×6 in photo)', active: true, widthMm: 101.6, heightMm: 152.4 }
+    { id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false },
+    { id: 'a3', label: 'A3', active: true, widthMm: 297, heightMm: 420, isPhotoDefault: false },
+    { id: 'a5', label: 'A5', active: true, widthMm: 148, heightMm: 210, isPhotoDefault: false },
+    { id: 'letter', label: 'Letter', active: true, widthMm: 215.9, heightMm: 279.4, isPhotoDefault: false },
+    { id: 'legal', label: 'Legal', active: true, widthMm: 215.9, heightMm: 355.6, isPhotoDefault: false },
+    { id: '4r', label: '4R (4×6 in photo)', active: true, widthMm: 101.6, heightMm: 152.4, isPhotoDefault: true }
   ],
   rates: {
     a4: [
@@ -259,9 +259,14 @@ const STANDARD_SIZE_MM = {
 // Coerces an admin-supplied pageSizes array into the canonical shape: unique
 // non-empty ids/labels, with 'a4' always present and always active (it's
 // required by rates — every order is priced/placed against rates.a4).
+// isPhotoDefault marks the one size a JPG/PNG upload should default to in the
+// admin "New order" flow (staff placing phone/WhatsApp orders) — at most one
+// row can carry it, and only an active row; an inactive/removed candidate
+// just means no photo default until the admin picks another.
 function normalizePageSizes(list) {
   const out = []
   const seen = new Set()
+  let photoDefaultSet = false
   ;(Array.isArray(list) ? list : []).forEach((row) => {
     if (!row || typeof row !== 'object') return
     const label = String(row.label || '').trim()
@@ -272,15 +277,19 @@ function normalizePageSizes(list) {
     while (seen.has(unique)) unique = `${id}-${n++}`
     seen.add(unique)
     const fallback = STANDARD_SIZE_MM[unique] || STANDARD_SIZE_MM.a4
+    const active = unique === 'a4' || row.active !== false
+    const isPhotoDefault = !photoDefaultSet && active && !!row.isPhotoDefault
+    if (isPhotoDefault) photoDefaultSet = true
     out.push({
       id: unique,
       label,
-      active: unique === 'a4' || row.active !== false,
+      active,
       widthMm: num(row.widthMm, fallback[0]) || fallback[0],
-      heightMm: num(row.heightMm, fallback[1]) || fallback[1]
+      heightMm: num(row.heightMm, fallback[1]) || fallback[1],
+      isPhotoDefault
     })
   })
-  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297 })
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false })
   return out
 }
 
