@@ -193,7 +193,19 @@ db.exec(`
 // { id, label, bw: { single, double }, color: { single } }. The `id` is a
 // stable slug used on stored orders and in lookups; `label` is the editable
 // display name. Colour is single-sided only, so there is no color.double rate.
+//
+// pageSizes is a separate admin-managed list of { id, label } that populates
+// the page-size dropdown in the print-rates table. Orders currently only use
+// A4 (see server.js), so this list is just letting rates be configured ahead
+// of exposing other sizes to customers — 'a4' must always be present.
 const DEFAULT_PRICING = {
+  pageSizes: [
+    { id: 'a4', label: 'A4', active: true },
+    { id: 'a3', label: 'A3', active: true },
+    { id: 'a5', label: 'A5', active: true },
+    { id: 'letter', label: 'Letter', active: true },
+    { id: 'legal', label: 'Legal', active: true }
+  ],
   rates: {
     a4: [
       { id: 'normal', label: 'Normal (70–75 GSM)', bw: { single: 1.5, double: 2.5 }, color: { single: 6 } },
@@ -215,13 +227,34 @@ const DEFAULT_PRICING = {
 // migrating older settings rows that stored ids without labels.
 const DEFAULT_PAPER_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM)', premium: 'Premium digital color' }
 
-function slugifyPaperType(label) {
+function slugify(label) {
   return String(label || '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
+}
+
+// Coerces an admin-supplied pageSizes array into the canonical shape: unique
+// non-empty ids/labels, with 'a4' always present and always active (it's
+// required by rates — every order is priced/placed against rates.a4).
+function normalizePageSizes(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugify(row.id || label) || 'size'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    out.push({ id: unique, label, active: unique === 'a4' || row.active !== false })
+  })
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true })
+  return out
 }
 
 function num(v, fallback = 0) {
@@ -239,7 +272,7 @@ function normalizePaperTypes(list) {
     if (!row || typeof row !== 'object') return
     const label = String(row.label || '').trim()
     if (!label) return
-    let id = slugifyPaperType(row.id || label) || 'type'
+    let id = slugify(row.id || label) || 'type'
     let unique = id
     let n = 2
     while (seen.has(unique)) unique = `${id}-${n++}`
@@ -257,8 +290,15 @@ function normalizePaperTypes(list) {
 // Older settings rows stored rates.a4 as an object (keyed by paper type) or,
 // even earlier, as a flat { bw, color } with no paper types at all. Convert
 // both into the current ordered array. Already-array rows pass through
-// (normalized). (A3 support was removed — legacy rates.a3 data is ignored.)
+// (normalized). Also backfills pageSizes for rows saved before that field
+// existed. (A3 support was removed — legacy rates.a3 data is ignored.)
 function migratePricing(pricing) {
+  // Rows saved before pageSizes existed had the a3/a5/letter/legal options
+  // hardcoded client-side regardless of DB content — backfill from that same
+  // default list (not just 'a4') so migrating doesn't silently drop them.
+  pricing.pageSizes = normalizePageSizes(
+    Array.isArray(pricing.pageSizes) ? pricing.pageSizes : DEFAULT_PRICING.pageSizes
+  )
   const a4 = pricing.rates && pricing.rates.a4
   if (Array.isArray(a4)) {
     pricing.rates.a4 = normalizePaperTypes(a4)
@@ -285,7 +325,7 @@ function getPricing() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('pricing')
   if (!row) return DEFAULT_PRICING
   const pricing = JSON.parse(row.value)
-  if (!Array.isArray(pricing.rates && pricing.rates.a4)) {
+  if (!Array.isArray(pricing.rates && pricing.rates.a4) || !Array.isArray(pricing.pageSizes)) {
     const migrated = migratePricing(pricing)
     setPricing(migrated)
     return migrated
@@ -294,6 +334,9 @@ function getPricing() {
 }
 
 function setPricing(pricing) {
+  // Page sizes populate the print-rates table's Page Size dropdown; 'a4' is
+  // always kept present since rates.a4 is required below.
+  if (pricing) pricing.pageSizes = normalizePageSizes(pricing.pageSizes)
   // Normalize every page-size's paper-type list before persisting so admin
   // edits always land in canonical shape (unique ids, numeric rates). rates is
   // keyed by page size (a4, a3, …); each value is an array of paper-type rows.

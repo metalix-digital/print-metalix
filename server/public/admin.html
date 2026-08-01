@@ -2526,25 +2526,109 @@ async function purgeArchivedOrder(id){
 }
 
 /* -- PRICING -- */
-// Selectable page sizes for the pricing table. Orders currently only use A4;
-// the other sizes are here so rates can be configured ahead of exposing them.
-const PAGE_SIZES = [
-  { id: 'a4', label: 'A4' },
-  { id: 'a3', label: 'A3' },
-  { id: 'a5', label: 'A5' },
-  { id: 'letter', label: 'Letter' },
-  { id: 'legal', label: 'Legal' }
-];
+// Selectable page sizes for the pricing table's "Page size" dropdown. Admin-
+// managed via the "Page sizes" section (see pageSizeRowHtml/collectPageSizesFromForm);
+// this array is just the live in-memory copy, refreshed from the server on
+// load and kept in sync as the admin adds/removes/renames rows. Orders
+// currently only use A4 — the other sizes just let rates be configured ahead
+// of exposing them to customers.
+let PAGE_SIZES = [{ id: 'a4', label: 'A4' }];
+
+function slugify(label){
+  return String(label || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
 
 function rateFieldHtml(label, key, value){
   return '<label class="field"><span>' + label + '</span>' +
     '<input type="number" step="0.5" min="0" data-key="' + key + '" value="' + value + '" /></label>';
 }
 
+// Inactive sizes are hidden from this dropdown (so they can't be picked for
+// new rows) unless a row is already set to one — then it stays selectable,
+// tagged "(inactive)", so the row can still be seen/reassigned.
 function pageSizeOptionsHtml(selected){
-  return PAGE_SIZES.map((s) =>
-    '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escHtml(s.label) + '</option>'
-  ).join('');
+  return PAGE_SIZES
+    .filter((s) => s.active !== false || s.id === selected)
+    .map((s) =>
+      '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' +
+        escHtml(s.label) + (s.active === false ? ' (inactive)' : '') +
+      '</option>'
+    ).join('');
+}
+
+// One editable page-size <tr>. data-id preserves the stable id (mirrors
+// rateRowHtml) so renaming its label doesn't change the id stored on
+// rates/orders. A4 is required (rates.a4 always exists) so it's always active
+// and its row can't be removed.
+function pageSizeRowHtml(row){
+  row = row || { id: '', label: '', active: true };
+  const isA4 = row.id === 'a4';
+  const active = isA4 || row.active !== false;
+  return '<tr class="page-size-row" data-id="' + escHtml(row.id || '') + '">' +
+    '<td><input class="ps-label" type="text" placeholder="e.g. A2" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="ps-active"' + (active ? ' checked' : '') + (isA4 ? ' disabled' : '') + ' /> Active</label></td>' +
+    '<td>' + (isA4
+      ? '<button type="button" class="rate-remove" disabled title="A4 is required and can’t be removed">✕</button>'
+      : '<button type="button" class="rate-remove page-size-remove" aria-label="Remove page size">✕</button>') +
+    '</td>' +
+  '</tr>';
+}
+
+// Reads the "Page sizes" section's rows into the canonical {id,label,active}[]
+// shape (mirrors db.js normalizePageSizes so the client-computed ids the
+// "Print rates" dropdowns use pre-save match what the server will assign on save).
+function collectPageSizesFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#pageSizeRows .page-size-row').forEach((tr) => {
+    const label = tr.querySelector('.ps-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'size';
+    let unique = id;
+    let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    out.push({ id: unique, label, active: unique === 'a4' || tr.querySelector('.ps-active').checked });
+  });
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true });
+  return out;
+}
+
+// Rebuilds every "Print rates" row's page-size <select> from the current
+// PAGE_SIZES list, preserving each row's current selection where possible.
+function refreshRateSizeSelects(){
+  document.querySelectorAll('#rateRows .rr-size').forEach((sel) => {
+    const current = sel.value;
+    sel.innerHTML = pageSizeOptionsHtml(current);
+  });
+}
+
+function syncPageSizesFromForm(){
+  PAGE_SIZES = collectPageSizesFromForm();
+  refreshRateSizeSelects();
+}
+
+function bindPageSizeRow(tr){
+  tr.querySelector('.ps-label').addEventListener('input', syncPageSizesFromForm);
+  const activeBox = tr.querySelector('.ps-active');
+  if (activeBox) activeBox.addEventListener('change', syncPageSizesFromForm);
+  const removeBtn = tr.querySelector('.page-size-remove');
+  if (!removeBtn) return; // A4's remove button is disabled
+  removeBtn.addEventListener('click', () => {
+    const id = tr.dataset.id;
+    const inUse = id && Array.from(document.querySelectorAll('#rateRows .rr-size')).some((sel) => sel.value === id);
+    if (inUse){
+      alert('Reassign or remove the print rate row(s) using this page size first.');
+      return;
+    }
+    tr.remove();
+    syncPageSizesFromForm();
+  });
 }
 
 // One editable <tr>. data-id preserves an existing paper type's stable id so
@@ -2570,6 +2654,9 @@ async function loadPricing(){
   const res = await fetch('/api/pricing');
   const p = await res.json();
 
+  PAGE_SIZES = Array.isArray(p.pageSizes) && p.pageSizes.length ? p.pageSizes : PAGE_SIZES;
+  const pageSizeRowsHtml = PAGE_SIZES.map(pageSizeRowHtml).join('');
+
   // Flatten rates (keyed by page size) into rows, A4 first.
   const rates = p.rates || {};
   const sizeOrder = PAGE_SIZES.map((s) => s.id);
@@ -2587,6 +2674,10 @@ async function loadPricing(){
   if (!rowsHtml.length) rowsHtml.push(rateRowHtml('a4', null));
 
   form.innerHTML =
+    '<h2>Page sizes</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Sizes offered in the print rates table below. A4 is required and can’t be removed; customers currently order A4 only.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><tbody id="pageSizeRows">' + pageSizeRowsHtml + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addPageSize">+ Add page size</button>' +
     '<h2>Print rates</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only. Customers currently order A4 only.</p>' +
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
@@ -2608,6 +2699,13 @@ async function loadPricing(){
     '</div>' +
     '<button class="save-btn" id="savePricingBtn">Save pricing</button>' +
     '<div id="pricingMessage"></div>';
+
+  form.querySelectorAll('.page-size-row').forEach(bindPageSizeRow);
+  document.getElementById('addPageSize').addEventListener('click', () => {
+    const tbody = document.getElementById('pageSizeRows');
+    tbody.insertAdjacentHTML('beforeend', pageSizeRowHtml(null));
+    bindPageSizeRow(tbody.lastElementChild);
+  });
 
   form.querySelectorAll('.rate-row').forEach(bindRateRowRemove);
   document.getElementById('addRateRow').addEventListener('click', () => {
@@ -2648,6 +2746,7 @@ async function savePricing(){
   }
 
   const pricing = {
+    pageSizes: collectPageSizesFromForm(),
     rates,
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
