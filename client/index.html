@@ -1519,11 +1519,11 @@ function showSuccess(order){
   window.location.href = '/order-success/' + encodeURIComponent(order.id);
 }
 
-function loadRazorpayScript(){
+function loadCashfreeScript(){
   return new Promise((resolve, reject)=>{
-    if(window.Razorpay) return resolve();
+    if(window.Cashfree) return resolve();
     const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
     s.onload = resolve;
     s.onerror = reject;
     document.body.appendChild(s);
@@ -1564,37 +1564,39 @@ document.getElementById('modalProceed').addEventListener('click', async ()=>{
     }
 
     if(data.simulated){
-      const ok = confirm(`Simulated payment for ₹${data.order.total_amount} (no live Razorpay keys configured). Proceed?`);
+      const ok = confirm(`Simulated payment for ₹${data.order.total_amount} (no live Cashfree keys configured). Proceed?`);
       if(!ok) return;
-      const verifyRes = await verifyPayment(data.order.id, { simulated: true });
-      if(verifyRes.order){ showSuccess(verifyRes.order); }
+      const verifyRes = await verifyPayment(data.order.id, {});
+      if(verifyRes.order && verifyRes.order.payment_status === 'paid'){ showSuccess(verifyRes.order); }
       else { showToast('Payment verification failed', true); }
       return;
     }
 
-    await loadRazorpayScript();
-    const rzp = new window.Razorpay({
-      key: data.key,
-      amount: data.razorpayOrder.amount,
-      currency: data.razorpayOrder.currency,
-      order_id: data.razorpayOrder.id,
-      name: 'Metalix Print',
-      handler: async function(response){
-        const verifyRes = await verifyPayment(data.order.id, {
-          razorpay_order_id: response.razorpay_order_id,
-          razorpay_payment_id: response.razorpay_payment_id,
-          razorpay_signature: response.razorpay_signature
-        });
-        if(verifyRes.order){ showSuccess(verifyRes.order); }
-        else { showToast('Payment verification failed', true); }
-      },
-      modal: { ondismiss: function(){ showToast('Payment cancelled', true); } }
+    await loadCashfreeScript();
+    const cashfree = window.Cashfree({ mode: data.cashfreeMode });
+    // The checkout() promise's result is informational only — Cashfree gives
+    // no cryptographically verifiable proof of payment back to the browser,
+    // so it's never trusted directly. Whatever it resolves with, the actual
+    // confirmation always comes from the server asking Cashfree directly
+    // (verify-payment below), which is why this now shows a brief loading
+    // state instead of resolving instantly the way the old local HMAC check did.
+    const result = await cashfree.checkout({
+      paymentSessionId: data.cashfreeOrder.payment_session_id,
+      redirectTarget: '_modal'
     });
-    rzp.open();
+    if(result && result.error){
+      showToast('Payment cancelled', true);
+      return;
+    }
+    proceedBtn.textContent = 'Confirming payment…';
+    const verifyRes = await verifyPayment(data.order.id, {});
+    if(verifyRes.order && verifyRes.order.payment_status === 'paid'){ showSuccess(verifyRes.order); }
+    else { showToast('Payment verification failed', true); }
   }catch(err){
     showToast('Something went wrong. Please try again.', true);
   }finally{
     proceedBtn.disabled = false;
+    proceedBtn.textContent = state.paymentMethod === 'cod' ? 'Place order' : 'Yes, proceed';
   }
 });
 

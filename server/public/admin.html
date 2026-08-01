@@ -1610,6 +1610,12 @@ function renderOrders(orders){
             '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>' +
             '<button class="jobsheet-btn payment-link-btn" data-order="' + escHtml(o.id) + '">🔗 Send payment link</button>'
           : '') +
+        // Payment links have no automatic client-side confirmation (only the
+        // webhook confirms them) — this is the manual escape hatch if a
+        // webhook is ever delayed or lost.
+        (o.payment_link_id && String(o.payment_status).toLowerCase() !== 'paid'
+          ? '<button class="jobsheet-btn recheck-payment-btn" data-order="' + escHtml(o.id) + '">🔄 Recheck payment</button>'
+          : '') +
         (String(o.payment_status).toLowerCase() !== 'paid'
           ? '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">✎ Edit order</button>'
           : '') +
@@ -1687,7 +1693,31 @@ function renderOrders(orders){
       }
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn)').forEach((btn) => {
+  body.querySelectorAll('.recheck-payment-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Checking…';
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order) + '/recheck-payment', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Could not check payment status');
+        if (data.justConfirmed) {
+          showFlash('Payment confirmed — order marked paid.');
+          loadOrders();
+        } else {
+          showFlash('Not paid yet on Cashfree' + (data.cashfreeStatus ? ' (' + data.cashfreeStatus + ')' : '') + '.');
+        }
+      } catch (err) {
+        if (err.message !== 'unauthorized') alert(err.message || 'Could not check payment status.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  });
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');

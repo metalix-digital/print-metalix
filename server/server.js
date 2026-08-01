@@ -13,55 +13,59 @@ const app = express()
 // already a parsed object, not a Buffer — crypto.createHmac(...).update()
 // then throws on it. (This is exactly what was silently breaking every
 // webhook delivery before this route was moved here — see git history.)
-// Secondary source of truth for payment status (client-driven verification
-// is primary for regular checkout; for payment links, this is the *only*
-// confirmation path, since there's no reliable client-side equivalent).
+//
+// For regular checkout, this is the backup confirmation path (client-driven
+// verify-payment is primary). For payment links there is no reliable
+// client-driven path at all (no signed redirect Cashfree gives us to trust —
+// see the /api/payment-links/callback comment below), so this webhook is the
+// *sole* authoritative confirmation for those — getting the Cashfree
+// Dashboard webhook subscription right (PAYMENT_SUCCESS_WEBHOOK and
+// PAYMENT_LINK_EVENT) matters more here than it did for Razorpay.
 app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET || ''
-  const signature = req.headers['x-razorpay-signature']
-  const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex')
-  if (signature !== expected) {
+  const timestamp = req.headers['x-webhook-timestamp']
+  const signature = req.headers['x-webhook-signature']
+  if (!cashfree.verifyWebhookSignature(req.body, timestamp, signature)) {
     return res.status(400).json({ error: 'invalid_signature' })
   }
   try {
     const event = JSON.parse(req.body.toString())
-    console.log('Razorpay webhook event:', event.event)
-    const payment = event.payload && event.payload.payment && event.payload.payment.entity
-    // Payment Link orders don't have a razorpay_order_id on our side at
-    // creation (see createPaymentLinkForOrder) — reference_id (our own order
-    // id) is what ties the webhook back to the right order instead.
-    const paymentLink = event.payload && event.payload.payment_link && event.payload.payment_link.entity
-    if (event.event === 'payment_link.paid' && paymentLink && paymentLink.reference_id) {
-      const order = db.getOrder(paymentLink.reference_id)
-      if (order) {
-        const paidOrder = db.markOrderPaid(order.id, {
-          razorpay_payment_id: payment ? payment.id : null,
-          order_status: 'Payment Successful'
-        })
-        if (paidOrder) {
-          printQueue.enqueue(order.id)
-          const fresh = db.getOrder(order.id)
-          notify.sendOrderConfirmationSms(fresh)
-          notify.sendOrderConfirmationEmail(fresh)
-          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-        }
-      }
-    } else if (payment && payment.order_id) {
-      const order = db.db.prepare('SELECT * FROM orders WHERE razorpay_order_id = ?').get(payment.order_id)
-      if (order) {
-        const paidOrder = db.markOrderPaid(order.id, {
-          razorpay_payment_id: payment.id,
-          order_status: 'Payment Successful'
-        })
-        if (paidOrder) {
-          printQueue.enqueue(order.id)
-          const fresh = db.getOrder(order.id)
-          notify.sendOrderConfirmationSms(fresh)
-          notify.sendOrderConfirmationEmail(fresh)
-          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-        }
+    console.log('Cashfree webhook event:', event.type)
+
+    function confirmPaid(order, cashfreePaymentId) {
+      const paidOrder = db.markOrderPaid(order.id, {
+        cashfree_payment_id: cashfreePaymentId || null,
+        order_status: 'Payment Successful'
+      })
+      if (paidOrder) {
+        printQueue.enqueue(order.id)
+        const fresh = db.getOrder(order.id)
+        notify.sendOrderConfirmationSms(fresh)
+        notify.sendOrderConfirmationEmail(fresh)
+        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
       }
     }
+
+    if (event.type === 'PAYMENT_SUCCESS_WEBHOOK') {
+      // Cashfree's order_id is our own order id by construction (we choose
+      // it at creation time) — no indirect lookup column needed.
+      const orderId = event.data && event.data.order && event.data.order.order_id
+      const paymentStatus = event.data && event.data.payment && event.data.payment.payment_status
+      const order = orderId && db.getOrder(orderId)
+      if (order && paymentStatus === 'SUCCESS') {
+        confirmPaid(order, event.data.payment.cf_payment_id)
+      }
+    } else if (event.type === 'PAYMENT_LINK_EVENT') {
+      const linkId = event.data && event.data.link_id
+      const linkStatus = event.data && event.data.link_status
+      const order = linkId && db.getOrder(linkId)
+      if (order && linkStatus === 'PAID') {
+        const txnId = (event.data.order && event.data.order.transaction_id) || event.data.cf_link_id
+        confirmPaid(order, txnId)
+      }
+    }
+    // PAYMENT_FAILED_WEBHOOK / PAYMENT_USER_DROPPED_WEBHOOK / anything else:
+    // no action needed, just acknowledge so Cashfree doesn't retry/disable
+    // the webhook over an event type we deliberately don't act on.
     res.status(200).json({ ok: true })
   } catch (err) {
     res.status(400).end()
@@ -207,6 +211,7 @@ const printQueue = require('./printQueue')
 const notify = require('./notify')
 const mailer = require('./mailer')
 const sms = require('./sms')
+const cashfree = require('./cashfree')
 const pricing = require('./pricing')
 const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
@@ -226,39 +231,26 @@ function generateOrderId() {
   throw new Error('could_not_generate_unique_order_id')
 }
 
-// Generates a Razorpay Payment Link for an order's current total, so an
+// Generates a Cashfree Payment Link for an order's current total, so an
 // admin-placed order can be paid online remotely instead of in person.
 // Cancels any link already on the order first — otherwise editing the order
 // (which reprices it) would leave a stale link out there payable at the old
-// amount. Razorpay's own SMS/email notification is turned off since we send
-// our own DLT-compliant SMS (see sms.js) rather than Razorpay's generic one.
+// amount. Cashfree's own SMS/email notification is turned off since we send
+// our own DLT-compliant SMS (see sms.js) rather than Cashfree's generic one.
 async function createPaymentLinkForOrder(order) {
-  const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
-  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-    const err = new Error('Online payments are not configured.')
-    err.code = 'razorpay_not_configured'
-    throw err
-  }
-  const Razorpay = require('razorpay')
-  const instance = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
   if (order.payment_link_id) {
-    try { await instance.paymentLink.cancel(order.payment_link_id) } catch (err) { /* already paid/expired/cancelled — fine either way */ }
+    await cashfree.cancelPaymentLink(order.payment_link_id)
   }
-  const link = await instance.paymentLink.create({
-    amount: order.total_amount * 100,
-    currency: 'INR',
-    reference_id: order.id,
-    description: `Metalix Print order ${order.id}`,
-    customer: {
-      name: order.customer_name,
-      contact: `+91${order.customer_mobile}`,
-      email: order.customer_email || undefined
-    },
-    notify: { sms: false, email: false },
-    callback_url: 'https://print.metalix.in/api/payment-links/callback',
-    callback_method: 'get'
+  const link = await cashfree.createPaymentLink({
+    linkId: order.id,
+    amount: order.total_amount,
+    customerName: order.customer_name,
+    customerPhone: `+91${order.customer_mobile}`,
+    customerEmail: order.customer_email || undefined,
+    purpose: `Metalix Print order ${order.id}`,
+    returnUrl: `https://print.metalix.in/track/${order.id}`
   })
-  db.updateOrder(order.id, { payment_link_id: link.id, payment_link_url: link.short_url })
+  db.updateOrder(order.id, { payment_link_id: link.link_id, payment_link_url: link.link_url })
   return link
 }
 const { backupDatabase } = require('./backupDb')
@@ -1252,7 +1244,7 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orde
   return res.json({ order: updated })
 })
 
-// Generates (or regenerates) a Razorpay Payment Link for an already-placed
+// Generates (or regenerates) a Cashfree Payment Link for an already-placed
 // COD/pending order and texts it to the customer — lets a customer who
 // phoned in an order pay online remotely instead of at pickup/delivery.
 app.post('/api/admin/orders/:id/payment-link', requireAdmin, requireTab('orders'), async (req, res) => {
@@ -1270,12 +1262,43 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, requireTab('orders'
   const fresh = db.getOrder(order.id)
   let smsSent = false
   try {
-    smsSent = await sms.sendPaymentLinkSms(fresh, link.short_url)
+    smsSent = await sms.sendPaymentLinkSms(fresh, link.link_url)
   } catch (err) {
     smsSent = false
     console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
   }
-  return res.json({ order: fresh, linkUrl: link.short_url, smsSent })
+  return res.json({ order: fresh, linkUrl: link.link_url, smsSent })
+})
+
+// Manual escape hatch: payment links have no client-driven confirmation path
+// (see /api/webhook's PAYMENT_LINK_EVENT handler) — if a webhook is ever
+// delayed or lost for any reason, this lets staff directly ask Cashfree
+// whether an order has actually been paid, without waiting on webhook
+// delivery or Cashfree support.
+app.post('/api/admin/orders/:id/recheck-payment', requireAdmin, requireTab('orders'), async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  if (String(order.payment_status).toLowerCase() === 'paid') {
+    return res.json({ order, alreadyPaid: true })
+  }
+  let status
+  try {
+    status = await cashfree.getOrderStatus(order.id)
+  } catch (err) {
+    return res.status(502).json({ error: err.code || 'status_check_failed', message: err.message })
+  }
+  if (status.order_status !== 'PAID') {
+    return res.json({ order, alreadyPaid: false, cashfreeStatus: status.order_status })
+  }
+  const paidOrder = db.markOrderPaid(order.id, { cashfree_payment_id: status.cf_payment_id, order_status: 'Payment Successful' })
+  if (paidOrder) {
+    printQueue.enqueue(order.id)
+    const fresh = db.getOrder(order.id)
+    notify.sendOrderConfirmationSms(fresh)
+    notify.sendOrderConfirmationEmail(fresh)
+    mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+  }
+  return res.json({ order: db.getOrder(order.id), alreadyPaid: false, justConfirmed: !!paidOrder })
 })
 
 // Archive (soft-delete) a single order. It leaves the Orders/Customers views
@@ -1504,7 +1527,7 @@ app.put('/api/admin/pricing', requireSuperAdmin, express.json(), (req, res) => {
 })
 
 // Create an order: validates the previously-uploaded file still exists,
-// computes the authoritative price server-side, and creates a Razorpay order
+// computes the authoritative price server-side, and creates a Cashfree order
 // (or a simulated one if no live keys are configured).
 const MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
 
@@ -1649,29 +1672,25 @@ app.post('/api/orders', express.json(), async (req, res) => {
   const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
-  const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env
-  let razorpayOrder = null
+  let cashfreeOrder = null
   let simulated = true
 
   // Pay-on-delivery (Cash/UPI) skips the online gateway entirely — the order is
   // confirmed now and payment is collected by staff at delivery/pickup.
   if (!isCod) {
-    if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
-      try {
-        const Razorpay = require('razorpay')
-        const instance = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
-        razorpayOrder = await instance.orders.create({
-          amount: calc.totalAmount * 100,
-          currency: 'INR',
-          receipt: orderId
-        })
-        simulated = false
-      } catch (err) {
-        console.error('Razorpay order creation failed', err)
-        return res.status(500).json({ error: 'payment_error' })
-      }
-    } else {
-      razorpayOrder = { id: `SIM_${orderId}`, amount: calc.totalAmount * 100, currency: 'INR' }
+    try {
+      cashfreeOrder = await cashfree.createOrder({
+        orderId,
+        amount: calc.totalAmount,
+        customerName,
+        customerPhone: customerMobile,
+        customerEmail,
+        returnUrl: `https://print.metalix.in/order-success/${orderId}`
+      })
+      simulated = !!cashfreeOrder.simulated
+    } catch (err) {
+      console.error('Cashfree order creation failed', err)
+      return res.status(500).json({ error: 'payment_error' })
     }
   }
 
@@ -1714,7 +1733,10 @@ app.post('/api/orders', express.json(), async (req, res) => {
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
-    razorpay_order_id: isCod ? null : razorpayOrder.id,
+    // Simulated orders have no real cf_order_id — store the SIM_ marker here
+    // instead so verify-payment can trust *this* (server-written) column to
+    // tell a simulated order from a real one, never anything the client claims.
+    cashfree_order_id: isCod ? null : (cashfreeOrder.simulated ? `SIM_${orderId}` : cashfreeOrder.cf_order_id),
     payment_status: isCod ? 'pending' : 'created',
     order_status: 'Received',
     notes: safeNotes,
@@ -1732,12 +1754,17 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.json({ order: fresh, cod: true })
   }
 
-  return res.json({ order, razorpayOrder, key: RAZORPAY_KEY_ID || '', simulated })
+  return res.json({
+    order,
+    cashfreeOrder: { payment_session_id: cashfreeOrder.payment_session_id, order_id: cashfreeOrder.order_id },
+    cashfreeMode: process.env.CASHFREE_ENV === 'production' ? 'production' : 'sandbox',
+    simulated
+  })
 })
 
 // Lets staff place an order for a customer who doesn't want to use the
 // website themselves (walk-in / phone order). Mirrors the validation and
-// pricing above, but never takes the online-Razorpay path — an admin-placed
+// pricing above, but never takes the online-Cashfree path — an admin-placed
 // order is always either "pay later" (cash/UPI on pickup or delivery, same
 // as customer COD) or "already collected" (paid in person right now), which
 // only an authenticated admin can declare — a customer-facing endpoint must
@@ -1814,7 +1841,6 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
-    razorpay_order_id: null,
     // 'created' mirrors the public checkout's pre-payment state — it's what
     // keeps an unpaid link order out of db.listOrders() until it's paid,
     // same as an abandoned self-checkout never shows up either.
@@ -1842,14 +1868,16 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     }
     let smsSent = false
     try {
-      smsSent = await sms.sendPaymentLinkSms(order, link.short_url)
+      smsSent = await sms.sendPaymentLinkSms(order, link.link_url)
     } catch (err) {
       smsSent = false
       console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
     }
     // No printQueue.enqueue / order-confirmation notify here — those fire
-    // from the payment-link callback below, once the customer actually pays.
-    return res.json({ order, linkUrl: link.short_url, smsSent })
+    // only from the /api/webhook PAYMENT_LINK_EVENT handler, once the
+    // customer actually pays (payment links have no client-driven
+    // confirmation path — see the webhook route's comment).
+    return res.json({ order, linkUrl: link.link_url, smsSent })
   }
 
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
@@ -1921,40 +1949,40 @@ app.post('/api/track/:id/feedback', express.json(), (req, res) => {
   return res.json({ feedback, reviewUrl })
 })
 
-// Verify the Razorpay checkout response (or simulated payment) and advance the order.
-app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
+// Confirms payment for the regular checkout flow. Unlike the old Razorpay
+// integration, there's no client-supplied signature to check — Cashfree's
+// client SDK gives the browser no cryptographically verifiable proof of its
+// own payment, so nothing the client reports is trusted. Instead the server
+// asks Cashfree directly, using its own credentials, for the authoritative
+// status. This does mean a real outbound network call on every confirm,
+// where the old HMAC check was instant and local — client-side should show
+// a brief "Confirming payment…" state across this call.
+app.post('/api/orders/:id/verify-payment', express.json(), async (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   if (order.payment_status === 'paid') {
     return res.json({ order })
   }
 
-  const { simulated, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body || {}
-
-  // Trust that an order is actually a simulated (no-Razorpay-configured) one
-  // from its own stored razorpay_order_id, never from the request body —
-  // otherwise anyone who knows an order ID could mark any real order "paid"
-  // for free by just sending { simulated: true }.
-  const isActuallySimulated = typeof order.razorpay_order_id === 'string' && order.razorpay_order_id.startsWith('SIM_')
-  if (simulated && isActuallySimulated) {
-    const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id: `SIM_PAY_${order.id}` })
-    if (!paidOrder) return res.json({ order: db.getOrder(order.id) }) // lost the race — already confirmed elsewhere
-    printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
-    const fresh = db.getOrder(order.id)
-    notify.sendOrderConfirmationSms(fresh)
-    notify.sendOrderConfirmationEmail(fresh)
-    mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-    return res.json({ order: fresh })
+  // Trust that an order is actually a simulated (no-Cashfree-configured) one
+  // from its own stored cashfree_order_id, never from anything the client
+  // sends — otherwise anyone who knows an order ID could mark any real order
+  // "paid" for free.
+  const isActuallySimulated = typeof order.cashfree_order_id === 'string' && order.cashfree_order_id.startsWith('SIM_')
+  let status
+  try {
+    status = isActuallySimulated ? { order_status: 'PAID', cf_payment_id: `SIM_PAY_${order.id}` } : await cashfree.getOrderStatus(order.id)
+  } catch (err) {
+    console.error(`Cashfree status check failed for ${order.id}:`, err.message)
+    return res.status(502).json({ error: 'status_check_failed' })
   }
 
-  const secret = process.env.RAZORPAY_KEY_SECRET || ''
-  const expected = crypto.createHmac('sha256', secret).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest('hex')
-  if (!secret || expected !== razorpay_signature) {
-    db.updateOrder(order.id, { payment_status: 'failed', order_status: 'Failed', failure_reason: 'signature_mismatch' })
-    return res.status(400).json({ error: 'invalid_signature' })
+  if (status.order_status !== 'PAID') {
+    db.updateOrder(order.id, { payment_status: 'failed', order_status: 'Failed', failure_reason: status.order_status })
+    return res.status(400).json({ error: 'payment_not_completed', status: status.order_status })
   }
 
-  const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id, razorpay_signature })
+  const paidOrder = db.markOrderPaid(order.id, { cashfree_payment_id: status.cf_payment_id })
   if (!paidOrder) return res.json({ order: db.getOrder(order.id) }) // lost the race — already confirmed elsewhere
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
   const fresh = db.getOrder(order.id)
@@ -1964,33 +1992,20 @@ app.post('/api/orders/:id/verify-payment', express.json(), (req, res) => {
   return res.json({ order: fresh })
 })
 
-// Razorpay redirects the customer's browser here after they pay (or cancel)
-// a Payment Link — this is the primary confirmation path for that flow (the
-// webhook below is the secondary/backup one, same "client-driven primary,
-// webhook backup" split as the regular checkout's verify-payment endpoint).
+// Cashfree may redirect the customer's browser here after they pay (or
+// cancel) a Payment Link. Deliberately a pure UX convenience redirect with
+// zero trust placed in it — Cashfree gives no verifiable signature on a
+// Payment Link redirect, and the redirect itself is unreliable on mobile
+// (many UPI payments never return to the browser at all). Building
+// verification around an unauthenticated redirect would be strictly worse
+// than doing nothing, since it'd just be trusting the query string. Actual
+// confirmation happens only via the /api/webhook PAYMENT_LINK_EVENT handler.
+// Query param name for the order id isn't 100% pinned down — Cashfree's
+// convention elsewhere is `order_id`, but verify against live Payment Links
+// behavior and adjust if it differs.
 app.get('/api/payment-links/callback', (req, res) => {
-  const {
-    razorpay_payment_id, razorpay_payment_link_id,
-    razorpay_payment_link_reference_id, razorpay_payment_link_status,
-    razorpay_signature
-  } = req.query
-  const order = db.getOrder(razorpay_payment_link_reference_id)
-  if (order && razorpay_payment_link_status === 'paid' && order.payment_status !== 'paid') {
-    const secret = process.env.RAZORPAY_KEY_SECRET || ''
-    const payload = `${razorpay_payment_link_id}|${razorpay_payment_link_reference_id}|${razorpay_payment_link_status}|${razorpay_payment_id}`
-    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex')
-    if (secret && expected === razorpay_signature) {
-      const paidOrder = db.markOrderPaid(order.id, { razorpay_payment_id })
-      if (paidOrder) {
-        printQueue.enqueue(order.id)
-        const fresh = db.getOrder(order.id)
-        notify.sendOrderConfirmationSms(fresh)
-        notify.sendOrderConfirmationEmail(fresh)
-        mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-      }
-    }
-  }
-  return res.redirect(`/track/${razorpay_payment_link_reference_id || ''}`)
+  const orderId = req.query.order_id || req.query.link_id || req.query.reference_id || ''
+  return res.redirect(`/track/${encodeURIComponent(orderId)}`)
 })
 
 // Serve site images (logo, blog placeholder, ...) from server/public/images —
@@ -2057,7 +2072,7 @@ const FAQ_ITEMS = [
   { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), and photos (JPG/PNG). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
   { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹__PRICE_DELIVERY_LOCAL__ within our local PIN code (122505), ₹__PRICE_DELIVERY_GURUGRAM__ elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹__PRICE_FREE_DELIVERY_THRESHOLD__. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
-  { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Razorpay before your order enters the print queue. Metalix Print never stores your card or banking details.' },
+  { q: 'How do I pay, and is it secure?', a: 'All payments are processed securely through Cashfree before your order enters the print queue. Metalix Print never stores your card or banking details.' },
   { q: 'Can I track my order?', a: 'Yes — after payment you get a tracking link showing whether your order is queued, printing, or out for delivery. No account or app install required.' },
   { q: 'What if something’s wrong with my print?', a: 'Report it within 24 hours of pickup or delivery by calling or WhatsApp-ing us. If we made a mistake, we reprint it free; if the issue is with the uploaded file, we can offer a paid reprint.' }
 ]
@@ -2291,7 +2306,7 @@ function defaultPolicyBody(slug) {
       </ul>
       <p>We're happy to offer a <strong>paid reprint</strong> once you've updated your file.</p>
       <h2>Refund timeline</h2>
-      <p>Approved refunds are processed to your original payment method. Razorpay typically settles refunds within <strong>5–7 business days</strong>.</p>`
+      <p>Approved refunds are processed to your original payment method. Cashfree typically settles refunds within <strong>5–7 business days</strong>.</p>`
     case 'delivery':
       return `<div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Choose instant (within 2 hrs) or a scheduled slot. Most orders are ready within 3–4 hours of payment.</p></div>
       <h2>Delivery options</h2>
@@ -2318,7 +2333,7 @@ function defaultPolicyBody(slug) {
         <li>Content that violates any applicable law</li>
       </ul>
       <h2>Payment</h2>
-      <p>All payments are processed securely through Razorpay. Metalix Print does not store your card or banking details. By paying, you agree to Razorpay's terms of service.</p>
+      <p>All payments are processed securely through Cashfree. Metalix Print does not store your card or banking details. By paying, you agree to Cashfree's terms of service.</p>
       <h2>Limitation of liability</h2>
       <p>Our liability is limited to the amount paid for the specific order in question. We are not liable for indirect losses, loss of business, or consequential damages.</p>`
     case 'privacy':
@@ -2328,7 +2343,7 @@ function defaultPolicyBody(slug) {
         <li>Name, mobile number, and optional email — to process and communicate about your order</li>
         <li>Delivery address — only if you choose home delivery</li>
         <li>Uploaded files — solely to fulfil your print job</li>
-        <li>Payment transaction data — processed by Razorpay; we only receive a transaction ID</li>
+        <li>Payment transaction data — processed by Cashfree; we only receive a transaction ID</li>
       </ul>
       <h2>How we use it</h2>
       <p>We use your information only to fulfil your order, contact you about it, and improve our service. We do not share your data with third parties except as needed to complete delivery (our delivery partner).</p>

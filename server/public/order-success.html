@@ -161,7 +161,7 @@ async function loadOrder(){
         '</div>' +
         '<div class="meta">' +
           '<div class="row"><span class="k">Order ID</span><span class="v">' + order.id + '</span></div>' +
-          '<div class="row"><span class="k">Transaction ID</span><span class="v">' + (isCod ? 'Pay on delivery' : (order.razorpay_payment_id || '—')) + '</span></div>' +
+          '<div class="row"><span class="k">Transaction ID</span><span class="v">' + (isCod ? 'Pay on delivery' : (order.cashfree_payment_id || order.razorpay_payment_id || '—')) + '</span></div>' +
           '<div class="row"><span class="k">Print cost</span><span class="v">₹' + order.print_cost + '</span></div>' +
           (order.handling_charge ? '<div class="row"><span class="k">Handling charge</span><span class="v">₹' + order.handling_charge + '</span></div>' : '') +
           (order.delivery_charge ? '<div class="row"><span class="k">Delivery charge</span><span class="v">₹' + order.delivery_charge + '</span></div>' : '') +

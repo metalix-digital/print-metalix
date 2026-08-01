@@ -168,7 +168,8 @@ async function buildInvoicePdf(order) {
   right(money(order.total_amount), width - M, y, 13, bold, ORANGE)
   y -= 34
 
-  if (order.razorpay_payment_id) text('Payment ID: ' + order.razorpay_payment_id, M, y, 9, font, MUTED)
+  const txnId = order.cashfree_payment_id || order.razorpay_payment_id
+  if (txnId) text('Payment ID: ' + txnId, M, y, 9, font, MUTED)
 
   // Footer
   text('Thank you for choosing ' + bizName + '.', M, 58, 10, font, MUTED)

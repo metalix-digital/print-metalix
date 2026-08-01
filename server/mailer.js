@@ -265,7 +265,7 @@ async function sendContactMessageEmail({ name, email, phone, message }) {
 }
 
 // Alerts the business inbox the moment a new order is confirmed (paid online,
-// COD, or via the Razorpay webhook) — same recipient as the "contact us" form,
+// COD, or via the Cashfree webhook) — same recipient as the "contact us" form,
 // so staff have one inbox to watch rather than a second address to configure.
 async function sendNewOrderAlertEmail(order) {
   const to = process.env.CONTACT_EMAIL || 'support@metalix.in'
