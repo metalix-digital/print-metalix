@@ -676,7 +676,19 @@ function activePageSizes(){ return (pricingConfig && Array.isArray(pricingConfig
 // Looks up the full list (not just active) so an order using a since-
 // deactivated size still shows its real label instead of a raw id.
 function pageSizeInfo(id){ return (pricingConfig && Array.isArray(pricingConfig.pageSizes)) ? pricingConfig.pageSizes.find((s) => s.id === id) : null; }
-function pageSizeLabel(id){ const s = pageSizeInfo(id); return s ? s.label : (id || '').toUpperCase(); }
+// Print-size names ("4R", "Legal") mean nothing to a customer who's never
+// ordered prints before — the physical dimension does. 1 decimal place,
+// dropped when it rounds to a whole number (so "4 × 6 in", not "4.0 × 6.0 in").
+function formatInches(mm){
+  const inches = Math.round((mm / 25.4) * 10) / 10;
+  return Number.isInteger(inches) ? String(inches) : inches.toFixed(1);
+}
+function pageSizeDisplayLabel(s){
+  if (!s) return '';
+  if (!s.widthMm || !s.heightMm) return s.label;
+  return s.label + ' (' + formatInches(s.widthMm) + ' × ' + formatInches(s.heightMm) + ' in)';
+}
+function pageSizeLabel(id){ const s = pageSizeInfo(id); return s ? pageSizeDisplayLabel(s) : (id || '').toUpperCase(); }
 function paperTypesForSize(pageSize){ return (pricingConfig && pricingConfig.rates && Array.isArray(pricingConfig.rates[pageSize])) ? pricingConfig.rates[pageSize] : []; }
 function paperTypeLabel(pageSize, id){ const t = paperTypesForSize(pageSize).find((x) => x.id === id); return t ? t.label : (id || ''); }
 
@@ -1005,7 +1017,7 @@ function renderFileList(){
           <span class="fcard-field-label">Page size</span>
           <select class="fselect fpagesize" data-index="${i}" aria-label="Page size for this file">
             <option value="" ${f.pageSize?'':'selected'} disabled>Select page size</option>
-            ${activePageSizes().map((s) => `<option value="${escapeAttr(s.id)}" ${f.pageSize===s.id?'selected':''}>${escapeAttr(s.label)}</option>`).join('')}
+            ${activePageSizes().map((s) => `<option value="${escapeAttr(s.id)}" ${f.pageSize===s.id?'selected':''}>${escapeAttr(pageSizeDisplayLabel(s))}</option>`).join('')}
           </select>
         </div>
         <div class="fcard-field">

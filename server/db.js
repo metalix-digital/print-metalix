@@ -210,7 +210,7 @@ const DEFAULT_PRICING = {
     { id: 'a5', label: 'A5', active: true, widthMm: 148, heightMm: 210, isPhotoDefault: false },
     { id: 'letter', label: 'Letter', active: true, widthMm: 215.9, heightMm: 279.4, isPhotoDefault: false },
     { id: 'legal', label: 'Legal', active: true, widthMm: 215.9, heightMm: 355.6, isPhotoDefault: false },
-    { id: '4r', label: '4R (4×6 in photo)', active: true, widthMm: 101.6, heightMm: 152.4, isPhotoDefault: true }
+    { id: '4r', label: '4R', active: true, widthMm: 101.6, heightMm: 152.4, isPhotoDefault: true }
   ],
   rates: {
     a4: [
