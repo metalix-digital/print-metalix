@@ -5,6 +5,69 @@ const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const app = express()
 
+// Payment webhook — registered before the global express.json() below on
+// purpose. It needs the raw request body to verify the signature; once
+// express.json() has parsed a request (it matches on Content-Type:
+// application/json, which every webhook delivery sends), a later
+// express.raw() on this same route becomes a silent no-op and req.body is
+// already a parsed object, not a Buffer — crypto.createHmac(...).update()
+// then throws on it. (This is exactly what was silently breaking every
+// webhook delivery before this route was moved here — see git history.)
+// Secondary source of truth for payment status (client-driven verification
+// is primary for regular checkout; for payment links, this is the *only*
+// confirmation path, since there's no reliable client-side equivalent).
+app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  const secret = process.env.RAZORPAY_KEY_SECRET || ''
+  const signature = req.headers['x-razorpay-signature']
+  const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex')
+  if (signature !== expected) {
+    return res.status(400).json({ error: 'invalid_signature' })
+  }
+  try {
+    const event = JSON.parse(req.body.toString())
+    console.log('Razorpay webhook event:', event.event)
+    const payment = event.payload && event.payload.payment && event.payload.payment.entity
+    // Payment Link orders don't have a razorpay_order_id on our side at
+    // creation (see createPaymentLinkForOrder) — reference_id (our own order
+    // id) is what ties the webhook back to the right order instead.
+    const paymentLink = event.payload && event.payload.payment_link && event.payload.payment_link.entity
+    if (event.event === 'payment_link.paid' && paymentLink && paymentLink.reference_id) {
+      const order = db.getOrder(paymentLink.reference_id)
+      if (order) {
+        const paidOrder = db.markOrderPaid(order.id, {
+          razorpay_payment_id: payment ? payment.id : null,
+          order_status: 'Payment Successful'
+        })
+        if (paidOrder) {
+          printQueue.enqueue(order.id)
+          const fresh = db.getOrder(order.id)
+          notify.sendOrderConfirmationSms(fresh)
+          notify.sendOrderConfirmationEmail(fresh)
+          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        }
+      }
+    } else if (payment && payment.order_id) {
+      const order = db.db.prepare('SELECT * FROM orders WHERE razorpay_order_id = ?').get(payment.order_id)
+      if (order) {
+        const paidOrder = db.markOrderPaid(order.id, {
+          razorpay_payment_id: payment.id,
+          order_status: 'Payment Successful'
+        })
+        if (paidOrder) {
+          printQueue.enqueue(order.id)
+          const fresh = db.getOrder(order.id)
+          notify.sendOrderConfirmationSms(fresh)
+          notify.sendOrderConfirmationEmail(fresh)
+          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
+        }
+      }
+    }
+    res.status(200).json({ ok: true })
+  } catch (err) {
+    res.status(400).end()
+  }
+})
+
 // 20mb to fit the two full-page JPEG screenshots the job sheet PDF merge
 // endpoint receives (html2canvas captures at 1.5x scale).
 app.use(express.json({ limit: '20mb' }))
@@ -1928,59 +1991,6 @@ app.get('/api/payment-links/callback', (req, res) => {
     }
   }
   return res.redirect(`/track/${razorpay_payment_link_reference_id || ''}`)
-})
-
-// Razorpay webhook — secondary source of truth for payment status.
-app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET || ''
-  const signature = req.headers['x-razorpay-signature']
-  const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex')
-  if (signature !== expected) {
-    return res.status(400).json({ error: 'invalid_signature' })
-  }
-  try {
-    const event = JSON.parse(req.body.toString())
-    console.log('Razorpay webhook event:', event.event)
-    const payment = event.payload && event.payload.payment && event.payload.payment.entity
-    // Payment Link orders don't have a razorpay_order_id on our side at
-    // creation (see createPaymentLinkForOrder) — reference_id (our own order
-    // id) is what ties the webhook back to the right order instead.
-    const paymentLink = event.payload && event.payload.payment_link && event.payload.payment_link.entity
-    if (event.event === 'payment_link.paid' && paymentLink && paymentLink.reference_id) {
-      const order = db.getOrder(paymentLink.reference_id)
-      if (order) {
-        const paidOrder = db.markOrderPaid(order.id, {
-          razorpay_payment_id: payment ? payment.id : null,
-          order_status: 'Payment Successful'
-        })
-        if (paidOrder) {
-          printQueue.enqueue(order.id)
-          const fresh = db.getOrder(order.id)
-          notify.sendOrderConfirmationSms(fresh)
-          notify.sendOrderConfirmationEmail(fresh)
-          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-        }
-      }
-    } else if (payment && payment.order_id) {
-      const order = db.db.prepare('SELECT * FROM orders WHERE razorpay_order_id = ?').get(payment.order_id)
-      if (order) {
-        const paidOrder = db.markOrderPaid(order.id, {
-          razorpay_payment_id: payment.id,
-          order_status: 'Payment Successful'
-        })
-        if (paidOrder) {
-          printQueue.enqueue(order.id)
-          const fresh = db.getOrder(order.id)
-          notify.sendOrderConfirmationSms(fresh)
-          notify.sendOrderConfirmationEmail(fresh)
-          mailer.sendNewOrderAlertEmail(fresh).catch((err) => console.error(`[mailer] new order alert failed for ${fresh.id}:`, err.message))
-        }
-      }
-    }
-    res.status(200).json({ ok: true })
-  } catch (err) {
-    res.status(400).end()
-  }
 })
 
 // Serve site images (logo, blog placeholder, ...) from server/public/images —
