@@ -3143,9 +3143,10 @@ async function loadSettings(){
       textFieldHtml('Shipping policy', 'legal.shippingPolicy', s.legal.shippingPolicy, true) +
     '</div>' +
     '<h2>Analytics & SEO</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting. For Search Console, paste just the <code>content</code> value from the verification meta tag Google gives you (not the whole tag).</p>' +
     '<div class="field-grid">' +
       textFieldHtml('Google Tag Manager Container ID', 'analytics.gtmContainerId', (s.analytics||{}).gtmContainerId || '') +
+      textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
     '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
     '<div id="settingsMessage"></div>';
