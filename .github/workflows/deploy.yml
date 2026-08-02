@@ -38,25 +38,16 @@ jobs:
           echo "--- changed files ---"
           echo "$CHANGED"
 
-          # Stop the service *before* touching node_modules. `npm ci` wipes
-          # and reinstalls from scratch, which briefly deletes the compiled
-          # better-sqlite3 native binding — with the service left running,
-          # systemd's Restart=always kept retrying node every couple seconds
-          # against that half-rebuilt node_modules, crash-looping for the
-          # full ~2 minutes npm ci/node-gyp took (see the 2026-07-22 sitemap
-          # incident). Stopping first turns that into one clean restart.
-          sudo systemctl stop metalix
-
-          # `npm ci` wipes and reinstalls node_modules from scratch every
-          # time — on this small VM that's most of the deploy time. Only
-          # pay for it when the relevant lockfile actually changed.
-          if echo "$CHANGED" | grep -qE '^server/package(-lock)?\.json$'; then
-            echo "--- server deps changed, running npm ci ---"
-            sudo -u www-data npm ci --omit=dev --prefix "$REPO/server"
-          else
-            echo "--- server deps unchanged, skipping npm ci ---"
-          fi
-
+          # Client build happens *before* the service is touched at all: it
+          # only writes to client/dist, which the running process doesn't
+          # read again until its next restart, so building it early costs no
+          # extra downtime. It also means a broken build fails here, before
+          # systemctl stop, leaving the previous deploy running instead of
+          # taking prod down for however long the build/fix takes. (Doing
+          # this after stop was also our best explanation for recurring GSC
+          # "sitemap couldn't fetch" reports — frequent deploys meant frequent
+          # multi-second windows where the site was down mid-build, and
+          # Google's periodic re-fetch had repeated chances to land in one.)
           if echo "$CHANGED" | grep -qE '^client/package(-lock)?\.json$'; then
             echo "--- client deps changed, running npm ci ---"
             sudo -u www-data npm ci --prefix "$REPO/client"
@@ -69,6 +60,27 @@ jobs:
           # there's no real cost to always doing it.
           echo "--- rebuilding client ---"
           sudo -u www-data npm run build --prefix "$REPO/client"
+
+          # Stop the service *before* touching server/node_modules. `npm ci`
+          # wipes and reinstalls from scratch, which briefly deletes the
+          # compiled better-sqlite3 native binding — with the service left
+          # running, systemd's Restart=always kept retrying node every couple
+          # seconds against that half-rebuilt node_modules, crash-looping for
+          # the full ~2 minutes npm ci/node-gyp took (see the 2026-07-22
+          # sitemap incident). Stopping first turns that into one clean
+          # restart. This is now the only thing that happens while the site
+          # is down, so the downtime window is just this stop-to-start gap.
+          sudo systemctl stop metalix
+
+          # `npm ci` wipes and reinstalls node_modules from scratch every
+          # time — on this small VM that's most of the deploy time. Only
+          # pay for it when the relevant lockfile actually changed.
+          if echo "$CHANGED" | grep -qE '^server/package(-lock)?\.json$'; then
+            echo "--- server deps changed, running npm ci ---"
+            sudo -u www-data npm ci --omit=dev --prefix "$REPO/server"
+          else
+            echo "--- server deps unchanged, skipping npm ci ---"
+          fi
 
           sudo systemctl start metalix
           sudo systemctl status metalix --no-pager
