@@ -6,7 +6,10 @@ customer order flow, a multi-branch admin dashboard, a public order-tracking pag
 blog, and a daily analytics export to BigQuery.
 
 - **Server** — Express API + static host, single Node process (`server/`)
-- **Marketing site** (`/`, `/blog`, `/policies`) — static HTML/CSS/vanilla JS, `server/public/landing.html`
+- **Marketing site** (`/`, `/blog`, `/policies/<slug>`, `/contact`) — static HTML/CSS/vanilla
+  JS, `server/public/landing.html`. Each policy (`refund-reprint`, `delivery`,
+  `terms-of-service`, `privacy`) is its own indexable page with distinct title/description/
+  canonical; the bare `/policies` URL 301s to `/policies/refund-reprint`
 - **Order flow** (catch-all route, e.g. `/order`) — a single static HTML page built by Vite,
   `client/` — plain HTML/CSS/vanilla JS, **no framework** (the `client` name and Vite
   build step predate a planned React migration that never happened)
@@ -50,7 +53,8 @@ the repo.
 | Variable | Purpose |
 |---|---|
 | `PORT` | HTTP port (default `5050`) |
-| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay payments & webhook verification |
+| `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | Cashfree payments, payment links & webhook verification |
+| `CASHFREE_ENV` | Set to `production` for live payments; anything else uses Cashfree's sandbox |
 | `ADMIN_JWT_SECRET` | Signing secret for admin/customer sessions |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap super-admin login (used once to seed the DB) |
 | `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
@@ -103,8 +107,10 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 - Upload PDF / Word / PPT; the server analyses pages, colour, and page count
 - Print options: paper size/type, B&W or colour, single/double-sided, orientation, copies
 - Live pricing calculator; choose a branch, home delivery or store pickup
-- Razorpay checkout (online) or cash/UPI pay-on-delivery, with server-side signature
-  verification for online payments
+- Cashfree checkout (online) or cash/UPI pay-on-delivery. Cashfree's client SDK gives no
+  cryptographically verifiable signature, so payment confirmation is server-to-server —
+  `verify-payment` asks Cashfree directly for order status, and admin-sent payment links
+  are confirmed solely via the Cashfree webhook (no client-driven fallback)
 - Accounts: email/mobile + password, Google sign-in, password reset by email
 - Track order status and progress timeline from a link / QR code; rate a completed order
 - Shop-closed state: outside a branch's hours, order/track/blog pages show a "closed" page
@@ -113,14 +119,25 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 - Multi-branch dashboard: orders, customers, archive, feedback, blog, pricing, staff, and
   site/branch settings — a `branch_admin`'s view and API access are scoped to their branch
   and their `allowed_tabs`
+- Manual order entry (New Order) for phone/WhatsApp customers: paste a copied image
+  directly into the modal, JPG/PNG uploads default to whichever page size is marked
+  "Photo" in Pricing, bulk-apply page size/paper type across multiple files, and
+  mobile-number autofill from past customers
 - Printable job sheet (PDF) per order, with per-file download
 - Order status workflow (Queued → Printing → Delivery/Pickup → Completed), single or bulk
 - **Cash-on-delivery orders cannot be marked Completed until payment is recorded** via the
   "Collect Cash" / "Collect UPI" action — enforced both in the UI and by the API
+- Send a Cashfree payment link for phone/WhatsApp orders; "Recheck payment" manually
+  re-queries Cashfree for a link's status as a hardening measure, since payment links have
+  no client-side confirmation path
 - Soft-delete ("Archive") with a 30-day recovery window before a background job purges the
   order and its files permanently
+- Analytics & SEO settings: Google Tag Manager container ID, Google Search Console
+  verification (meta-tag method), and an optional direct GA Measurement ID snippet (only
+  needed for GSC's separate "Google Analytics" ownership-verification method)
 - Login by ID + password; "Forgot password" emails a time-limited reset link (the login
-  ID must be correct, and the link goes only to the configured reset email)
+  ID must be correct, and the link goes only to the configured reset email); both admin and
+  customer login are rate-limited (8 attempts / 15 min per IP + identifier)
 
 ---
 
@@ -132,15 +149,18 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 `POST /api/track/:id/feedback`
 
 **Uploads & orders** — `POST /api/upload` · `POST /api/orders` · `GET /api/orders/:id` ·
-`POST /api/orders/:id/verify-payment` · `POST /api/webhook`
+`POST /api/orders/:id/verify-payment` · `POST /api/webhook` ·
+`GET /api/payment-links/callback`
 
 **Customer auth** — `POST /api/auth/signup` · `POST /api/auth/login` ·
 `POST /api/auth/google` · `POST /api/auth/forgot-password` ·
 `POST /api/auth/reset-password` · `GET /api/me` · `GET /api/my/orders`
 
-**Admin — orders** — `GET /api/admin/orders` · `GET /api/admin/orders/:id` ·
+**Admin — orders** — `GET /api/admin/orders` · `POST /api/admin/orders` (manual/phone entry) ·
+`GET /api/admin/orders/:id` ·
 `PATCH /api/admin/orders/:id` · `POST /api/admin/orders/bulk-status` ·
-`POST /api/admin/orders/:id/collect-payment` · `POST /api/admin/orders/:id/jobsheet-pdf` ·
+`POST /api/admin/orders/:id/collect-payment` · `POST /api/admin/orders/:id/payment-link` ·
+`POST /api/admin/orders/:id/recheck-payment` · `POST /api/admin/orders/:id/jobsheet-pdf` ·
 `GET /api/admin/orders/:id/files/:fileId/download` · `DELETE /api/admin/orders/:id` (archive) ·
 `POST /api/admin/orders/:id/restore` · `DELETE /api/admin/orders/:id/purge` ·
 `POST /api/admin/orders/bulk-delete` · `GET /api/admin/archive` · `GET /api/admin/feedback`
@@ -182,14 +202,15 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 
 **Live deploys are fully automated.** `.github/workflows/deploy.yml` runs on a self-hosted
 GitHub Actions runner installed directly on the production VM: on every push to `main` it
-pulls, rebuilds only the side (`server/`/`client/`) whose files actually changed, and
-restarts the `metalix` systemd service. `git push origin main` is the entire deploy step —
-no manual SSH needed.
+pulls, conditionally reinstalls dependencies for whichever side (`server/`/`client/`)
+changed, and rebuilds `client/dist`, all *before* touching the running service — then stops
+`metalix`, conditionally runs the server's `npm ci`, and starts it again. Downtime per
+deploy is just that stop→start gap (observed ~130ms with no server dependency change), not
+the build time. `git push origin main` is the entire deploy step — no manual SSH needed.
 
-`client/dist/` is committed to the repo as a fallback so the app still serves before the
-first automated build runs, but it is regenerated by the workflow on every deploy — avoid
-committing a locally-rebuilt copy of it yourself, since a version that differs from what
-the VM's own build produces can make the next `git pull` refuse to merge.
+`client/dist/` is **not** committed to the repo (it's gitignored) — it's a pure build
+artifact, unconditionally regenerated by the workflow on every deploy. Don't commit a
+locally-built copy of it.
 
 To reproduce a production-style run manually (from the repo root):
 
@@ -216,7 +237,8 @@ server/
   docConvert.js         Word/PPT → PDF via LibreOffice
   printQueue.js         Print-job queue
   mailer.js  notify.js  Email / notifications
-  backupDb.js           Periodic database backup
+  backupDb.js           Periodic database backup (cloud, falling back to a local copy in
+                         server/data/backups/, pruned to last 28, if cloud is unavailable)
   fileRetention.js      Expired-file cleanup + 30-day archive purge
   scripts/bqSync.js     SQLite → BigQuery upsert
   public/               landing.html (marketing site), admin.html (dashboard),
