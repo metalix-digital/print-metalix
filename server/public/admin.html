@@ -3131,7 +3131,9 @@ async function loadSettings(){
       textFieldHtml('LinkedIn URL', 'social.linkedin', s.social.linkedin) +
       textFieldHtml('YouTube URL', 'social.youtube', s.social.youtube) +
     '</div>' +
-    '<h2>SEO metadata</h2><div class="field-grid full">' +
+    '<h2>SEO metadata</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Applies to the homepage (print.metalix.in) only — leave blank to keep the built-in defaults. Note: Google has ignored the "keywords" tag for ranking since 2009, so it won\'t move search rankings on its own; title and description do matter, since they\'re what shows in the search result itself. For real search-visibility gains beyond this, the biggest lever is Blog posts (each has its own title/description/tags) targeting the actual questions customers search for.</p>' +
+    '<div class="field-grid full">' +
       textFieldHtml('Meta title', 'seo.metaTitle', s.seo.metaTitle) +
       textFieldHtml('Meta description', 'seo.metaDescription', s.seo.metaDescription, true) +
       textFieldHtml('Keywords (comma-separated)', 'seo.keywords', s.seo.keywords) +

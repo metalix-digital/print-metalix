@@ -2237,13 +2237,20 @@ function pricingPlaceholders() {
 function renderLanding(route) {
   const meta = LANDING_ROUTES[route]
   const settings = db.getSiteSettings()
+  const seo = settings.seo || {}
+  // Admin-editable title/description/keywords (Settings > SEO metadata) only
+  // apply to the public homepage — "/orders" is private/noindex, where
+  // site-wide SEO copy would never make sense to substitute in.
+  const title = (route === '/' && seo.metaTitle) ? seo.metaTitle : meta.title
+  const description = (route === '/' && seo.metaDescription) ? seo.metaDescription : meta.description
+  const keywords = (route === '/' && seo.keywords) ? seo.keywords : meta.keywords
   const gscCode = (settings.analytics || {}).searchConsoleVerification || ''
   const gtm = gtmSnippets(settings)
   const template = readPublicTemplate('landing.html')
   let html = template
-    .split('__META_TITLE__').join(escAttr(meta.title))
-    .split('__META_DESCRIPTION__').join(escAttr(meta.description))
-    .split('__META_KEYWORDS__').join(escAttr(meta.keywords))
+    .split('__META_TITLE__').join(escAttr(title))
+    .split('__META_DESCRIPTION__').join(escAttr(description))
+    .split('__META_KEYWORDS__').join(escAttr(keywords))
     .split('__CANONICAL_URL__').join(escAttr(meta.canonical))
     .split('__META_ROBOTS__').join(meta.robots)
     // Search Console verifies via the home page, so this is only meaningful on "/" —
