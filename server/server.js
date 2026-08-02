@@ -2185,6 +2185,21 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   return { head, noscript }
 }
 
+// A standalone gtag.js snippet, separate from the GTM container above.
+// Search Console's "Google Analytics" ownership-verification method only
+// recognizes this exact install pattern (a direct analytics.js/gtag.js
+// include) — it doesn't detect a GA4 tag configured inside GTM. Only
+// rendered when an admin explicitly sets a Measurement ID for this purpose,
+// since it duplicates whatever GA4 tag may already be wired up in GTM.
+function gaVerificationSnippet(settings) {
+  const gaId = (settings.analytics || {}).gaMeasurementId || ''
+  if (!gaId) return ''
+  const idAttr = escAttr(gaId)
+  return `<!-- Google Analytics (direct snippet, for Search Console ownership verification) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=${idAttr}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${idAttr}');</script>`
+}
+
 // Matches landing.html's client-side fmtPrice() exactly, so the
 // server-rendered figure and whatever applyPricing() might patch it to
 // later never disagree in format (whole number vs. up to 2 decimals).
@@ -2234,6 +2249,7 @@ function renderLanding(route) {
     // Search Console verifies via the home page, so this is only meaningful on "/" —
     // harmless (empty) on every other route since the meta tag is simply omitted.
     .split('__GSC_VERIFICATION__').join(gscCode ? `<meta name="google-site-verification" content="${escAttr(gscCode)}">` : '')
+    .split('__GA_VERIFICATION_HEAD__').join(gaVerificationSnippet(settings))
     .split('__GTM_HEAD__').join(gtm.head)
     .split('__GTM_NOSCRIPT__').join(gtm.noscript)
     .split('__LOCALBUSINESS_JSON_LD__').join(localBusinessJsonLd())
