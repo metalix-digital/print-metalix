@@ -2631,6 +2631,11 @@ app.get('/llms.txt', (req, res) => {
   res.type('text/plain').sendFile(path.join(publicDir, 'llms.txt'))
 })
 
+// Google Search Console domain ownership verification (HTML file method).
+app.get('/googlecfc92098877ba2b1.html', (req, res) => {
+  res.type('text/plain').sendFile(path.join(publicDir, 'googlecfc92098877ba2b1.html'))
+})
+
 // Password-protected admin dashboard (orders, customers, pricing).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'))
