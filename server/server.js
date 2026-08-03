@@ -2240,6 +2240,13 @@ function readPublicTemplate(name) {
   let cached = templateCache.get(name)
   if (!cached) {
     cached = fs.readFileSync(path.join(publicDir, name), 'utf8')
+    // landing.html's analytics.js include gets a content-hash query param
+    // here, once, so every route that serves this template picks it up
+    // without each one needing its own placeholder/substitution — see the
+    // long maxAge on the /js static route above for why this exists.
+    if (name === 'landing.html') {
+      cached = cached.split('/js/analytics.js"').join(`/js/analytics.js?v=${analyticsJsVersion}"`)
+    }
     templateCache.set(name, cached)
   }
   return cached
@@ -2268,10 +2275,19 @@ if (fs.existsSync(publicDir)) {
     },
   }))
 
-  // Shared client-side logic (currently just the GA4 loader) — short cache
-  // since these are hand-edited scripts, not fingerprinted build assets.
-  app.use('/js', express.static(path.join(publicDir, 'js'), { maxAge: '1d' }))
+  // Shared client-side logic (currently just the cookie-consent/GA4 loader).
+  // Not a fingerprinted build asset, so cache it long (Lighthouse flags
+  // anything short) but bust that cache automatically via the content-hashed
+  // ?v= query param landing.html requests it with below — a real edit here
+  // changes the hash, and therefore the URL, so long-lived callers always
+  // fetch the new content instead of serving a stale cached copy for a year.
+  app.use('/js', express.static(path.join(publicDir, 'js'), { maxAge: '365d', immutable: true }))
 }
+
+const analyticsJsPath = path.join(publicDir, 'js', 'analytics.js')
+const analyticsJsVersion = fs.existsSync(analyticsJsPath)
+  ? crypto.createHash('sha256').update(fs.readFileSync(analyticsJsPath)).digest('hex').slice(0, 10)
+  : Date.now().toString(36)
 
 // Admin-controlled kill switch (Settings tab) for taking the storefront
 // offline without touching /admin, /track/:id, /jobsheet.html, or any /api/*
