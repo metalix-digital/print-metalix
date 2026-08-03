@@ -246,6 +246,33 @@ __GTM_HEAD__
   .modal-actions{ display:flex; gap:10px; }
   .modal-actions .btn{ flex:1; }
 
+  /* Passport Photos */
+  .passport-list{ width:100%; display:flex; flex-direction:column; gap:14px; margin-top:18px; }
+  .passport-card{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; gap:14px; box-shadow:0 1px 2px rgba(26,34,56,.03); }
+  .passport-card .pp-thumb{ width:64px; height:82px; flex-shrink:0; border-radius:10px; object-fit:cover; background:var(--paper-dim); border:1px solid var(--line); }
+  .passport-card .pp-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+  .passport-card .pp-top{ display:flex; align-items:center; gap:10px; }
+  .passport-card .pp-name{ font-size:13px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .passport-card .pp-needs-crop{ font-size:11px; font-weight:700; color:var(--orange-deep); background:var(--orange-tint); border:1px solid var(--orange-tint-border); border-radius:999px; padding:3px 9px; flex-shrink:0; cursor:pointer; }
+  .passport-card .fremove{ margin-left:0; flex-shrink:0; width:26px; height:26px; border-radius:50%; border:none; background:var(--paper-dim); color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .passport-card .fremove:hover{ background:var(--red); color:#fff; transform:scale(1.08); }
+  .pp-size-select{ width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:12.5px; font-family:'Inter',sans-serif; color:var(--ink); background:var(--paper-dim); cursor:pointer; }
+  .pp-qty-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .pp-qty-tile{ flex:1; min-width:76px; border:1.5px solid var(--line); background:var(--paper-dim); border-radius:10px; padding:8px 10px; text-align:center; cursor:pointer; transition:all .15s ease; }
+  .pp-qty-tile b{ display:block; font-size:14px; color:var(--ink); }
+  .pp-qty-tile span{ display:block; font-size:11px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:2px; }
+  .pp-qty-tile.active{ border-color:var(--orange); background:var(--orange-tint); }
+  .pp-qty-tile.active b{ color:var(--orange-deep); }
+
+  /* Crop modal */
+  .crop-stage{ position:relative; max-width:420px; max-height:60vh; overflow:hidden; background:#111; display:flex; align-items:center; justify-content:center; touch-action:none; margin:0 auto; }
+  .crop-stage img{ max-width:100%; max-height:60vh; display:block; user-select:none; -webkit-user-drag:none; }
+  .crop-frame{ position:absolute; border:2px solid #fff; box-shadow:0 0 0 2000px rgba(0,0,0,.55); cursor:move; }
+  .crop-handle{ position:absolute; right:-7px; bottom:-7px; width:16px; height:16px; border-radius:50%; background:var(--orange); border:2px solid #fff; cursor:nwse-resize; }
+  .crop-controls{ padding:14px 18px 18px; display:flex; flex-direction:column; gap:12px; border-top:1px solid var(--paper-dim); }
+  .crop-controls label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; display:flex; flex-direction:column; gap:6px; }
+  .crop-controls select{ padding:9px 10px; border:1px solid var(--line); border-radius:9px; font-size:13.5px; font-family:'Inter',sans-serif; color:var(--ink); background:var(--surface); }
+
   /* Success panel */
 
   @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
@@ -362,6 +389,22 @@ __GTM_NOSCRIPT__
       </div>
 
       <div class="opt-group">
+        <span class="opt-label center">Passport photos</span>
+        <div class="tray" id="passportTray">
+          <div class="tray-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="1.8"><circle cx="12" cy="9" r="3.2"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="tray-title">Add a passport-size photo</div>
+          <div class="tray-sub">Upload a face photo, crop it to size, and pick a pack — printed on <b>A4 glossy paper</b></div>
+        </div>
+        <input type="file" id="passportFileInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple />
+        <div class="btn-row">
+          <button class="btn btn-primary" id="passportChooseBtn" type="button">+ Add photo</button>
+        </div>
+        <div class="passport-list" id="passportList"></div>
+      </div>
+
+      <div class="opt-group">
         <span class="opt-label">Delivery</span>
         <div class="seg">
           <label><input type="radio" name="delivery" value="pickup" checked><span class="pill">Collect from shop</span></label>
@@ -452,6 +495,7 @@ __GTM_NOSCRIPT__
         <div class="rline" id="rPaperTypeRow"><span>Paper type</span><b id="rPaperType">Normal</b></div>
         <div class="rline"><span>Printing side</span><b id="rSide">Single</b></div>
         <div class="rline"><span>Copies</span><b class="num-tick" id="rCopies">1</b></div>
+        <div class="rline" id="rPassportRow" style="display:none;"><span>Passport photo packs</span><b class="num-tick" id="rPassportPacks">0</b></div>
 
         <div class="rdiv"></div>
 
@@ -499,6 +543,7 @@ __GTM_NOSCRIPT__
     <div class="mline"><span>Paper size</span><b id="mPaper">—</b></div>
     <div class="mline" id="mPaperTypeRow"><span>Paper type</span><b id="mPaperType">—</b></div>
     <div class="mline"><span>Copies</span><b id="mCopies">—</b></div>
+    <div class="mline" id="mPassportRow" style="display:none;"><span>Passport photo packs</span><b id="mPassportPacks">—</b></div>
     <div class="mline"><span>Delivery</span><b id="mDelivery">—</b></div>
     <div class="mline" id="mDeliveryTimingRow"><span>Delivery timing</span><b id="mDeliveryTiming">—</b></div>
     <div class="mline"><span>Payment</span><b id="mPayment">—</b></div>
@@ -526,6 +571,37 @@ __GTM_NOSCRIPT__
       <button id="pvPrev" type="button" aria-label="Previous page">‹</button>
       <span class="pv-page" id="pvPageLabel">Page 1 of 1</span>
       <button id="pvNext" type="button" aria-label="Next page">›</button>
+    </div>
+  </div>
+</div>
+
+<!-- Passport photo crop modal -->
+<div class="modal-overlay" id="cropModal">
+  <div class="preview-modal">
+    <div class="preview-head">
+      <div class="pv-title">Crop your photo</div>
+      <button class="pv-close" id="cropClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="preview-body">
+      <div class="crop-stage" id="cropStage">
+        <img id="cropImg" src="" alt="Photo to crop" draggable="false" />
+        <div class="crop-frame" id="cropFrame">
+          <div class="crop-handle" id="cropHandle"></div>
+        </div>
+      </div>
+    </div>
+    <div class="crop-controls">
+      <label>Size
+        <select id="cropSizeSelect"></select>
+      </label>
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn btn-ghost" id="cropRotateLeft" type="button">⟲ Rotate</button>
+        <button class="btn btn-ghost" id="cropRotateRight" type="button">⟳ Rotate</button>
+      </div>
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn btn-ghost" id="cropCancelBtn" type="button">Cancel</button>
+        <button class="btn btn-primary" id="cropApplyBtn" type="button">Apply crop</button>
+      </div>
     </div>
   </div>
 </div>
@@ -701,12 +777,27 @@ const NEW_FILE_DEFAULTS = { printMode: 'bw', pageSize: '', paperType: '', orient
 
 let state = {
   files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, pageSize, paperType, orientation, printSide, copies, password}, ...]
+  // Passport photos are a separate cart of items — a single order can contain
+  // both documents and passport photos together (see server/pricing.js and
+  // server/server.js buildPricedOrderFiles, which price a mixed files array
+  // per-item). Each item: { localId, rawFile, objectUrl, croppedPreviewUrl,
+  // croppedBlob, sizePresetId, packQty, status: 'needs-crop'|'uploading'|'ready',
+  // fileId, fileName, fileType, fileSize }.
+  passportItems: [],
   uploading: false,
   deliveryMethod: 'pickup',
   deliveryTiming: 'instant',
   scheduledAt: null,
   paymentMethod: 'online'
 };
+
+// Passport Photos config helpers — mirror activePageSizes()/paperTypesForSize()
+// above, scoped to pricingConfig.passportPhotos instead of pageSizes/rates.
+function activePassportPresets(){ return (pricingConfig && pricingConfig.passportPhotos && Array.isArray(pricingConfig.passportPhotos.sizePresets)) ? pricingConfig.passportPhotos.sizePresets.filter((s) => s.active) : []; }
+function passportPresetInfo(id){ return (pricingConfig && pricingConfig.passportPhotos && Array.isArray(pricingConfig.passportPhotos.sizePresets)) ? pricingConfig.passportPhotos.sizePresets.find((s) => s.id === id) : null; }
+function passportPackTiers(){ return (pricingConfig && pricingConfig.passportPhotos && Array.isArray(pricingConfig.passportPhotos.packPrices)) ? pricingConfig.passportPhotos.packPrices : []; }
+function passportPackPrice(qty){ const t = passportPackTiers().find((p) => p.qty === qty); return t ? Number(t.price) || 0 : 0; }
+function passportItemCost(item){ return item.sizePresetId ? passportPackPrice(item.packQty) : 0; }
 
 function totalUploadedBytes(){
   return state.files.reduce((sum, f) => sum + (f.fileSize || 0), 0);
@@ -778,7 +869,7 @@ function resolveDeliveryCharge(preDeliveryTotal){
 }
 
 function calcEstimate(){
-  if(!pricingConfig || !state.files.length){
+  if(!pricingConfig || (!state.files.length && !state.passportItems.length)){
     return { colorPages: 0, bwPages: 0, printCost: 0, handlingCharge: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
   }
   let colorPages = 0, bwPages = 0, printCost = 0;
@@ -789,6 +880,9 @@ function calcEstimate(){
     bwPages += split.bwPages * copies;
     printCost += fileCost(f);
   });
+  // Passport photos are flat-pack priced (see server/pricing.js) — no
+  // page/color math, just the chosen pack's fixed price.
+  state.passportItems.forEach((item) => { printCost += passportItemCost(item); });
   printCost = Math.round(printCost);
   const handlingCharge = pricingConfig.handlingCharge || 0;
   const preDeliveryTotal = printCost + handlingCharge;
@@ -865,6 +959,8 @@ function recalc(){
   rPaperTypeRow.style.display = state.files.length ? 'flex' : 'none';
   rSide.textContent = sideSummaryLabel();
   rCopies.textContent = copiesSummaryLabel();
+  document.getElementById('rPassportRow').style.display = state.passportItems.length ? 'flex' : 'none';
+  document.getElementById('rPassportPacks').textContent = state.passportItems.length;
   rPrintCost.textContent = '₹' + est.printCost;
   rHandling.textContent = '₹' + est.handlingCharge;
   rDelivery.textContent = '₹' + est.deliveryCharge;
@@ -872,7 +968,8 @@ function recalc(){
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
   [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rGst, rTotal].forEach(flash);
-  confirmBtn.disabled = !state.files.length || state.uploading;
+  const passportUploading = state.passportItems.some((p) => p.status === 'uploading');
+  confirmBtn.disabled = (!state.files.length && !state.passportItems.length) || state.uploading || passportUploading;
 }
 
 const deliveryAddress = document.getElementById('deliveryAddress');
@@ -1145,6 +1242,327 @@ function renderFileList(){
   });
 }
 
+/* -- Passport Photos: upload, manual crop, and per-item options -- */
+const passportFileInput = document.getElementById('passportFileInput');
+const passportChooseBtn = document.getElementById('passportChooseBtn');
+const passportTray = document.getElementById('passportTray');
+const passportList = document.getElementById('passportList');
+const PASSPORT_ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+
+function removePassportItem(localId){
+  const idx = state.passportItems.findIndex((p) => p.localId === localId);
+  if(idx === -1) return;
+  const item = state.passportItems[idx];
+  if(item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+  if(item.croppedPreviewUrl) URL.revokeObjectURL(item.croppedPreviewUrl);
+  state.passportItems.splice(idx, 1);
+  renderPassportList();
+  recalc();
+}
+
+function renderPassportList(){
+  if(!state.passportItems.length){ passportList.innerHTML = ''; return; }
+  const presets = activePassportPresets();
+  const tiers = passportPackTiers();
+  passportList.innerHTML = state.passportItems.map((item) => `
+    <div class="passport-card" data-id="${escapeAttr(item.localId)}">
+      <img class="pp-thumb" src="${item.croppedPreviewUrl || item.objectUrl}" alt="Passport photo preview" />
+      <div class="pp-body">
+        <div class="pp-top">
+          <div class="pp-name">${escapeAttr(item.fileName || 'Photo')}</div>
+          ${item.status === 'needs-crop' ? `<span class="pp-needs-crop" data-recrop="${escapeAttr(item.localId)}">Crop photo</span>` : ''}
+          ${item.status === 'uploading' ? `<span class="pp-needs-crop">Uploading…</span>` : ''}
+          <button class="fremove" type="button" data-remove="${escapeAttr(item.localId)}" aria-label="Remove">✕</button>
+        </div>
+        <div class="fcard-field">
+          <span class="fcard-field-label">Size</span>
+          <select class="pp-size-select" data-id="${escapeAttr(item.localId)}">
+            ${presets.map((s) => `<option value="${escapeAttr(s.id)}" ${item.sizePresetId===s.id?'selected':''}>${escapeAttr(s.label)} (${s.widthMm}×${s.heightMm}mm)</option>`).join('')}
+          </select>
+        </div>
+        <div class="pp-qty-row">
+          ${tiers.map((t) => `<div class="pp-qty-tile ${item.packQty===t.qty?'active':''}" data-id="${escapeAttr(item.localId)}" data-qty="${t.qty}"><b>${t.qty}</b><span>₹${t.price}</span></div>`).join('')}
+        </div>
+        ${item.status === 'ready' ? `<div class="fcard-price"><span>Cost for this pack</span><b>₹${passportItemCost(item)}</b></div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  passportList.querySelectorAll('[data-remove]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); removePassportItem(btn.dataset.remove); });
+  });
+  passportList.querySelectorAll('[data-recrop]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const item = state.passportItems.find((p) => p.localId === el.dataset.recrop);
+      if(item) openCropModal(item);
+    });
+  });
+  passportList.querySelectorAll('.pp-thumb').forEach((img) => {
+    img.addEventListener('click', () => {
+      const item = state.passportItems.find((p) => p.localId === img.closest('.passport-card').dataset.id);
+      if(item) openCropModal(item);
+    });
+  });
+  passportList.querySelectorAll('.pp-size-select').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', (e) => {
+      const item = state.passportItems.find((p) => p.localId === sel.dataset.id);
+      if(!item) return;
+      // A different preset means a different aspect ratio — the existing
+      // crop no longer matches it, so force a re-crop before checkout.
+      if(item.sizePresetId !== e.target.value && item.status === 'ready') item.status = 'needs-crop';
+      item.sizePresetId = e.target.value;
+      renderPassportList();
+      recalc();
+    });
+  });
+  passportList.querySelectorAll('.pp-qty-tile').forEach((tile) => {
+    tile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = state.passportItems.find((p) => p.localId === tile.dataset.id);
+      if(!item) return;
+      item.packQty = Number(tile.dataset.qty);
+      renderPassportList();
+      recalc();
+    });
+  });
+}
+
+function addPassportFiles(fileArray){
+  const added = [];
+  fileArray.forEach((file) => {
+    const ext = fileExt(file.name);
+    if(!PASSPORT_ALLOWED_EXT.includes(ext)){
+      showToast(`"${file.name}" — only JPG, PNG, and WEBP photos are allowed`, true);
+      return;
+    }
+    if(file.size > MAX_FILE_BYTES){
+      showToast(`"${file.name}" is over 50 MB`, true);
+      return;
+    }
+    const item = {
+      localId: 'pp_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      rawFile: file,
+      objectUrl: URL.createObjectURL(file),
+      croppedPreviewUrl: null,
+      croppedBlob: null,
+      sizePresetId: (activePassportPresets()[0] || {}).id || '',
+      packQty: (passportPackTiers()[0] || {}).qty || 8,
+      status: 'needs-crop',
+      fileId: null, fileName: file.name, fileType: null, fileSize: file.size
+    };
+    state.passportItems.push(item);
+    added.push(item);
+  });
+  renderPassportList();
+  recalc();
+  if(added.length) openCropModal(added[0]);
+}
+
+passportChooseBtn.addEventListener('click', () => passportFileInput.click());
+passportFileInput.addEventListener('change', () => {
+  if(passportFileInput.files && passportFileInput.files.length) addPassportFiles(Array.from(passportFileInput.files));
+  passportFileInput.value = '';
+});
+passportTray.addEventListener('click', () => passportFileInput.click());
+['dragenter','dragover'].forEach((evt) => passportTray.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); }));
+passportTray.addEventListener('drop', (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const fs = e.dataTransfer.files;
+  if(fs && fs.length) addPassportFiles(Array.from(fs));
+});
+
+async function uploadPassportItem(item){
+  item.status = 'uploading';
+  renderPassportList();
+  recalc();
+  try{
+    const file = new File([item.croppedBlob], 'passport-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    const json = await uploadOneFile(file);
+    item.fileId = json.fileId;
+    item.fileName = json.fileName;
+    item.fileType = json.fileType;
+    item.fileSize = json.fileSize;
+    item.status = 'ready';
+  }catch(err){
+    // Falls back to needs-crop (not removed) so the customer can just retry
+    // the crop/upload rather than losing the item and re-selecting the photo.
+    item.status = 'needs-crop';
+    showToast(err.message || 'Photo upload failed', true);
+  }
+  renderPassportList();
+  recalc();
+}
+
+/* -- Crop modal: draggable/resizable crop-frame + 90°-step rotate. Rotation
+   is applied to the actual bitmap (via an offscreen canvas), not via CSS
+   transform, so the crop-frame math is always against an axis-aligned image
+   regardless of how many times the customer has rotated it. -- */
+const cropModal = document.getElementById('cropModal');
+const cropStage = document.getElementById('cropStage');
+const cropImg = document.getElementById('cropImg');
+const cropFrame = document.getElementById('cropFrame');
+const cropHandle = document.getElementById('cropHandle');
+const cropSizeSelect = document.getElementById('cropSizeSelect');
+const cropState = {
+  itemLocalId: null,
+  sourceCanvas: null,
+  frame: { x: 0, y: 0, w: 0, h: 0 },
+  imgBox: { left: 0, top: 0, width: 0, height: 0 },
+  drag: null
+};
+
+function currentCropAspect(){
+  const preset = passportPresetInfo(cropSizeSelect.value) || activePassportPresets()[0];
+  return preset ? preset.widthMm / preset.heightMm : 1;
+}
+
+function layoutCropFrame(){
+  cropFrame.style.left = cropState.frame.x + 'px';
+  cropFrame.style.top = cropState.frame.y + 'px';
+  cropFrame.style.width = cropState.frame.w + 'px';
+  cropFrame.style.height = cropState.frame.h + 'px';
+}
+
+function resetCropFrame(){
+  const aspect = currentCropAspect();
+  const box = cropState.imgBox;
+  let w = box.width, h = w / aspect;
+  if(h > box.height){ h = box.height; w = h * aspect; }
+  w *= 0.9; h *= 0.9;
+  cropState.frame = { x: box.left + (box.width - w) / 2, y: box.top + (box.height - h) / 2, w, h };
+  layoutCropFrame();
+}
+
+function computeCropImgBox(){
+  const stageRect = cropStage.getBoundingClientRect();
+  const imgRect = cropImg.getBoundingClientRect();
+  cropState.imgBox = { left: imgRect.left - stageRect.left, top: imgRect.top - stageRect.top, width: imgRect.width, height: imgRect.height };
+}
+
+function renderCropSource(){
+  cropImg.onload = () => { computeCropImgBox(); resetCropFrame(); };
+  cropImg.src = cropState.sourceCanvas.toDataURL('image/jpeg', 0.92);
+}
+
+function rotateCropSource(deg){
+  const src = cropState.sourceCanvas;
+  const swap = deg === 90 || deg === 270;
+  const rotated = document.createElement('canvas');
+  rotated.width = swap ? src.height : src.width;
+  rotated.height = swap ? src.width : src.height;
+  const ctx = rotated.getContext('2d');
+  ctx.translate(rotated.width / 2, rotated.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  cropState.sourceCanvas = rotated;
+  renderCropSource();
+}
+
+function populateCropSizeSelect(selectedId){
+  const presets = activePassportPresets();
+  cropSizeSelect.innerHTML = presets.map((s) => `<option value="${escapeAttr(s.id)}" ${s.id===selectedId?'selected':''}>${escapeAttr(s.label)} (${s.widthMm}×${s.heightMm}mm)</option>`).join('');
+}
+
+function openCropModal(item){
+  cropState.itemLocalId = item.localId;
+  populateCropSizeSelect(item.sizePresetId);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    cropState.sourceCanvas = canvas;
+    renderCropSource();
+  };
+  img.src = item.objectUrl;
+  cropModal.classList.add('show');
+}
+
+function closeCropModal(){
+  cropModal.classList.remove('show');
+  cropState.itemLocalId = null;
+  cropState.drag = null;
+}
+
+cropSizeSelect.addEventListener('change', resetCropFrame);
+document.getElementById('cropRotateLeft').addEventListener('click', () => rotateCropSource(270));
+document.getElementById('cropRotateRight').addEventListener('click', () => rotateCropSource(90));
+document.getElementById('cropCancelBtn').addEventListener('click', closeCropModal);
+document.getElementById('cropClose').addEventListener('click', closeCropModal);
+cropModal.addEventListener('click', (e) => { if(e.target === cropModal) closeCropModal(); });
+
+cropFrame.addEventListener('pointerdown', (e) => {
+  if(e.target === cropHandle) return;
+  e.preventDefault();
+  cropFrame.setPointerCapture(e.pointerId);
+  cropState.drag = { mode: 'move', pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startFrame: { ...cropState.frame } };
+});
+cropHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  cropHandle.setPointerCapture(e.pointerId);
+  cropState.drag = { mode: 'resize', pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startFrame: { ...cropState.frame } };
+});
+cropStage.addEventListener('pointermove', (e) => {
+  if(!cropState.drag) return;
+  const dx = e.clientX - cropState.drag.startX;
+  const dy = e.clientY - cropState.drag.startY;
+  const box = cropState.imgBox;
+  if(cropState.drag.mode === 'move'){
+    let x = cropState.drag.startFrame.x + dx;
+    let y = cropState.drag.startFrame.y + dy;
+    x = Math.max(box.left, Math.min(x, box.left + box.width - cropState.frame.w));
+    y = Math.max(box.top, Math.min(y, box.top + box.height - cropState.frame.h));
+    cropState.frame.x = x;
+    cropState.frame.y = y;
+  } else {
+    const aspect = currentCropAspect();
+    let w = Math.max(30, cropState.drag.startFrame.w + dx);
+    w = Math.min(w, box.left + box.width - cropState.drag.startFrame.x);
+    let h = w / aspect;
+    if(cropState.drag.startFrame.y + h > box.top + box.height){
+      h = box.top + box.height - cropState.drag.startFrame.y;
+      w = h * aspect;
+    }
+    cropState.frame.w = w;
+    cropState.frame.h = h;
+  }
+  layoutCropFrame();
+});
+function endCropDrag(){ cropState.drag = null; }
+cropStage.addEventListener('pointerup', endCropDrag);
+cropStage.addEventListener('pointercancel', endCropDrag);
+
+document.getElementById('cropApplyBtn').addEventListener('click', () => {
+  const item = state.passportItems.find((p) => p.localId === cropState.itemLocalId);
+  if(!item) return;
+  const preset = passportPresetInfo(cropSizeSelect.value);
+  if(!preset){ showToast('Choose a size', true); return; }
+  item.sizePresetId = preset.id;
+  const box = cropState.imgBox;
+  const scale = cropState.sourceCanvas.width / box.width;
+  const sx = (cropState.frame.x - box.left) * scale;
+  const sy = (cropState.frame.y - box.top) * scale;
+  const sw = cropState.frame.w * scale;
+  const sh = cropState.frame.h * scale;
+  const DPI = 300;
+  const outW = Math.round(preset.widthMm / 25.4 * DPI);
+  const outH = Math.round(preset.heightMm / 25.4 * DPI);
+  const out = document.createElement('canvas');
+  out.width = outW;
+  out.height = outH;
+  out.getContext('2d').drawImage(cropState.sourceCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
+  out.toBlob((blob) => {
+    if(item.croppedPreviewUrl) URL.revokeObjectURL(item.croppedPreviewUrl);
+    item.croppedPreviewUrl = URL.createObjectURL(blob);
+    item.croppedBlob = blob;
+    closeCropModal();
+    uploadPassportItem(item);
+  }, 'image/jpeg', 0.92);
+});
+
 /* -- Document preview modal -- */
 const previewModal = document.getElementById('previewModal');
 const pvImg = document.getElementById('pvImg');
@@ -1374,7 +1792,12 @@ function validateForConfirm(){
   }
   setFieldError('fieldName', !name); if(!name){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldName'; }
   setFieldError('fieldMobile', !mobileValid); if(!mobileValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldMobile'; }
-  if(!state.files.length){ showToast('Please upload at least one document', true); ok = false; }
+  if(!state.files.length && !state.passportItems.length){ showToast('Please upload at least one document or passport photo', true); ok = false; }
+  const notReadyPassport = state.passportItems.filter((p) => p.status !== 'ready');
+  if(notReadyPassport.length){
+    showToast('Finish cropping every passport photo before checkout', true);
+    ok = false;
+  }
   const missingPageSize = state.files.filter((f) => !f.pageSize);
   if(missingPageSize.length){
     fileList.querySelectorAll('.fpagesize').forEach((sel) => {
@@ -1439,11 +1862,12 @@ confirmBtn.addEventListener('click', ()=>{
   if(window.gtag) window.gtag('event', 'begin_checkout', {
     currency: 'INR', value: est.totalAmount,
     items: state.files.map((f) => ({ item_name: f.fileName, quantity: f.copies || 1, price: fileCost(f) }))
+      .concat(state.passportItems.map((p) => ({ item_name: p.fileName || 'Passport photo', quantity: p.packQty, price: passportItemCost(p) })))
   });
   const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
-  document.getElementById('mFile').textContent = state.files.length > 1
-    ? `${state.files[0].fileName} +${state.files.length - 1} more`
-    : state.files[0].fileName;
+  document.getElementById('mFile').textContent = state.files.length
+    ? (state.files.length > 1 ? `${state.files[0].fileName} +${state.files.length - 1} more` : state.files[0].fileName)
+    : (state.passportItems.length + ' passport photo pack' + (state.passportItems.length === 1 ? '' : 's'));
   document.getElementById('mPages').textContent = totalPages;
   document.getElementById('mOrientation').textContent = orientationSummaryLabel();
   document.getElementById('mMode').textContent = modeSummaryLabel();
@@ -1452,6 +1876,8 @@ confirmBtn.addEventListener('click', ()=>{
   document.getElementById('mPaperType').textContent = paperTypeSummaryLabel();
   document.getElementById('mPaperTypeRow').style.display = state.files.length ? 'flex' : 'none';
   document.getElementById('mCopies').textContent = copiesSummaryLabel();
+  document.getElementById('mPassportRow').style.display = state.passportItems.length ? 'flex' : 'none';
+  document.getElementById('mPassportPacks').textContent = state.passportItems.length;
   document.getElementById('mDelivery').textContent = state.deliveryMethod === 'pickup' ? 'Collect from shop' : 'Home delivery';
   document.getElementById('mDeliveryTimingRow').style.display = state.deliveryMethod === 'delivery' ? 'flex' : 'none';
   if(state.deliveryMethod === 'delivery'){
@@ -1470,30 +1896,42 @@ function modeLabel(mode){
   return mode === 'color' ? 'Color' : mode === 'bw' ? 'Black & White' : 'Auto';
 }
 function modeSummaryLabel(){
+  if(!state.files.length) return '—';
   const modes = new Set(state.files.map((f) => f.printMode || 'bw'));
   return modes.size === 1 ? modeLabel([...modes][0]) : 'Mixed';
 }
 
 function buildOrderPayload(){
+  const documentFiles = state.files.map((f) => ({
+    productType: 'document',
+    fileId: f.fileId,
+    fileName: f.fileName,
+    fileType: f.fileType,
+    pageCount: f.pageCount,
+    colorPageCount: f.colorCount,
+    fileSize: f.fileSize,
+    printMode: f.printMode || 'bw',
+    orientation: f.orientation || 'portrait',
+    printSide: f.printSide || 'single',
+    pageSize: f.pageSize || '',
+    paperType: f.paperType || '',
+    copies: f.copies || 1,
+    password: f.password || ''
+  }));
+  const passportFiles = state.passportItems.map((item) => ({
+    productType: 'passport-photo',
+    fileId: item.fileId,
+    fileName: item.fileName,
+    fileType: item.fileType,
+    fileSize: item.fileSize,
+    sizePresetId: item.sizePresetId,
+    packQty: item.packQty
+  }));
   return {
     customerName: document.getElementById('customerName').value.trim(),
     customerMobile: document.getElementById('customerMobile').value.trim(),
     customerEmail: document.getElementById('customerEmail').value.trim() || undefined,
-    files: state.files.map((f) => ({
-      fileId: f.fileId,
-      fileName: f.fileName,
-      fileType: f.fileType,
-      pageCount: f.pageCount,
-      colorPageCount: f.colorCount,
-      fileSize: f.fileSize,
-      printMode: f.printMode || 'bw',
-      orientation: f.orientation || 'portrait',
-      printSide: f.printSide || 'single',
-      pageSize: f.pageSize || '',
-      paperType: f.paperType || '',
-      copies: f.copies || 1,
-      password: f.password || ''
-    })),
+    files: documentFiles.concat(passportFiles),
     deliveryMethod: state.deliveryMethod,
     deliveryAddress: state.deliveryMethod === 'delivery' ? document.getElementById('addrLine').value.trim() : undefined,
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,

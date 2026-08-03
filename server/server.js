@@ -217,6 +217,7 @@ const { analyzePdfBuffer } = require('./pdfAnalyze')
 const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads } = require('./fileRetention')
 const { buildInvoicePdf } = require('./invoice')
+const { formatRupees } = require('./format')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
@@ -924,6 +925,21 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
     // Page-embedding below stays sequential (it mutates the one shared
     // `merged` PDFDocument, and is CPU-bound/fast either way).
     const converted = await Promise.all(files.map(async (f) => {
+      // Passport-photo items are raster images, not documents — no
+      // LibreOffice conversion needed, and (per the phase-1 scope decision)
+      // no per-pack grid layout yet, just a single labeled reference page
+      // for staff. A missing fileId here is expected (admin-created orders
+      // can have a photo-less pack, see buildPricedOrderFiles), not an error.
+      if ((f.productType || 'document') === 'passport-photo') {
+        const safeFileId = f.fileId ? path.basename(String(f.fileId)) : ''
+        const filePath = safeFileId ? path.join(uploadsDir, safeFileId) : null
+        if (!filePath || !fs.existsSync(filePath)) return { f, safeFileId, isPassport: true }
+        try {
+          return { f, safeFileId, isPassport: true, imageBuffer: fs.readFileSync(filePath) }
+        } catch (err) {
+          return { f, safeFileId, isPassport: true }
+        }
+      }
       const safeFileId = path.basename(String(f.fileId || ''))
       const filePath = path.join(uploadsDir, safeFileId)
       if (!safeFileId || !fs.existsSync(filePath)) return { f, safeFileId, skip: true }
@@ -937,7 +953,33 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
       }
     }))
 
-    for (const { f, safeFileId, pdfBuffer, convertError, skip } of converted) {
+    for (const { f, safeFileId, pdfBuffer, convertError, skip, isPassport, imageBuffer } of converted) {
+      if (isPassport) {
+        // One reference page per pack — NOT multiplied by packQty (the
+        // physical print-sheet grid layout is a separate follow-up task;
+        // for now staff produce the pack manually from this reference).
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        // Helvetica (WinAnsi) can't render ₹ — same "Rs." convention as invoice.js.
+        const label = `Passport Photo Pack — ${f.paperLabel || f.sizePresetId || 'Passport Photo'} · ${f.colorLabel || ((f.packQty || 0) + '-pack')} · Rs. ${formatRupees(f.amount || 0)}`
+        if (imageBuffer) {
+          try {
+            const ext = path.extname(f.fileName || safeFileId || '').toLowerCase()
+            const img = ext === '.png' ? await merged.embedPng(imageBuffer) : await merged.embedJpg(imageBuffer)
+            const maxW = A4_PT.width - 100
+            const maxH = A4_PT.height - 160
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1)
+            const w = img.width * scale
+            const h = img.height * scale
+            page.drawImage(img, { x: (A4_PT.width - w) / 2, y: A4_PT.height - 100 - h, width: w, height: h })
+          } catch (err) {
+            page.drawText('Could not render the uploaded photo — check the original file.', { x: 50, y: A4_PT.height - 120, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
+          }
+        } else {
+          page.drawText('No photo uploaded yet for this pack.', { x: 50, y: A4_PT.height - 120, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
+        }
+        page.drawText(label, { x: 50, y: 60, size: 13, font, color: rgb(0.1, 0.13, 0.2) })
+        continue
+      }
       if (skip) continue
       if (convertError) {
         const page = merged.addPage([A4_PT.width, A4_PT.height])
@@ -1093,11 +1135,40 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     }
     const paperTypeConfig = db.getPricing()
     const pageSizeIds = (paperTypeConfig.pageSizes || []).filter((s) => s.active).map((s) => s.id)
+    const passportPresetIds = ((paperTypeConfig.passportPhotos || {}).sizePresets || []).filter((s) => s.active).map((s) => s.id)
+    const passportPackQtys = ((paperTypeConfig.passportPhotos || {}).packPrices || []).map((p) => p.qty)
     const VALID_MODES = ['auto', 'color', 'bw']
     const VALID_SIDES = ['single', 'double']
     const overridesById = new Map((files || []).map((f) => [f.fileId, f]))
 
+    // Branch per-item on productType — an order can mix Documents and
+    // Passport Photos, and the two have completely disjoint editable fields.
+    // A passport-photo entry must NEVER fall through the document branch
+    // below: it has no pageSize/paperType, so it would otherwise silently
+    // get rewritten to pageSize:'a4'/paperType:'normal' and reprice as a
+    // near-zero document.
     const mergedFiles = currentFiles.map((f) => {
+      if ((f.productType || 'document') === 'passport-photo') {
+        // Matched by fileId, same convention as the document branch below —
+        // note this can't disambiguate between multiple photo-less (fileId:
+        // null) items in one order, but no admin UI in this phase edits
+        // passport items after order creation, so it's not yet reachable.
+        const o = overridesById.get(f.fileId) || {}
+        const sizePresetId = passportPresetIds.includes(o.sizePresetId) ? o.sizePresetId : f.sizePresetId
+        const packQty = passportPackQtys.includes(Number(o.packQty)) ? Number(o.packQty) : f.packQty
+        // Lets staff attach a photo after the fact (e.g. it arrives over
+        // WhatsApp after the order/invoice/payment-link was already created
+        // with no file) — only overwrites fileId/fileName/etc when the
+        // override actually supplies a new fileId that exists on disk.
+        let fileOverride = {}
+        if (o.fileId) {
+          const safeFileId = path.basename(String(o.fileId))
+          if (safeFileId && fs.existsSync(path.join(uploadsDir, safeFileId))) {
+            fileOverride = { fileId: safeFileId, fileName: o.fileName || safeFileId, fileType: o.fileType || null, fileSize: Number(o.fileSize) || 0 }
+          }
+        }
+        return { ...f, ...fileOverride, productType: 'passport-photo', sizePresetId, packQty }
+      }
       const o = overridesById.get(f.fileId) || {}
       const printMode = VALID_MODES.includes(o.printMode) ? o.printMode : f.printMode
       const printSide = printMode === 'color' ? 'single' : (VALID_SIDES.includes(o.printSide) ? o.printSide : f.printSide)
@@ -1109,10 +1180,13 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       const defaultPaperType = sizePaperTypeIds[0] || 'normal'
       const paperType = sizePaperTypeIds.includes(o.paperType) ? o.paperType : (sizePaperTypeIds.includes(f.paperType) ? f.paperType : defaultPaperType)
       const copies = o.copies !== undefined ? Math.max(1, Math.min(999, Math.round(Number(o.copies)) || 1)) : f.copies
-      return { ...f, printMode, printSide, pageSize, paperType, copies }
+      return { ...f, productType: 'document', printMode, printSide, pageSize, paperType, copies }
     })
 
     const pricingFiles = mergedFiles.map((f) => {
+      if (f.productType === 'passport-photo') {
+        return { productType: 'passport-photo', sizePresetId: f.sizePresetId, packQty: f.packQty }
+      }
       const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
       return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType }
     })
@@ -1125,21 +1199,26 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       deliveryPincode: effectiveDeliveryPincode
     })
 
-    const fileModes = new Set(mergedFiles.map((f) => f.printMode))
-    const fileSides = new Set(mergedFiles.map((f) => f.printSide))
-    const filePaperTypes = new Set(mergedFiles.map((f) => f.paperType))
-    const filePageSizes = new Set(mergedFiles.map((f) => f.pageSize))
+    // Document-only summary fields — see the same rule in buildPricedOrderFiles.
+    const mergedDocFiles = mergedFiles.filter((f) => f.productType === 'document')
+    const fileModes = new Set(mergedDocFiles.map((f) => f.printMode))
+    const fileSides = new Set(mergedDocFiles.map((f) => f.printSide))
+    const filePaperTypes = new Set(mergedDocFiles.map((f) => f.paperType))
+    const filePageSizes = new Set(mergedDocFiles.map((f) => f.pageSize))
+    const mergedProductTypes = new Set(mergedFiles.map((f) => f.productType))
 
     // Bake each file's actual charged amount/labels in now, so an invoice
     // printed later reflects what was charged even if rates change meanwhile.
     mergedFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
 
     updates.files_json = JSON.stringify(mergedFiles)
-    updates.print_mode = fileModes.size === 1 ? mergedFiles[0].printMode : 'mixed'
-    updates.print_side = fileSides.size === 1 ? mergedFiles[0].printSide : 'mixed'
-    updates.paper_size = filePageSizes.size === 1 ? mergedFiles[0].pageSize : 'mixed'
-    updates.paper_type = filePaperTypes.size === 1 ? mergedFiles[0].paperType : 'mixed'
-    updates.copies = mergedFiles.reduce((sum, f) => sum + f.copies, 0)
+    updates.print_mode = mergedDocFiles.length ? (fileModes.size === 1 ? mergedDocFiles[0].printMode : 'mixed') : null
+    updates.print_side = mergedDocFiles.length ? (fileSides.size === 1 ? mergedDocFiles[0].printSide : 'mixed') : null
+    updates.paper_size = mergedDocFiles.length ? (filePageSizes.size === 1 ? mergedDocFiles[0].pageSize : 'mixed') : null
+    updates.paper_type = mergedDocFiles.length ? (filePaperTypes.size === 1 ? mergedDocFiles[0].paperType : 'mixed') : null
+    updates.product_type = mergedProductTypes.size === 1 ? mergedFiles[0].productType : (mergedProductTypes.size ? 'mixed' : 'document')
+    updates.copies = mergedDocFiles.reduce((sum, f) => sum + f.copies, 0) +
+      mergedFiles.filter((f) => f.productType === 'passport-photo').reduce((sum, f) => sum + (f.packQty || 0), 0)
     updates.print_cost = calc.printCost
     updates.delivery_charge = calc.deliveryCharge
     updates.handling_charge = calc.handlingCharge
@@ -1537,7 +1616,7 @@ const MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
 // happens next (payment method, who owns the order) differs between them.
 // Returns { error, message? } on the first invalid file/input (caller
 // responds with that as a 400), otherwise the validated, priced result.
-function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt }) {
+function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile }) {
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
@@ -1548,10 +1627,52 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   // is validated first since which paper types are valid depends on it.
   const paperTypeConfig = db.getPricing()
   const pageSizeIds = (paperTypeConfig.pageSizes || []).filter((s) => s.active).map((s) => s.id)
+  const passportPresetIds = ((paperTypeConfig.passportPhotos || {}).sizePresets || []).filter((s) => s.active).map((s) => s.id)
+  const passportPackQtys = ((paperTypeConfig.passportPhotos || {}).packPrices || []).map((p) => p.qty)
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
+  // An order can mix Documents and Passport Photos, so branching happens
+  // per-item (on each file's own productType) rather than for the whole order.
   for (const f of files) {
+    const productType = f.productType === 'passport-photo' ? 'passport-photo' : 'document'
+
+    if (productType === 'passport-photo') {
+      if (!passportPresetIds.includes(f.sizePresetId)) {
+        return { error: 'missing_size_preset', message: 'Select a size for every passport photo.' }
+      }
+      if (!passportPackQtys.includes(Number(f.packQty))) {
+        return { error: 'missing_pack_qty', message: 'Select a pack quantity for every passport photo.' }
+      }
+      // The customer self-serve flow always uploads (and crops) a real photo
+      // first, so a missing file there is a genuine error. The admin walk-in
+      // flow explicitly allows a photo-less line item — real order volume
+      // comes in over WhatsApp, and staff need to price/invoice/send a
+      // payment link before (or without ever) having the file in hand.
+      let safeFileId = null
+      if (f.fileId) {
+        safeFileId = path.basename(String(f.fileId))
+        if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
+          return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
+        }
+      } else if (!allowMissingFile) {
+        return { error: 'file_not_found', message: 'Upload a photo for every passport photo item.' }
+      }
+      const fileData = {
+        productType: 'passport-photo',
+        fileId: safeFileId,
+        fileName: f.fileName || (safeFileId || 'Passport photo'),
+        fileType: f.fileType || null,
+        fileSize: Number(f.fileSize) || 0,
+        sizePresetId: f.sizePresetId,
+        packQty: Number(f.packQty)
+      }
+      pricingFiles.push({ productType: 'passport-photo', sizePresetId: fileData.sizePresetId, packQty: fileData.packQty })
+      totalFileSize += fileData.fileSize
+      safeFiles.push(fileData)
+      continue
+    }
+
     const safeFileId = path.basename(String(f.fileId || ''))
     if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
       return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
@@ -1572,6 +1693,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {
+      productType: 'document',
       fileId: safeFileId,
       fileName: f.fileName || safeFileId,
       fileType: f.fileType || null,
@@ -1620,18 +1742,33 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     }
   }
 
-  const totalPageCount = safeFiles.reduce((sum, f) => sum + f.pageCount, 0)
-  const fileModes = new Set(safeFiles.map((f) => f.printMode))
-  const summaryMode = fileModes.size === 1 ? safeFiles[0].printMode : 'mixed'
-  const fileOrientations = new Set(safeFiles.map((f) => f.orientation))
-  const summaryOrientation = fileOrientations.size === 1 ? safeFiles[0].orientation : 'mixed'
-  const fileSides = new Set(safeFiles.map((f) => f.printSide))
-  const summarySide = fileSides.size === 1 ? safeFiles[0].printSide : 'mixed'
-  const filePaperTypes = new Set(safeFiles.map((f) => f.paperType))
-  const summaryPaperType = filePaperTypes.size === 1 ? safeFiles[0].paperType : 'mixed'
-  const filePageSizes = new Set(safeFiles.map((f) => f.pageSize))
-  const summaryPageSize = filePageSizes.size === 1 ? safeFiles[0].pageSize : 'mixed'
-  const totalCopies = safeFiles.reduce((sum, f) => sum + f.copies, 0)
+  // Document-only summary fields — a passport-photo item has none of
+  // pageSize/paperType/printMode/etc, so these are derived over document
+  // items alone. A pure-passport (or otherwise document-less) order gets
+  // null for all of them rather than a misleading 'mixed'/fallback value.
+  const documentFiles = safeFiles.filter((f) => f.productType === 'document')
+  const totalPageCount = documentFiles.reduce((sum, f) => sum + f.pageCount, 0)
+  let summaryMode = null, summaryOrientation = null, summarySide = null, summaryPaperType = null, summaryPageSize = null
+  if (documentFiles.length) {
+    const fileModes = new Set(documentFiles.map((f) => f.printMode))
+    summaryMode = fileModes.size === 1 ? documentFiles[0].printMode : 'mixed'
+    const fileOrientations = new Set(documentFiles.map((f) => f.orientation))
+    summaryOrientation = fileOrientations.size === 1 ? documentFiles[0].orientation : 'mixed'
+    const fileSides = new Set(documentFiles.map((f) => f.printSide))
+    summarySide = fileSides.size === 1 ? documentFiles[0].printSide : 'mixed'
+    const filePaperTypes = new Set(documentFiles.map((f) => f.paperType))
+    summaryPaperType = filePaperTypes.size === 1 ? documentFiles[0].paperType : 'mixed'
+    const filePageSizes = new Set(documentFiles.map((f) => f.pageSize))
+    summaryPageSize = filePageSizes.size === 1 ? documentFiles[0].pageSize : 'mixed'
+  }
+  // "Copies" now spans two different units (document copies, photo-pack
+  // quantities) that both mean "how many physical prints" — summing them
+  // keeps this display-only column meaningful instead of showing 0 for a
+  // passport-only order. Never used for pricing (pricing.calculate() owns that).
+  const totalCopies = documentFiles.reduce((sum, f) => sum + f.copies, 0) +
+    safeFiles.filter((f) => f.productType === 'passport-photo').reduce((sum, f) => sum + (f.packQty || 0), 0)
+  const productTypesPresent = new Set(safeFiles.map((f) => f.productType))
+  const summaryProductType = productTypesPresent.size === 1 ? safeFiles[0].productType : (productTypesPresent.size ? 'mixed' : 'document')
 
   const pricingConfig = db.getPricing()
   const calc = pricing.calculate(pricingConfig, {
@@ -1645,7 +1782,8 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
 
   return {
     safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide,
-    summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt
+    summaryPaperType, summaryPageSize, totalCopies, summaryProductType, calc,
+    resolvedDeliveryTiming, resolvedScheduledAt
   }
 }
 
@@ -1667,9 +1805,13 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'missing_file_info' })
   }
 
+  // allowMissingFile is never set here — a customer must always have
+  // actually uploaded (and, for passport photos, cropped) the file first;
+  // that upload is the whole point of the self-serve flow. Only the admin
+  // walk-in endpoint below allows a photo-less passport-photo line item.
   const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
-  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, summaryProductType, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   let cashfreeOrder = null
@@ -1718,6 +1860,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     copies: totalCopies,
     paper_size: summaryPageSize,
     paper_type: summaryPaperType,
+    product_type: summaryProductType,
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,
     delivery_city: deliveryCity || null,
@@ -1792,9 +1935,16 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     return res.status(400).json({ error: 'invalid_payment_mode', message: 'Payment mode must be cash or upi.' })
   }
 
-  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
+  // allowMissingFile: true — real order volume comes in over WhatsApp/other
+  // channels, so staff need to price a passport-photo line item, create the
+  // order, and generate an invoice/payment link without necessarily having
+  // the photo file in the system yet (it can be attached later, or never —
+  // the shop already has it). Document items still require a real uploaded
+  // file, same as always (buildPricedOrderFiles only relaxes this for
+  // passport-photo items).
+  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile: true })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
-  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
+  const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, summaryProductType, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
   const orderId = generateOrderId()
   const fileNameSummary = safeFiles.length > 1
@@ -1823,6 +1973,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     copies: totalCopies,
     paper_size: summaryPageSize,
     paper_type: summaryPaperType,
+    product_type: summaryProductType,
     delivery_method: deliveryMethod || 'pickup',
     delivery_address: deliveryAddress || null,
     delivery_city: deliveryCity || null,

@@ -171,6 +171,11 @@ ensureColumn('orders', 'payment_link_url', 'TEXT')
 ensureColumn('orders', 'cashfree_order_id', 'TEXT')   // Cashfree's internal order reference — support/audit only, not used for lookups (Cashfree's order_id is our own order id by construction)
 ensureColumn('orders', 'cashfree_payment_id', 'TEXT') // shown to customers/staff as "Transaction ID" — the functional replacement for razorpay_payment_id going forward
 ensureColumn('orders', 'notes', 'TEXT') // optional free-text instructions from the customer (or added by staff) for whoever fulfils the order
+// Summary of the productType(s) present across files_json's entries — 'document'
+// (the only kind that existed before this column), 'passport-photo', or 'mixed'
+// when an order contains both. Mirrors how paper_size/paper_type are already
+// denormalized summaries of files_json rather than authoritative data.
+ensureColumn('orders', 'product_type', "TEXT DEFAULT 'document'")
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -228,7 +233,25 @@ const DEFAULT_PRICING = {
   deliveryPerKmRate: 5,        // outside Gurugram: straight-line km × this rate
   freeDeliveryThreshold: 500,  // order value (print + handling) at/above which delivery is free
   handlingCharge: 10,
-  gstPercent: 5
+  gstPercent: 5,
+  // Passport Photos is a flat-pack product (see pricing.js calculate()), not
+  // priced per-page like documents above. sizePresets are admin-managed mm
+  // dimensions the customer crops to; packPrices are the three fixed
+  // quantity tiers — same price at every size preset by design.
+  passportPhotos: {
+    sizePresets: [
+      { id: 'standard', label: 'Standard', active: true, widthMm: 35, heightMm: 45 },
+      { id: 'indian-passport', label: 'Indian Passport', active: true, widthMm: 51, heightMm: 51 },
+      { id: 'us-visa', label: 'US Visa', active: true, widthMm: 51, heightMm: 51 },
+      { id: 'uk-visa', label: 'UK Visa', active: true, widthMm: 35, heightMm: 45 },
+      { id: 'schengen-visa', label: 'Schengen Visa', active: true, widthMm: 35, heightMm: 45 }
+    ],
+    packPrices: [
+      { qty: 8, price: 97 },
+      { qty: 16, price: 146 },
+      { qty: 32, price: 194 }
+    ]
+  }
 }
 
 // Default display labels for the three built-in paper-type ids, used when
@@ -325,6 +348,52 @@ function normalizePaperTypes(list) {
   return out
 }
 
+// Same id/label normalization as normalizePageSizes, but for the Passport
+// Photos size-preset list — there's no "a4 must exist" equivalent here since
+// nothing in this product is mandatory.
+function normalizePassportSizePresets(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugify(row.id || label) || 'size'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    out.push({
+      id: unique,
+      label,
+      active: row.active !== false,
+      widthMm: num(row.widthMm, 35) || 35,
+      heightMm: num(row.heightMm, 45) || 45
+    })
+  })
+  return out
+}
+
+// Pack quantities are a fixed business rule (8/16/32), not admin-addable —
+// only the price per tier is editable. Coerces admin input back to exactly
+// those three tiers regardless of what was submitted, so a malformed/partial
+// save can never lose or duplicate a tier.
+const PASSPORT_PACK_QTYS = [8, 16, 32]
+function normalizePassportPackPrices(list) {
+  const byQty = new Map((Array.isArray(list) ? list : []).map((row) => [Number(row && row.qty), row]))
+  return PASSPORT_PACK_QTYS.map((qty) => {
+    const row = byQty.get(qty)
+    // A tier entirely absent from the input (e.g. backfilling a settings row
+    // saved before this feature existed) falls back to the seeded default
+    // price, not 0 — matches normalizePageSizes' STANDARD_SIZE_MM fallback
+    // pattern above. A tier that IS present keeps whatever price it was
+    // given, including an admin's deliberate 0, via num()'s own fallback.
+    const seeded = DEFAULT_PRICING.passportPhotos.packPrices.find((p) => p.qty === qty)
+    const fallbackPrice = seeded ? seeded.price : 0
+    return { qty, price: row ? num(row.price, fallbackPrice) : fallbackPrice }
+  })
+}
+
 // Older settings rows stored rates.a4 as an object (keyed by paper type) or,
 // even earlier, as a flat { bw, color } with no paper types at all. Convert
 // both into the current ordered array. Already-array rows pass through
@@ -363,8 +432,24 @@ function getPricing() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('pricing')
   if (!row) return DEFAULT_PRICING
   const pricing = JSON.parse(row.value)
-  if (!Array.isArray(pricing.rates && pricing.rates.a4) || !Array.isArray(pricing.pageSizes)) {
-    const migrated = migratePricing(pricing)
+  const needsCoreMigration = !Array.isArray(pricing.rates && pricing.rates.a4) || !Array.isArray(pricing.pageSizes)
+  // Rows saved before Passport Photos existed won't have this key at all —
+  // backfill it independently of the core migration above, which only runs
+  // for pre-pageSizes rows and would otherwise never touch an already-valid
+  // existing settings row, leaving passportPhotos undefined forever.
+  const needsPassportBackfill = !pricing.passportPhotos ||
+    !Array.isArray(pricing.passportPhotos.sizePresets) ||
+    !Array.isArray(pricing.passportPhotos.packPrices)
+  if (needsCoreMigration || needsPassportBackfill) {
+    const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
+    migrated.passportPhotos = {
+      sizePresets: normalizePassportSizePresets(
+        Array.isArray(migrated.passportPhotos && migrated.passportPhotos.sizePresets)
+          ? migrated.passportPhotos.sizePresets
+          : DEFAULT_PRICING.passportPhotos.sizePresets
+      ),
+      packPrices: normalizePassportPackPrices(migrated.passportPhotos && migrated.passportPhotos.packPrices)
+    }
     setPricing(migrated)
     return migrated
   }
@@ -388,6 +473,19 @@ function setPricing(pricing) {
     })
     if (!Array.isArray(pricing.rates.a4) || !pricing.rates.a4.length) {
       pricing.rates.a4 = JSON.parse(JSON.stringify(DEFAULT_PRICING.rates.a4))
+    }
+  }
+  // Always normalize passportPhotos too, same convention as pageSizes/rates
+  // above: the admin Pricing tab re-collects and PUTs its *entire* current
+  // state on every save (see admin.html savePricing()), so this never needs
+  // to preserve a previous value across calls — it only needs to coerce
+  // whatever the client sent into canonical shape before persisting.
+  if (pricing) {
+    pricing.passportPhotos = {
+      sizePresets: normalizePassportSizePresets(
+        pricing.passportPhotos && pricing.passportPhotos.sizePresets
+      ),
+      packPrices: normalizePassportPackPrices(pricing.passportPhotos && pricing.passportPhotos.packPrices)
     }
   }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
@@ -739,7 +837,7 @@ function createOrder(order) {
     INSERT INTO orders (
       id, customer_id, customer_name, customer_mobile, customer_email,
       file_name, file_path, file_type, page_count, files_json,
-      orientation, print_mode, print_side, copies, paper_size, paper_type,
+      orientation, print_mode, print_side, copies, paper_size, paper_type, product_type,
       delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
       location_id, location_name,
       payment_method,
@@ -750,7 +848,7 @@ function createOrder(order) {
     ) VALUES (
       @id, @customer_id, @customer_name, @customer_mobile, @customer_email,
       @file_name, @file_path, @file_type, @page_count, @files_json,
-      @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type,
+      @orientation, @print_mode, @print_side, @copies, @paper_size, @paper_type, @product_type,
       @delivery_method, @delivery_address, @delivery_city, @delivery_state, @delivery_pincode,
       @location_id, @location_name,
       @payment_method,
@@ -759,7 +857,7 @@ function createOrder(order) {
       @razorpay_order_id, @cashfree_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null, ...order, created_at: now, updated_at: now })
+  `).run({ files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null, ...order, created_at: now, updated_at: now })
   return getOrder(order.id)
 }
 

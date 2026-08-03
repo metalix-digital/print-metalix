@@ -49,6 +49,26 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
   let bwPages = 0
   const fileBreakdown = []
   ;(files || []).forEach((f) => {
+    // Passport Photos is a flat-pack product (8/16/32 photos at a fixed price,
+    // same regardless of size preset) — entirely different math from the
+    // per-page/per-copy pricing below, so it's resolved and pushed here and
+    // skips the rest of this iteration. paperLabel/colorLabel are reused
+    // (not e.g. sizeLabel/packLabel) so every downstream consumer that
+    // already reads a file's paperLabel/colorLabel/amount — invoice.js in
+    // particular — works unchanged for this product too.
+    if ((f.productType || 'document') === 'passport-photo') {
+      const presets = (config.passportPhotos || {}).sizePresets || []
+      const preset = presets.find((s) => s.id === f.sizePresetId)
+      const tier = ((config.passportPhotos || {}).packPrices || []).find((p) => p.qty === f.packQty)
+      const packPrice = tier ? Number(tier.price) || 0 : 0
+      printCost += packPrice
+      fileBreakdown.push({
+        paperLabel: preset ? preset.label : (f.sizePresetId || 'Passport Photo'),
+        colorLabel: (f.packQty || 0) + '-pack',
+        amount: Math.round(packPrice)
+      })
+      return
+    }
     const side = f.printSide === 'double' ? 'double' : 'single'
     // Paper types are resolved per file by page size — callers (server.js's
     // buildPricedOrderFiles) are expected to have already validated f.pageSize

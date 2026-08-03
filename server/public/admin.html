@@ -758,6 +758,14 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
+        <label>Order type</label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="noProductType" value="document" checked /><span>Documents</span></label>
+          <label class="seg-opt"><input type="radio" name="noProductType" value="passport-photo" /><span>Passport Photo</span></label>
+        </div>
+      </div>
+
+      <div class="field" id="noDocumentSection">
         <label>Files</label>
         <div class="no-file-controls">
           <button class="btn-file" id="noFilePickBtn" type="button">📄 Choose files</button>
@@ -772,6 +780,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <table class="no-file-table hidden" id="noFileTable">
           <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
           <tbody id="noFileTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="field hidden" id="noPassportSection">
+        <label>Passport photo packs</label>
+        <div class="no-file-controls">
+          <button class="btn-file" id="noPassportAddBtn" type="button">+ Add pack</button>
+          <span class="no-file-note">Photo is optional here — attach it now if you have it (e.g. pasted from WhatsApp elsewhere), or leave it for later. Printed on A4 glossy paper.</span>
+        </div>
+        <table class="no-file-table hidden" id="noPassportTable">
+          <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th></th></tr></thead>
+          <tbody id="noPassportTableBody"></tbody>
         </table>
       </div>
 
@@ -1394,8 +1414,26 @@ let PAPER_TYPE_LABELS = { normal: 'Normal', bond: 'Bond', premium: 'Premium digi
 // 'letter' relabeled to '4R' for photo prints), so this must never be
 // skipped in favor of showing the raw id.
 let PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 'Legal', mixed: 'Mixed' };
+// Passport photo size-preset id -> display label, same convention as
+// PAGE_SIZE_LABELS above — populated from live pricing once it loads.
+let PASSPORT_SIZE_LABELS = {};
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount){
+  if (productType === 'passport-photo') {
+    const sizeText = sizePresetId ? (PASSPORT_SIZE_LABELS[sizePresetId] || sizePresetId) : 'Passport photo';
+    const packText = packQty ? ' · ' + packQty + '-pack' : '';
+    const amountText = amount != null ? ' · ₹' + amount : '';
+    let action = '';
+    if (deleted) {
+      action = '<span class="subtle">File auto-deleted after 3 days</span>';
+    } else if (fileId) {
+      const nameAttr = (fileName || 'photo').replace(/"/g, '&quot;');
+      action = '<button class="dl-btn" data-order="' + orderId + '" data-file="' + fileId + '" data-name="' + nameAttr + '">Download</button>';
+    } else {
+      action = '<span class="subtle">No photo uploaded yet</span>';
+    }
+    return '<li><span>' + escHtml(sizeText) + packText + amountText + ' — ' + escHtml(fileName || 'No photo uploaded') + '</span> <span class="file-actions">' + action + '</span></li>';
+  }
   const meta = pageCount != null ? ' — ' + pageCount + ' page' + (pageCount === 1 ? '' : 's') : '';
   const modeText = printMode ? ' · ' + (MODE_LABELS[printMode] || printMode) : '';
   const orientationText = orientation ? ' · ' + (orientation === 'landscape' ? 'Landscape' : 'Portrait') : '';
@@ -1424,12 +1462,13 @@ function filesDetailHtml(o){
   let files = null;
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
   if (!files || !files.length) {
+    // Legacy single-file orders predate the productType field entirely — always 'document'.
     return '<div><strong>File:</strong></div><ul class="file-list">' +
-      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, o.paper_size, null, o.file_type) +
+      fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, o.paper_size, null, o.file_type, 'document') +
       '</ul>';
   }
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType)).join('') +
+    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType, f.productType || 'document', f.sizePresetId, f.packQty, f.amount)).join('') +
     '</ul>';
 }
 
@@ -1584,7 +1623,11 @@ function renderOrders(orders){
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
       (o.notes ? '<div style="background:var(--orange-soft);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:10px;"><strong>📝 Customer notes:</strong> ' + escHtml(o.notes).replace(/\n/g, '<br>') + '</div>' : '') +
       filesDetailHtml(o) +
-      '<div><strong>Paper:</strong> ' + escHtml(PAGE_SIZE_LABELS[o.paper_size] || o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' +
+      // A passport-photo-only order has no document paper/mode/side to
+      // summarize (paper_size is null for it — see server.js buildPricedOrderFiles)
+      // and its per-item lines above already say everything, so this summary
+      // line is skipped rather than showing misleading blanks.
+      (o.paper_size ? '<div><strong>Paper:</strong> ' + escHtml(PAGE_SIZE_LABELS[o.paper_size] || o.paper_size) + ' (' + (o.paper_type === 'mixed' ? 'Mixed' : escHtml(PAPER_TYPE_LABELS[o.paper_type] || o.paper_type)) + ') · ' + (o.print_mode === 'mixed' ? 'Mixed' : escHtml(MODE_LABELS[o.print_mode] || o.print_mode)) + ' · ' + (o.print_side === 'mixed' ? 'Mixed' : escHtml(o.print_side) + '-sided') + ' · ' + escHtml(o.copies) + ' copies (see per-file detail above for mixed orders)</div>' : '') +
       '<div><strong>Branch:</strong> ' + branchSelectHtml(o) + '</div>' +
       '<div><strong>Delivery:</strong> ' + escHtml(o.delivery_method) +
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
@@ -2716,6 +2759,65 @@ function bindRateRowRemove(tr){
   tr.querySelector('.rate-remove').addEventListener('click', () => tr.remove());
 }
 
+// Passport Photos: size presets (label + mm dimensions, admin-addable —
+// same shape/behavior as pageSizeRowHtml above, minus the "A4 required"/
+// photo-default special-casing since nothing here is mandatory) and pack
+// prices (fixed 8/16/32 qty tiers — only the price is editable, no
+// add/remove, since the tiers themselves are a fixed business rule; see
+// server/db.js PASSPORT_PACK_QTYS).
+function passportSizeRowHtml(row){
+  row = row || { id: '', label: '', active: true, widthMm: '', heightMm: '' };
+  return '<tr class="passport-size-row" data-id="' + escHtml(row.id || '') + '">' +
+    '<td><input class="pps-label" type="text" placeholder="e.g. Canada Visa" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="pps-width" type="number" step="0.1" min="0" placeholder="mm" value="' + (row.widthMm || '') + '" /></td>' +
+    '<td class="col-rate"><input class="pps-height" type="number" step="0.1" min="0" placeholder="mm" value="' + (row.heightMm || '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="pps-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove passport-size-remove" aria-label="Remove size">✕</button></td>' +
+  '</tr>';
+}
+
+function collectPassportSizesFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#passportSizeRows .passport-size-row').forEach((tr) => {
+    const label = tr.querySelector('.pps-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'size';
+    let unique = id;
+    let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    out.push({
+      id: unique,
+      label,
+      active: tr.querySelector('.pps-active').checked,
+      widthMm: Number(tr.querySelector('.pps-width').value) || 0,
+      heightMm: Number(tr.querySelector('.pps-height').value) || 0
+    });
+  });
+  return out;
+}
+
+function bindPassportSizeRow(tr){
+  tr.querySelector('.passport-size-remove').addEventListener('click', () => tr.remove());
+}
+
+const PASSPORT_PACK_QTYS = [8, 16, 32];
+function passportPackRowHtml(tier){
+  return '<tr data-qty="' + tier.qty + '">' +
+    '<td>' + tier.qty + ' photos</td>' +
+    '<td class="col-rate"><input class="ppp-price" type="number" step="1" min="0" value="' + (tier.price != null ? tier.price : '') + '" /></td>' +
+  '</tr>';
+}
+
+function collectPassportPackPricesFromForm(){
+  const rows = [];
+  document.querySelectorAll('#passportPackRows tr').forEach((tr) => {
+    rows.push({ qty: Number(tr.dataset.qty), price: Number(tr.querySelector('.ppp-price').value) || 0 });
+  });
+  return rows;
+}
+
 async function loadPricing(){
   const form = document.getElementById('pricingForm');
   const res = await fetch('/api/pricing');
@@ -2741,6 +2843,13 @@ async function loadPricing(){
     });
   if (!rowsHtml.length) rowsHtml.push(rateRowHtml('a4', null));
 
+  const passportPhotos = p.passportPhotos || {};
+  const passportSizes = Array.isArray(passportPhotos.sizePresets) ? passportPhotos.sizePresets : [];
+  passportSizes.forEach((s) => { if (s.id) PASSPORT_SIZE_LABELS[s.id] = s.label; });
+  const passportSizeRowsHtml = passportSizes.map(passportSizeRowHtml).join('');
+  const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
+  const passportPackRowsHtml = PASSPORT_PACK_QTYS.map((qty) => passportPackPrices.find((t) => t.qty === qty) || { qty, price: 0 }).map(passportPackRowHtml).join('');
+
   form.innerHTML =
     '<h2>Page sizes</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Sizes customers can choose per file at checkout, and that feed the print rates table below. Width/Height set the physical print size (used for the job sheet and preview) — A4 is required and can’t be removed. "Photo" marks which size a JPG/PNG upload defaults to when staff place an order for a customer.</p>' +
@@ -2754,6 +2863,17 @@ async function loadPricing(){
       '<th>Page size</th><th>Paper type</th><th>B/W single (₹/page)</th><th>B/W double (₹/sheet)</th><th>Color single (₹/page)</th><th></th>' +
     '</tr></thead><tbody id="rateRows">' + rowsHtml.join('') + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addRateRow">+ Add paper type</button>' +
+    '<h2>Passport photo sizes</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Size presets customers can crop their passport photo to (e.g. Indian Passport, US Visa). Width/Height are the physical print size in millimetres.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="passportSizeRows">' + passportSizeRowsHtml + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addPassportSize">+ Add size</button>' +
+    '<h2>Passport photo pack prices</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Flat price per pack — the same price applies at every size above.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Pack</th><th>Price (₹)</th>' +
+    '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
     '<h2>Other</h2><div class="field-grid">' +
       // Fall back to the same defaults pricing.js uses at calc time — this DB may
       // predate these fields, and rendering them blank/zero would silently persist
@@ -2783,6 +2903,14 @@ async function loadPricing(){
     tbody.insertAdjacentHTML('beforeend', rateRowHtml('a4', null));
     bindRateRowRemove(tbody.lastElementChild);
   });
+
+  form.querySelectorAll('.passport-size-row').forEach(bindPassportSizeRow);
+  document.getElementById('addPassportSize').addEventListener('click', () => {
+    const tbody = document.getElementById('passportSizeRows');
+    tbody.insertAdjacentHTML('beforeend', passportSizeRowHtml(null));
+    bindPassportSizeRow(tbody.lastElementChild);
+  });
+
   document.getElementById('savePricingBtn').addEventListener('click', savePricing);
 }
 
@@ -2818,6 +2946,14 @@ async function savePricing(){
   const pricing = {
     pageSizes: collectPageSizesFromForm(),
     rates,
+    // Always included, even though nothing above touches it — db.js's
+    // setPricing() re-normalizes whatever this PUT sends as the new canonical
+    // state, so omitting this key would silently wipe passport pricing back
+    // to defaults on the next save of anything else on this tab (e.g. GST%).
+    passportPhotos: {
+      sizePresets: collectPassportSizesFromForm(),
+      packPrices: collectPassportPackPricesFromForm()
+    },
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
     deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
@@ -3213,6 +3349,89 @@ function noPaperOptionsForSize(pageSize){
   return opts.length ? opts : noPaperTypeOptions;
 }
 
+// Passport Photo packs — deliberately no crop UI here (unlike the customer
+// order page): staff placing a walk-in/WhatsApp order aren't cropping a live
+// photo, they're recording "this size, this pack qty" and optionally
+// attaching whatever image they already have. fileId is nullable — see
+// server.js buildPricedOrderFiles's allowMissingFile option, used only by
+// this admin endpoint, precisely so staff can price/invoice/send a payment
+// link before (or without ever) having the photo in the system.
+let noPassportItems = []; // { sizePresetId, packQty, fileId, fileName, fileType, fileSize }
+
+function noPassportSizeOptionsHtml(selected){
+  const presets = ((noPricingConfig.passportPhotos || {}).sizePresets || []).filter((s) => s.active);
+  return presets.map((s) => '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
+}
+function noPassportPackOptionsHtml(selected){
+  const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
+  return tiers.map((t) => '<option value="' + t.qty + '"' + (Number(selected) === t.qty ? ' selected' : '') + '>' + t.qty + ' photos — ₹' + t.price + '</option>').join('');
+}
+function noPassportRowHtml(item, idx){
+  return '<tr data-idx="' + idx + '">' +
+    '<td><select class="no-pp-size" data-idx="' + idx + '">' + noPassportSizeOptionsHtml(item.sizePresetId) + '</select></td>' +
+    '<td><select class="no-pp-qty" data-idx="' + idx + '">' + noPassportPackOptionsHtml(item.packQty) + '</select></td>' +
+    '<td>' + (item.fileId
+      ? escHtml(item.fileName || 'Attached')
+      : '<button type="button" class="btn-file no-pp-attach" data-idx="' + idx + '">Attach photo</button>') + '</td>' +
+    '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
+  '</tr>';
+}
+function renderNoPassportTable(){
+  const table = document.getElementById('noPassportTable');
+  const body = document.getElementById('noPassportTableBody');
+  if (!noPassportItems.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
+  table.classList.remove('hidden');
+  body.innerHTML = noPassportItems.map(noPassportRowHtml).join('');
+}
+document.getElementById('noPassportAddBtn').addEventListener('click', () => {
+  const presets = ((noPricingConfig.passportPhotos || {}).sizePresets || []).filter((s) => s.active);
+  const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
+  noPassportItems.push({
+    sizePresetId: (presets[0] || {}).id || '',
+    packQty: (tiers[0] || {}).qty || 8,
+    fileId: null, fileName: null, fileType: null, fileSize: null
+  });
+  renderNoPassportTable();
+});
+document.getElementById('noPassportTableBody').addEventListener('click', (e) => {
+  const removeBtn = e.target.closest('[data-remove]');
+  if (removeBtn) { noPassportItems.splice(Number(removeBtn.dataset.remove), 1); renderNoPassportTable(); return; }
+  const attachBtn = e.target.closest('.no-pp-attach');
+  if (!attachBtn) return;
+  const idx = Number(attachBtn.dataset.idx);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.jpg,.jpeg,.png,.webp';
+  input.addEventListener('change', async () => {
+    if (!input.files || !input.files.length) return;
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Upload failed');
+      Object.assign(noPassportItems[idx], { fileId: data.fileId, fileName: data.fileName, fileType: data.fileType, fileSize: data.fileSize });
+      renderNoPassportTable();
+    } catch (err) {
+      alert(err.message || 'Upload failed');
+    }
+  });
+  input.click();
+});
+document.getElementById('noPassportTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const item = noPassportItems[Number(row.dataset.idx)];
+  if (!item) return;
+  if (e.target.classList.contains('no-pp-size')) item.sizePresetId = e.target.value;
+  if (e.target.classList.contains('no-pp-qty')) item.packQty = Number(e.target.value);
+});
+document.querySelectorAll('input[name=noProductType]').forEach((r) => r.addEventListener('change', (e) => {
+  const isPassport = e.target.value === 'passport-photo';
+  document.getElementById('noDocumentSection').classList.toggle('hidden', isPassport);
+  document.getElementById('noPassportSection').classList.toggle('hidden', !isPassport);
+}));
+
 function noFileRowHtml(f, idx){
   const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
   const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
@@ -3368,6 +3587,11 @@ document.getElementById('noCustomerMobile').addEventListener('input', (e) => {
 async function openNewOrderModal(){
   noUploadedFiles = [];
   renderNoFileTable();
+  noPassportItems = [];
+  renderNoPassportTable();
+  document.querySelector('input[name=noProductType][value=document]').checked = true;
+  document.getElementById('noDocumentSection').classList.remove('hidden');
+  document.getElementById('noPassportSection').classList.add('hidden');
   document.getElementById('noCustomerName').value = '';
   document.getElementById('noCustomerMobile').value = '';
   document.getElementById('noCustomerEmail').value = '';
@@ -3420,14 +3644,22 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
   const customerEmail = document.getElementById('noCustomerEmail').value.trim();
   const deliveryMethod = document.querySelector('input[name=noDelivery]:checked').value;
   const paymentChoice = document.querySelector('input[name=noPayment]:checked').value;
+  const productType = document.querySelector('input[name=noProductType]:checked').value;
 
   if (!customerName || !/^\d{10}$/.test(customerMobile)) {
     msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
-  if (!noUploadedFiles.length) {
+  if (productType === 'document' && !noUploadedFiles.length) {
     msg.textContent = 'Add at least one file.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  // A passport-photo pack's photo is optional here (see noPassportSection's
+  // note) — only the size+qty selection is required, not an uploaded file.
+  if (productType === 'passport-photo' && !noPassportItems.length) {
+    msg.textContent = 'Add at least one passport photo pack.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
@@ -3443,11 +3675,18 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
 
   const payload = {
     customerName, customerMobile, customerEmail: customerEmail || undefined,
-    files: noUploadedFiles.map((f) => ({
-      fileId: f.fileId, fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize,
-      pageCount: f.pageCount, colorPageCount: f.colorCount,
-      printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies
-    })),
+    files: productType === 'document'
+      ? noUploadedFiles.map((f) => ({
+          productType: 'document',
+          fileId: f.fileId, fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize,
+          pageCount: f.pageCount, colorPageCount: f.colorCount,
+          printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies
+        }))
+      : noPassportItems.map((item) => ({
+          productType: 'passport-photo',
+          fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
+          sizePresetId: item.sizePresetId, packQty: item.packQty
+        })),
     deliveryMethod,
     deliveryAddress: deliveryMethod === 'delivery' ? deliveryAddress : undefined,
     deliveryCity: deliveryMethod === 'delivery' ? deliveryCity : undefined,

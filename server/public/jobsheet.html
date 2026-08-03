@@ -208,6 +208,11 @@
       </table>
     </div>
 
+    <div class="s1-section" id="jsPassportSection" style="display:none;">
+      <div class="s1-section-title">Passport Photo Packs</div>
+      <div id="jsPassportList"></div>
+    </div>
+
     <div class="s1-section">
       <div class="s1-qrrow">
         <div>
@@ -324,6 +329,9 @@ const PAPER_TYPE_LABELS = { normal: 'Normal (70–75 GSM)', bond: 'Bond (100 GSM
 // skipped in favor of showing the raw id — that would print the wrong stock
 // name on the job sheet.
 const PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 'Legal', mixed: 'Mixed' };
+// Passport photo size-preset id -> display label, same convention as
+// PAGE_SIZE_LABELS above.
+const PASSPORT_SIZE_LABELS = {};
 
 async function mergePaperTypeLabels(){
   try {
@@ -334,6 +342,7 @@ async function mergePaperTypeLabels(){
       if (Array.isArray(p.rates[size])) p.rates[size].forEach((t) => { if (t.id) PAPER_TYPE_LABELS[t.id] = t.label; });
     });
     (p.pageSizes || []).forEach((s) => { if (s.id) PAGE_SIZE_LABELS[s.id] = s.label; });
+    ((p.passportPhotos || {}).sizePresets || []).forEach((s) => { if (s.id) PASSPORT_SIZE_LABELS[s.id] = s.label; });
   } catch (err) { /* fall back to built-in labels / raw id */ }
 }
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
@@ -362,12 +371,40 @@ function populate(order){
   const readyByMs = (order.updated_at || order.created_at) + READY_BY_WINDOW_MS;
   document.getElementById('jsReadyBy').textContent = formatDateTime(readyByMs);
 
-  document.getElementById('jsPaperSize').textContent = PAGE_SIZE_LABELS[order.paper_size] || (order.paper_size || 'a4').toUpperCase();
+  // paper_size/paper_type/print_mode are null for an order with no document
+  // items (a pure Passport Photo order — see server.js buildPricedOrderFiles),
+  // not just for legacy rows — falling back to "A4" here would print a wrong
+  // stock name, so a missing paper_size shows '—' instead.
+  document.getElementById('jsPaperSize').textContent = order.paper_size ? (PAGE_SIZE_LABELS[order.paper_size] || order.paper_size.toUpperCase()) : '—';
   document.getElementById('jsPaperType').textContent = PAPER_TYPE_LABELS[order.paper_type] || order.paper_type || '—';
   document.getElementById('jsPrintMode').textContent = MODE_LABELS[order.print_mode] || order.print_mode || '—';
   document.getElementById('jsBinding').textContent = '—';
   document.getElementById('jsCopies').textContent = order.copies != null ? order.copies : '—';
   document.getElementById('jsInstructions').textContent = order.notes || '—';
+
+  let orderFiles = [];
+  try { orderFiles = order.files_json ? JSON.parse(order.files_json) : []; } catch (err) { orderFiles = []; }
+  const passportItems = orderFiles.filter((f) => f.productType === 'passport-photo');
+  const passportSection = document.getElementById('jsPassportSection');
+  if (passportItems.length) {
+    passportSection.style.display = '';
+    const list = document.getElementById('jsPassportList');
+    list.innerHTML = '';
+    // Built via textContent (not innerHTML) — fileName is customer-controlled
+    // (an uploaded file's original name) and must never be interpreted as HTML.
+    passportItems.forEach((f) => {
+      const sizeLabel = f.sizePresetId ? (PASSPORT_SIZE_LABELS[f.sizePresetId] || f.sizePresetId) : 'Passport photo';
+      const packText = f.packQty ? f.packQty + '-pack' : '';
+      const amountText = f.amount != null ? '₹' + f.amount : '';
+      const fileText = f.fileName || 'No photo uploaded yet';
+      const line = document.createElement('div');
+      line.className = 'f-value';
+      line.textContent = [sizeLabel, packText, amountText, fileText].filter(Boolean).join(' · ');
+      list.appendChild(line);
+    });
+  } else {
+    passportSection.style.display = 'none';
+  }
 
   const trackUrl = window.location.origin + '/track/' + order.id;
   document.getElementById('jsQrUrl').textContent = trackUrl;
