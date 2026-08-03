@@ -2665,7 +2665,7 @@ function pageSizeOptionsHtml(selected){
 // id, since renaming a row (e.g. "Letter" -> "4R" for a photo size) doesn't
 // change its id or these values automatically.
 function pageSizeRowHtml(row){
-  row = row || { id: '', label: '', active: true, widthMm: '', heightMm: '', isPhotoDefault: false };
+  row = row || { id: '', label: '', active: true, widthMm: '', heightMm: '', isPhotoDefault: false, photoOnly: false };
   const isA4 = row.id === 'a4';
   const active = isA4 || row.active !== false;
   return '<tr class="page-size-row" data-id="' + escHtml(row.id || '') + '">' +
@@ -2674,6 +2674,7 @@ function pageSizeRowHtml(row){
     '<td class="col-rate"><input class="ps-height" type="number" step="0.1" min="0" placeholder="mm" value="' + (row.heightMm || '') + '" /></td>' +
     '<td><label class="loc-active"><input type="checkbox" class="ps-active"' + (active ? ' checked' : '') + (isA4 ? ' disabled' : '') + ' /> Active</label></td>' +
     '<td><label class="loc-active" title="JPG/PNG uploads in the New order admin flow default to this size"><input type="radio" name="psPhotoDefault" class="ps-photo-default"' + (row.isPhotoDefault ? ' checked' : '') + ' /> Photo</label></td>' +
+    '<td><label class="loc-active" title="Hide this size from the Documents uploader on the order page — only the Photos uploader will offer it"><input type="checkbox" class="ps-photo-only"' + (row.photoOnly ? ' checked' : '') + ' /> Photo only</label></td>' +
     '<td>' + (isA4
       ? '<button type="button" class="rate-remove" disabled title="A4 is required and can’t be removed">✕</button>'
       : '<button type="button" class="rate-remove page-size-remove" aria-label="Remove page size">✕</button>') +
@@ -2682,9 +2683,9 @@ function pageSizeRowHtml(row){
 }
 
 // Reads the "Page sizes" section's rows into the canonical
-// {id,label,active,widthMm,heightMm,isPhotoDefault}[] shape (mirrors db.js
-// normalizePageSizes so the client-computed ids the "Print rates" dropdowns
-// use pre-save match what the server will assign on save).
+// {id,label,active,widthMm,heightMm,isPhotoDefault,photoOnly}[] shape (mirrors
+// db.js normalizePageSizes so the client-computed ids the "Print rates"
+// dropdowns use pre-save match what the server will assign on save).
 function collectPageSizesFromForm(){
   const out = [];
   const seen = new Set();
@@ -2702,10 +2703,11 @@ function collectPageSizesFromForm(){
       active: unique === 'a4' || tr.querySelector('.ps-active').checked,
       widthMm: Number(tr.querySelector('.ps-width').value) || 0,
       heightMm: Number(tr.querySelector('.ps-height').value) || 0,
-      isPhotoDefault: tr.querySelector('.ps-photo-default').checked
+      isPhotoDefault: tr.querySelector('.ps-photo-default').checked,
+      photoOnly: tr.querySelector('.ps-photo-only').checked
     });
   });
-  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false });
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false, photoOnly: false });
   return out;
 }
 
@@ -2744,13 +2746,14 @@ function bindPageSizeRow(tr){
 // One editable <tr>. data-id preserves an existing paper type's stable id so
 // renaming its label doesn't change the id stored on past orders; blank for new rows.
 function rateRowHtml(size, row){
-  row = row || { id: '', label: '', bw: {}, color: {} };
+  row = row || { id: '', label: '', bw: {}, color: {}, photoOnly: false };
   return '<tr class="rate-row" data-id="' + escHtml(row.id || '') + '">' +
     '<td class="col-size"><select class="rr-size">' + pageSizeOptionsHtml(size) + '</select></td>' +
     '<td class="col-name"><input class="rr-label" type="text" placeholder="e.g. Glossy" value="' + escHtml(row.label || '') + '" /></td>' +
     '<td class="col-rate"><input class="rr-bw-single" type="number" step="0.5" min="0" value="' + (row.bw && row.bw.single != null ? row.bw.single : '') + '" /></td>' +
     '<td class="col-rate"><input class="rr-bw-double" type="number" step="0.5" min="0" value="' + (row.bw && row.bw.double != null ? row.bw.double : '') + '" /></td>' +
     '<td class="col-rate"><input class="rr-color-single" type="number" step="0.5" min="0" value="' + (row.color && row.color.single != null ? row.color.single : '') + '" /></td>' +
+    '<td><label class="loc-active" title="Hide this paper type from the Documents uploader on the order page — only the Photos uploader offers it"><input type="checkbox" class="rr-photo-only"' + (row.photoOnly ? ' checked' : '') + ' /> Photo only</label></td>' +
     '<td><button type="button" class="rate-remove" aria-label="Remove row">✕</button></td>' +
   '</tr>';
 }
@@ -2859,15 +2862,15 @@ async function loadPricing(){
 
   form.innerHTML =
     '<h2>Page sizes</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Sizes customers can choose per file at checkout, and that feed the print rates table below. Width/Height set the physical print size (used for the job sheet and preview) — A4 is required and can’t be removed. "Photo" marks which size a JPG/PNG upload defaults to when staff place an order for a customer.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Sizes customers can choose per file at checkout, and that feed the print rates table below. Width/Height set the physical print size (used for the job sheet and preview) — A4 is required and can’t be removed. "Photo" marks which size a JPG/PNG upload defaults to when staff place an order for a customer. "Photo only" hides a size from the customer order page\'s Documents uploader (e.g. 4R) — only the Photos uploader offers it.</p>' +
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
-      '<th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Active</th><th>Photo</th><th></th>' +
+      '<th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Active</th><th>Photo</th><th>Photo only</th><th></th>' +
     '</tr></thead><tbody id="pageSizeRows">' + pageSizeRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPageSize">+ Add page size</button>' +
     '<h2>Print rates</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Add a row per page size &amp; paper type. Colour is single-sided only. "Photo only" hides a paper type (e.g. Gloss/Matte) from the Documents uploader — only the Photos uploader offers it, even under a page size (like A4) both share.</p>' +
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
-      '<th>Page size</th><th>Paper type</th><th>B/W single (₹/page)</th><th>B/W double (₹/sheet)</th><th>Color single (₹/page)</th><th></th>' +
+      '<th>Page size</th><th>Paper type</th><th>B/W single (₹/page)</th><th>B/W double (₹/sheet)</th><th>Color single (₹/page)</th><th>Photo only</th><th></th>' +
     '</tr></thead><tbody id="rateRows">' + rowsHtml.join('') + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addRateRow">+ Add paper type</button>' +
     '<h2>Passport photo sizes</h2>' +
@@ -2946,7 +2949,8 @@ async function savePricing(){
       id: tr.dataset.id || '',
       label,
       bw: { single: numOrZero(tr.querySelector('.rr-bw-single')), double: numOrZero(tr.querySelector('.rr-bw-double')) },
-      color: { single: numOrZero(tr.querySelector('.rr-color-single')) }
+      color: { single: numOrZero(tr.querySelector('.rr-color-single')) },
+      photoOnly: tr.querySelector('.rr-photo-only').checked
     });
   });
 

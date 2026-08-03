@@ -217,13 +217,14 @@ const DEFAULT_PRICING = {
     { id: 'a5', label: 'A5', active: true, widthMm: 148, heightMm: 210, isPhotoDefault: false },
     { id: 'letter', label: 'Letter', active: true, widthMm: 215.9, heightMm: 279.4, isPhotoDefault: false },
     { id: 'legal', label: 'Legal', active: true, widthMm: 215.9, heightMm: 355.6, isPhotoDefault: false },
-    { id: '4r', label: '4R', active: true, widthMm: 101.6, heightMm: 152.4, isPhotoDefault: true }
+    { id: '4r', label: '4R', active: true, widthMm: 101.6, heightMm: 152.4, isPhotoDefault: true, photoOnly: true }
   ],
   rates: {
     a4: [
-      { id: 'normal', label: 'Normal (70–75 GSM)', bw: { single: 1.5, double: 2.5 }, color: { single: 6 } },
-      { id: 'bond', label: 'Bond (100 GSM)', bw: { single: 2.5, double: 4 }, color: { single: 8 } },
-      { id: 'premium', label: 'Premium digital color', bw: { single: 4, double: 7 }, color: { single: 12 } }
+      { id: 'normal', label: 'Normal (70–75 GSM)', bw: { single: 1.5, double: 2.5 }, color: { single: 6 }, photoOnly: false },
+      { id: 'bond', label: 'Bond (100 GSM)', bw: { single: 2.5, double: 4 }, color: { single: 8 }, photoOnly: false },
+      { id: 'premium-gloss', label: 'Premium digital color (Gloss)', bw: { single: 4, double: 7 }, color: { single: 12 }, photoOnly: true },
+      { id: 'premium-matte', label: 'Premium digital color (Matte)', bw: { single: 4, double: 7 }, color: { single: 12 }, photoOnly: true }
     ]
   },
   deliveryCharge: 30,          // fallback rate: unrecognized/missing PIN code
@@ -287,7 +288,11 @@ const STANDARD_SIZE_MM = {
 // isPhotoDefault marks the one size a JPG/PNG upload should default to in the
 // admin "New order" flow (staff placing phone/WhatsApp orders) — at most one
 // row can carry it, and only an active row; an inactive/removed candidate
-// just means no photo default until the admin picks another.
+// just means no photo default until the admin picks another. photoOnly is a
+// separate, independent flag: it hides this size from the customer order
+// page's Documents/Photos-shared file list when the file wasn't added via the
+// Photos tab (see client/index.html pageSizesForFile()) — e.g. a small 4R
+// print size that should never show up as a Documents option.
 function normalizePageSizes(list) {
   const out = []
   const seen = new Set()
@@ -311,10 +316,11 @@ function normalizePageSizes(list) {
       active,
       widthMm: num(row.widthMm, fallback[0]) || fallback[0],
       heightMm: num(row.heightMm, fallback[1]) || fallback[1],
-      isPhotoDefault
+      isPhotoDefault,
+      photoOnly: !!row.photoOnly
     })
   })
-  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false })
+  if (!seen.has('a4')) out.unshift({ id: 'a4', label: 'A4', active: true, widthMm: 210, heightMm: 297, isPhotoDefault: false, photoOnly: false })
   return out
 }
 
@@ -325,7 +331,11 @@ function num(v, fallback = 0) {
 
 // Coerces an admin-supplied rates.a4 array into the canonical shape: every row
 // gets a unique non-empty id (slugified from its label when missing) and
-// numeric rate cells. Rows without a usable label are dropped.
+// numeric rate cells. Rows without a usable label are dropped. photoOnly
+// marks a paper type (e.g. "Premium digital color (Gloss/Matte)") as only
+// offered to files added via the Photos tab, even though it lives under a
+// page size (like A4) that Documents also uses — see client/index.html
+// paperTypesForFile().
 function normalizePaperTypes(list) {
   const out = []
   const seen = new Set()
@@ -342,7 +352,8 @@ function normalizePaperTypes(list) {
       id: unique,
       label,
       bw: { single: num(row.bw && row.bw.single), double: num(row.bw && row.bw.double) },
-      color: { single: num(row.color && row.color.single) }
+      color: { single: num(row.color && row.color.single) },
+      photoOnly: !!row.photoOnly
     })
   })
   return out

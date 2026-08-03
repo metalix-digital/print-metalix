@@ -812,6 +812,15 @@ function pageSizeLabel(id){ const s = pageSizeInfo(id); return s ? pageSizeDispl
 function paperTypesForSize(pageSize){ return (pricingConfig && pricingConfig.rates && Array.isArray(pricingConfig.rates[pageSize])) ? pricingConfig.rates[pageSize] : []; }
 function paperTypeLabel(pageSize, id){ const t = paperTypesForSize(pageSize).find((x) => x.id === id); return t ? t.label : (id || ''); }
 
+// Documents and Photos share the same state.files array/pricing (see
+// uploadFiles()), but some page sizes/paper types (e.g. a small 4R print, or
+// a Gloss/Matte finish under A4) only make sense for a Photos upload — the
+// admin flags those photoOnly (server/db.js), and these two helpers hide
+// them from a plain document's dropdowns while still offering them to a
+// file added via the Photos tab (f.isPhoto).
+function pageSizesForFile(f){ return activePageSizes().filter((s) => f.isPhoto || !s.photoOnly); }
+function paperTypesForFile(f){ return paperTypesForSize(f.pageSize).filter((t) => f.isPhoto || !t.photoOnly); }
+
 // Defaults applied to every newly uploaded file — each file's settings are
 // then fully independent (print mode, page size, paper type, orientation,
 // side, copies). pageSize/paperType are deliberately not defaulted here —
@@ -1077,14 +1086,19 @@ function renderCartList(){
   cartGroup.style.display = totalItems ? '' : 'none';
   cartCount.textContent = totalItems ? '(' + totalItems + ' item' + (totalItems === 1 ? '' : 's') + ')' : '';
   if(!totalItems){ cartList.innerHTML = ''; return; }
+  // Same .item-row look as the collapsed rows in the Documents/Photos and
+  // Passport Photos sections — plus an Edit button that switches to the
+  // right section AND opens that specific item, since a cart entry might
+  // belong to whichever section isn't currently showing.
   const docRows = state.files.map((f, i) => `
-    <div class="cart-row">
-      <div class="cart-row-icon">${f.isPhoto ? '🖼️' : '📄'}</div>
-      <div class="cart-row-body">
-        <div class="cart-row-name">${escapeAttr(f.fileName)}</div>
-        <div class="cart-row-meta">${f.isPhoto ? 'Photo' : 'Document'} · ${f.pageCount||0} page${f.pageCount===1?'':'s'}${f.pageSize?' · '+escapeAttr(pageSizeLabel(f.pageSize)):''}</div>
+    <div class="item-row" data-cart-edit-doc="${i}">
+      <div class="fdot">${fileDot(f.fileType)}</div>
+      <div class="item-row-body">
+        <div class="item-row-name">${escapeAttr(f.fileName)}</div>
+        <div class="item-row-meta">${f.isPhoto ? 'Photo' : 'Document'} · ${f.pageCount||0} page${f.pageCount===1?'':'s'}${f.pageSize?' · '+escapeAttr(pageSizeLabel(f.pageSize)):''}</div>
       </div>
       <div class="cart-row-price">₹${fileCost(f)}</div>
+      <button class="item-row-edit" type="button" data-cart-edit-doc="${i}">Edit</button>
       <button class="fremove" type="button" data-cart-doc="${i}" aria-label="Remove">✕</button>
     </div>
   `).join('');
@@ -1094,23 +1108,43 @@ function renderCartList(){
       ? escapeAttr(preset ? preset.label : 'Passport photo') + ' · ' + item.packQty + '-pack'
       : 'Needs crop';
     return `
-    <div class="cart-row">
-      <div class="cart-row-icon">🪪</div>
-      <div class="cart-row-body">
-        <div class="cart-row-name">${escapeAttr(item.fileName || 'Passport photo')}</div>
-        <div class="cart-row-meta">Passport Photo · ${meta}</div>
+    <div class="item-row" data-cart-edit-passport="${escapeAttr(item.localId)}">
+      <img class="pp-thumb-mini" src="${item.croppedPreviewUrl || item.objectUrl}" alt="" />
+      <div class="item-row-body">
+        <div class="item-row-name">${escapeAttr(item.fileName || 'Passport photo')}</div>
+        <div class="item-row-meta">Passport Photo · ${meta}</div>
       </div>
       <div class="cart-row-price">₹${passportItemCost(item)}</div>
+      <button class="item-row-edit" type="button" data-cart-edit-passport="${escapeAttr(item.localId)}">Edit</button>
       <button class="fremove" type="button" data-cart-passport="${escapeAttr(item.localId)}" aria-label="Remove">✕</button>
     </div>
   `;
   }).join('');
   cartList.innerHTML = docRows + passportRows;
   cartList.querySelectorAll('[data-cart-doc]').forEach((btn) => {
-    btn.addEventListener('click', () => removeFile(Number(btn.dataset.cartDoc)));
+    btn.addEventListener('click', (e) => { e.stopPropagation(); removeFile(Number(btn.dataset.cartDoc)); });
+  });
+  cartList.querySelectorAll('[data-cart-edit-doc]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = Number(el.dataset.cartEditDoc);
+      switchPrintType(state.files[index].isPhoto ? 'photo' : 'document');
+      state.openFileIndex = index;
+      renderFileList();
+      documentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  cartList.querySelectorAll('[data-cart-edit-passport]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchPrintType('passport-photo');
+      state.openPassportId = el.dataset.cartEditPassport;
+      renderPassportList();
+      passportSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   });
   cartList.querySelectorAll('[data-cart-passport]').forEach((btn) => {
-    btn.addEventListener('click', () => removePassportItem(btn.dataset.cartPassport));
+    btn.addEventListener('click', (e) => { e.stopPropagation(); removePassportItem(btn.dataset.cartPassport); });
   });
 }
 
@@ -1311,14 +1345,14 @@ function renderFileList(){
           <span class="fcard-field-label">Page size</span>
           <select class="fselect fpagesize" data-index="${i}" aria-label="Page size for this file">
             <option value="" ${f.pageSize?'':'selected'} disabled>Select page size</option>
-            ${activePageSizes().map((s) => `<option value="${escapeAttr(s.id)}" ${f.pageSize===s.id?'selected':''}>${escapeAttr(pageSizeDisplayLabel(s))}</option>`).join('')}
+            ${pageSizesForFile(f).map((s) => `<option value="${escapeAttr(s.id)}" ${f.pageSize===s.id?'selected':''}>${escapeAttr(pageSizeDisplayLabel(s))}</option>`).join('')}
           </select>
         </div>
         <div class="fcard-field">
           <span class="fcard-field-label">Paper type</span>
           <select class="fselect fpapertype" data-index="${i}" aria-label="Paper type for this file" ${f.pageSize?'':'disabled'}>
             <option value="" ${f.paperType?'':'selected'} disabled>Select paper type</option>
-            ${paperTypesForSize(f.pageSize).map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
+            ${paperTypesForFile(f).map((t) => `<option value="${escapeAttr(t.id)}" ${f.paperType===t.id?'selected':''}>${escapeAttr(t.label)}</option>`).join('')}
           </select>
         </div>
 
@@ -1427,6 +1461,7 @@ function renderFileList(){
         state.files[index][field] = btn.dataset.value;
         renderFileList();
         recalc();
+        if(field === 'orientation' && previewState.fileIndex === index) renderPreviewPage();
       });
     });
   });
@@ -1480,20 +1515,26 @@ const PHOTO_TRAY_COPY = {
   accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
   hints: ['JPG · PNG · WEBP', 'Glossy or Matte paper']
 };
-document.querySelectorAll('input[name=printType]').forEach((r) => r.addEventListener('change', (e) => {
-  state.printType = e.target.value;
-  const isPassport = state.printType === 'passport-photo';
+// Shared by the toggle's own change handler and the "Your order" cart
+// list's Edit buttons (clicking Edit there needs to switch to the right
+// section, not just open the item within whichever section already shows).
+function switchPrintType(type){
+  state.printType = type;
+  const radio = document.querySelector('input[name=printType][value="' + type + '"]');
+  if(radio) radio.checked = true;
+  const isPassport = type === 'passport-photo';
   documentSection.style.display = isPassport ? 'none' : '';
   passportSection.style.display = isPassport ? '' : 'none';
   if(!isPassport){
-    const copy = state.printType === 'photo' ? PHOTO_TRAY_COPY : DOCUMENT_TRAY_COPY;
+    const copy = type === 'photo' ? PHOTO_TRAY_COPY : DOCUMENT_TRAY_COPY;
     document.getElementById('documentSectionLabel').textContent = copy.label;
     document.getElementById('trayTitle').textContent = copy.title;
     document.getElementById('traySub').innerHTML = copy.sub;
     fileInput.setAttribute('accept', copy.accept);
     document.getElementById('hintStrip').innerHTML = copy.hints.map((h) => `<span class="hint-chip">${h}</span>`).join('');
   }
-}));
+}
+document.querySelectorAll('input[name=printType]').forEach((r) => r.addEventListener('change', (e) => switchPrintType(e.target.value)));
 
 /* -- Passport Photos: upload, manual crop, and per-item options -- */
 const passportFileInput = document.getElementById('passportFileInput');
@@ -1875,25 +1916,21 @@ const previewState = { fileIndex: -1, page: 0 };
 // job-sheet PDF applies server-side — so the customer sees roughly what
 // they'll get before paying. No page size chosen yet -> today's plain
 // unframed behavior (handled by the CSS attribute selector on --pv-ratio).
-function applyPreviewFrame(pageSize){
+// Landscape/portrait comes from the customer's own Orientation selection
+// (f.orientation), not the source image's natural dimensions — the preview
+// should show what they picked, not override it.
+function applyPreviewFrame(pageSize, orientation){
   const info = pageSizeInfo(pageSize);
   if(!info || !info.widthMm || !info.heightMm){
     pvPageFrame.style.removeProperty('--pv-ratio');
     return;
   }
-  // Normalize to portrait, then swap to match the actual image's own
-  // orientation once it loads — mirrors the server's landscape detection
-  // (server.js jobsheet-pdf endpoint) so the two never disagree.
   const portraitW = Math.min(info.widthMm, info.heightMm);
   const portraitH = Math.max(info.widthMm, info.heightMm);
-  const setRatio = () => {
-    const landscape = pvImg.naturalWidth > pvImg.naturalHeight;
-    const w = landscape ? portraitH : portraitW;
-    const h = landscape ? portraitW : portraitH;
-    pvPageFrame.style.setProperty('--pv-ratio', w + '/' + h);
-  };
-  if(pvImg.complete && pvImg.naturalWidth) setRatio();
-  else pvImg.addEventListener('load', setRatio, { once: true });
+  const landscape = orientation === 'landscape';
+  const w = landscape ? portraitH : portraitW;
+  const h = landscape ? portraitW : portraitH;
+  pvPageFrame.style.setProperty('--pv-ratio', w + '/' + h);
 }
 
 function renderPreviewPage(){
@@ -1906,7 +1943,7 @@ function renderPreviewPage(){
   pvPrev.disabled = previewState.page === 0;
   pvNext.disabled = previewState.page === total - 1;
   pvTruncatedNote.style.display = f.previewTruncated ? '' : 'none';
-  applyPreviewFrame(f.pageSize);
+  applyPreviewFrame(f.pageSize, f.orientation);
 }
 
 function openPreview(index){
