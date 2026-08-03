@@ -351,6 +351,15 @@ __GTM_NOSCRIPT__
       </div>
 
       <div class="opt-group">
+        <span class="opt-label">What are you printing?</span>
+        <div class="seg" id="printTypeToggle">
+          <label><input type="radio" name="printType" value="document" checked><span class="pill">Documents</span></label>
+          <label><input type="radio" name="printType" value="passport-photo"><span class="pill">Passport Photos</span></label>
+        </div>
+        <div class="delivery-note">You can add both to the same order — this just switches which uploader is shown.</div>
+      </div>
+
+      <div class="opt-group" id="documentSection">
         <span class="opt-label center">Upload document</span>
         <div class="tray" id="tray">
           <div id="trayEmpty">
@@ -388,7 +397,7 @@ __GTM_NOSCRIPT__
         <div class="file-privacy-note">🔒 Your files are deleted automatically 3 days after your order is completed.</div>
       </div>
 
-      <div class="opt-group">
+      <div class="opt-group" id="passportSection" style="display:none;">
         <span class="opt-label center">Passport photos</span>
         <div class="tray" id="passportTray">
           <div class="tray-icon">
@@ -1241,6 +1250,19 @@ function renderFileList(){
     });
   });
 }
+
+// Only one upload section (Documents or Passport Photos) is shown at a time —
+// purely a layout choice to avoid two big dropzones stacked on screen. Items
+// already added to either cart stay in state and count toward the order
+// regardless of which section is currently visible: a single order can still
+// mix Documents and Passport Photos (see calcEstimate()/buildOrderPayload()).
+const documentSection = document.getElementById('documentSection');
+const passportSection = document.getElementById('passportSection');
+document.querySelectorAll('input[name=printType]').forEach((r) => r.addEventListener('change', (e) => {
+  const isPassport = e.target.value === 'passport-photo';
+  documentSection.style.display = isPassport ? 'none' : '';
+  passportSection.style.display = isPassport ? '' : 'none';
+}));
 
 /* -- Passport Photos: upload, manual crop, and per-item options -- */
 const passportFileInput = document.getElementById('passportFileInput');
