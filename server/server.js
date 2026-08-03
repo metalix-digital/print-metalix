@@ -413,7 +413,34 @@ app.get('/api/bootstrap', (req, res) => {
   const testimonials = db.listPublicFeedback().map((f) => ({
     rating: f.rating, comment: f.comment, name: maskReviewerName(f.customer_name), created_at: f.created_at
   }))
-  res.json({ pricing: db.getPricing(), settings: db.getSiteSettings(), locations, testimonials })
+  // landing.html's applyPricing()/applySettings() only ever read the fields
+  // built below (checked against their source directly) — the full pricing
+  // config (every page size/paper type, passport packs, order defaults) and
+  // full settings (admin-only analytics fields, and the full legal/policy
+  // text, which is rendered server-side per policy page instead) would
+  // otherwise ride along on this deferred fetch for no reason. Trimming this
+  // is what shrank the payload flagged in PageSpeed's network dependency
+  // chain; the order page and admin dashboard get the untrimmed config from
+  // their own routes (/api/pricing, /api/admin/settings).
+  const fullPricing = db.getPricing()
+  const a4 = (Array.isArray(fullPricing.rates && fullPricing.rates.a4) ? fullPricing.rates.a4[0] : null) || {}
+  const pricing = {
+    rates: { a4: [{ bw: a4.bw, color: a4.color }] },
+    deliveryLocalCharge: fullPricing.deliveryLocalCharge,
+    deliveryGurugramCharge: fullPricing.deliveryGurugramCharge,
+    freeDeliveryThreshold: fullPricing.freeDeliveryThreshold
+  }
+  const fullSettings = db.getSiteSettings()
+  const settings = {
+    seo: fullSettings.seo,
+    headOfficeAddress: fullSettings.headOfficeAddress,
+    phone: fullSettings.phone,
+    whatsapp: fullSettings.whatsapp,
+    email: fullSettings.email,
+    storeTimings: fullSettings.storeTimings,
+    social: fullSettings.social
+  }
+  res.json({ pricing, settings, locations, testimonials })
 })
 
 // Website "contact us" form → emails the business inbox. Always logs the
