@@ -292,6 +292,8 @@ __GTM_HEAD__
   .item-row-edit:hover{ border-color:var(--orange); color:var(--orange-deep); }
   .item-submit-btn{ width:100%; margin-top:14px; }
   .incomplete-tag{ font-size:11px; font-weight:700; color:var(--orange-deep); background:var(--orange-tint); border:1px solid var(--orange-tint-border); border-radius:999px; padding:3px 9px; flex-shrink:0; white-space:nowrap; }
+  .tray-hint{ font-size:12.5px; color:var(--ink-soft); text-align:center; padding:14px; background:var(--paper-dim); border:1px dashed var(--line); border-radius:12px; }
+  .tray-hint b{ color:var(--ink); }
 
   /* Crop modal */
   .crop-stage{ position:relative; max-width:420px; max-height:60vh; overflow:hidden; background:#111; display:flex; align-items:center; justify-content:center; touch-action:none; margin:0 auto; }
@@ -1298,29 +1300,24 @@ function renderFileList(){
     fileTotal.textContent = '';
     return;
   }
-  // Only one file's full settings panel is open at a time — everything else
-  // collapses into a compact summary row (like the cart list above) so
-  // uploading several files doesn't stack N full settings panels on screen.
-  fileList.innerHTML = state.files.map((f, i) => {
-    if(i !== state.openFileIndex){
-      const complete = fileIsComplete(f);
-      const meta = complete
-        ? escapeAttr(pageSizeLabel(f.pageSize)) + ' · ' + escapeAttr(paperTypeLabel(f.pageSize, f.paperType)) + ' · ' + (f.copies||1) + ' cop' + ((f.copies||1)===1?'y':'ies')
-        : (f.pageCount||0) + ' page' + (f.pageCount===1?'':'s');
-      return `
-      <div class="item-row" data-edit-file="${i}">
-        <div class="fdot">${fileDot(f.fileType)}</div>
-        <div class="item-row-body">
-          <div class="item-row-name">${escapeAttr(f.fileName)}</div>
-          <div class="item-row-meta">${meta}</div>
-        </div>
-        ${complete ? '' : '<span class="incomplete-tag">Incomplete</span>'}
-        <div class="cart-row-price">₹${fileCost(f)}</div>
-        <button class="item-row-edit" type="button" data-edit-file="${i}">Edit</button>
-        <button class="fremove" type="button" data-index="${i}" aria-label="Remove file">✕</button>
-      </div>
-    `;
-    }
+  // "Your order" above is the single place every item (of every type) is
+  // listed — this section only ever shows the ONE file currently open for
+  // editing (if any), never a duplicate list of the others. Nothing open ->
+  // a short hint pointing back at "Your order" instead of an empty gap.
+  const openIndex = state.openFileIndex;
+  const openFile = openIndex != null ? state.files[openIndex] : null;
+  // A document's open card shouldn't linger visible under the Photos tab
+  // (and vice versa) — they share this section, but each file belongs to one.
+  const openMatchesTab = openFile && !!openFile.isPhoto === (state.printType === 'photo');
+  if(!openMatchesTab){
+    fileList.innerHTML = '<div class="tray-hint">Click <b>Edit</b> on an item in "Your order" above to change it, or add another below.</div>';
+    const totalMb = (totalUploadedBytes()/1024/1024).toFixed(1);
+    fileTotal.textContent = `${state.files.length} file${state.files.length===1?'':'s'} · ${totalMb} MB of 100 MB used`;
+    return;
+  }
+  const i = openIndex;
+  const f = openFile;
+  fileList.innerHTML = (() => {
     return `
     <div class="file-card">
       <div class="file-card-top">
@@ -1391,20 +1388,13 @@ function renderFileList(){
       <button class="btn btn-primary item-submit-btn" type="button" data-submit-file="${i}">Submit</button>
     </div>
   `;
-  }).join('');
+  })();
   const totalMb = (totalUploadedBytes()/1024/1024).toFixed(1);
   fileTotal.textContent = `${state.files.length} file${state.files.length===1?'':'s'} · ${totalMb} MB of 100 MB used`;
   fileList.querySelectorAll('.fremove').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeFile(Number(btn.dataset.index));
-    });
-  });
-  fileList.querySelectorAll('[data-edit-file]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      state.openFileIndex = Number(el.dataset.editFile);
-      renderFileList();
     });
   });
   fileList.querySelectorAll('[data-submit-file]').forEach((btn) => {
@@ -1559,28 +1549,16 @@ function renderPassportList(){
   if(!state.passportItems.length){ passportList.innerHTML = ''; return; }
   const presets = activePassportPresets();
   const tiers = passportPackTiers();
-  // Only one item's full settings panel is open at a time — same pattern as
-  // renderFileList() — everything else collapses to a summary row.
-  passportList.innerHTML = state.passportItems.map((item) => {
-    if(item.localId !== state.openPassportId){
-      const complete = item.status === 'ready';
-      const meta = complete
-        ? escapeAttr((passportPresetInfo(item.sizePresetId)||{}).label || '') + ' · ' + item.packQty + '-pack'
-        : (item.status === 'uploading' ? 'Uploading…' : 'Needs crop');
-      return `
-      <div class="item-row" data-edit-passport="${escapeAttr(item.localId)}">
-        <img class="pp-thumb-mini" src="${item.croppedPreviewUrl || item.objectUrl}" alt="" />
-        <div class="item-row-body">
-          <div class="item-row-name">${escapeAttr(item.fileName || 'Photo')}</div>
-          <div class="item-row-meta">${meta}</div>
-        </div>
-        ${complete ? '' : '<span class="incomplete-tag">Incomplete</span>'}
-        <div class="cart-row-price">₹${passportItemCost(item)}</div>
-        <button class="item-row-edit" type="button" data-edit-passport="${escapeAttr(item.localId)}">Edit</button>
-        <button class="fremove" type="button" data-remove="${escapeAttr(item.localId)}" aria-label="Remove">✕</button>
-      </div>
-    `;
-    }
+  // "Your order" above already lists every passport item — this section
+  // only ever shows the ONE item currently open for editing, never a
+  // duplicate list of the others.
+  const openItem = state.passportItems.find((p) => p.localId === state.openPassportId);
+  if(!openItem){
+    passportList.innerHTML = '<div class="tray-hint">Click <b>Edit</b> on an item in "Your order" above to change it, or add another below.</div>';
+    return;
+  }
+  passportList.innerHTML = (() => {
+    const item = openItem;
     return `
     <div class="passport-card" data-id="${escapeAttr(item.localId)}">
       <img class="pp-thumb" src="${item.croppedPreviewUrl || item.objectUrl}" alt="Passport photo preview" />
@@ -1606,17 +1584,10 @@ function renderPassportList(){
       </div>
     </div>
   `;
-  }).join('');
+  })();
 
   passportList.querySelectorAll('[data-remove]').forEach((btn) => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); removePassportItem(btn.dataset.remove); });
-  });
-  passportList.querySelectorAll('[data-edit-passport]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      state.openPassportId = el.dataset.editPassport;
-      renderPassportList();
-    });
   });
   passportList.querySelectorAll('[data-submit-passport]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -2149,18 +2120,21 @@ function validateForConfirm(){
   const notReadyPassport = state.passportItems.filter((p) => p.status !== 'ready');
   if(notReadyPassport.length){
     if(state.openPassportId !== notReadyPassport[0].localId){
+      switchPrintType('passport-photo');
       state.openPassportId = notReadyPassport[0].localId;
       renderPassportList();
     }
     showToast('Finish cropping every passport photo before checkout', true);
     ok = false;
   }
-  // Only the currently-open file's page-size/paper-type <select> exists in
-  // the DOM (everything else is collapsed to a summary row) — if the first
-  // incomplete file isn't already open, open it so there's something visible
-  // to fix rather than just a toast pointing at a collapsed "Incomplete" row.
+  // This section only ever shows the ONE currently-open file (everything
+  // else lives in "Your order" above) — if the first incomplete file isn't
+  // already open (or is open under the wrong tab), open it under the right
+  // tab so there's something visible to fix, not just a toast pointing at
+  // a section that still shows the "click Edit above" hint.
   const firstIncompleteIndex = state.files.findIndex((f) => !fileIsComplete(f));
   if(firstIncompleteIndex !== -1 && firstIncompleteIndex !== state.openFileIndex){
+    switchPrintType(state.files[firstIncompleteIndex].isPhoto ? 'photo' : 'document');
     state.openFileIndex = firstIncompleteIndex;
     renderFileList();
   }
