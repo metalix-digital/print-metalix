@@ -3394,7 +3394,6 @@ async function loadSettings(){
     '<div class="field-grid">' +
       textFieldHtml('Google Tag Manager Container ID', 'analytics.gtmContainerId', (s.analytics||{}).gtmContainerId || '') +
       textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
-      textFieldHtml('Google Analytics Measurement ID (optional — only for GSC\'s "Google Analytics" verification method)', 'analytics.gaMeasurementId', (s.analytics||{}).gaMeasurementId || '') +
     '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
     '<div id="settingsMessage"></div>';
