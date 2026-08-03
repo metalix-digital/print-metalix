@@ -2762,9 +2762,7 @@ function bindRateRowRemove(tr){
 // Passport Photos: size presets (label + mm dimensions, admin-addable —
 // same shape/behavior as pageSizeRowHtml above, minus the "A4 required"/
 // photo-default special-casing since nothing here is mandatory) and pack
-// prices (fixed 8/16/32 qty tiers — only the price is editable, no
-// add/remove, since the tiers themselves are a fixed business rule; see
-// server/db.js PASSPORT_PACK_QTYS).
+// prices (qty + price, both admin-addable/removable — same pattern as sizes).
 function passportSizeRowHtml(row){
   row = row || { id: '', label: '', active: true, widthMm: '', heightMm: '' };
   return '<tr class="passport-size-row" data-id="' + escHtml(row.id || '') + '">' +
@@ -2802,20 +2800,29 @@ function bindPassportSizeRow(tr){
   tr.querySelector('.passport-size-remove').addEventListener('click', () => tr.remove());
 }
 
-const PASSPORT_PACK_QTYS = [8, 16, 32];
 function passportPackRowHtml(tier){
-  return '<tr data-qty="' + tier.qty + '">' +
-    '<td>' + tier.qty + ' photos</td>' +
+  tier = tier || { qty: '', price: '' };
+  return '<tr class="passport-pack-row">' +
+    '<td class="col-rate"><input class="ppp-qty" type="number" step="1" min="1" placeholder="e.g. 20" value="' + (tier.qty || '') + '" /></td>' +
     '<td class="col-rate"><input class="ppp-price" type="number" step="1" min="0" value="' + (tier.price != null ? tier.price : '') + '" /></td>' +
+    '<td><button type="button" class="rate-remove passport-pack-remove" aria-label="Remove pack">✕</button></td>' +
   '</tr>';
 }
 
 function collectPassportPackPricesFromForm(){
-  const rows = [];
-  document.querySelectorAll('#passportPackRows tr').forEach((tr) => {
-    rows.push({ qty: Number(tr.dataset.qty), price: Number(tr.querySelector('.ppp-price').value) || 0 });
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#passportPackRows .passport-pack-row').forEach((tr) => {
+    const qty = Math.round(Number(tr.querySelector('.ppp-qty').value));
+    if (!Number.isFinite(qty) || qty <= 0 || seen.has(qty)) return;
+    seen.add(qty);
+    out.push({ qty, price: Number(tr.querySelector('.ppp-price').value) || 0 });
   });
-  return rows;
+  return out;
+}
+
+function bindPassportPackRow(tr){
+  tr.querySelector('.passport-pack-remove').addEventListener('click', () => tr.remove());
 }
 
 async function loadPricing(){
@@ -2848,7 +2855,7 @@ async function loadPricing(){
   passportSizes.forEach((s) => { if (s.id) PASSPORT_SIZE_LABELS[s.id] = s.label; });
   const passportSizeRowsHtml = passportSizes.map(passportSizeRowHtml).join('');
   const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
-  const passportPackRowsHtml = PASSPORT_PACK_QTYS.map((qty) => passportPackPrices.find((t) => t.qty === qty) || { qty, price: 0 }).map(passportPackRowHtml).join('');
+  const passportPackRowsHtml = passportPackPrices.map(passportPackRowHtml).join('');
 
   form.innerHTML =
     '<h2>Page sizes</h2>' +
@@ -2870,10 +2877,11 @@ async function loadPricing(){
     '</tr></thead><tbody id="passportSizeRows">' + passportSizeRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPassportSize">+ Add size</button>' +
     '<h2>Passport photo pack prices</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Flat price per pack — the same price applies at every size above.</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Pack quantities and their flat prices — the same price applies at every size above. Add, remove, or edit quantities freely.</p>' +
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
-      '<th>Pack</th><th>Price (₹)</th>' +
+      '<th>Quantity</th><th>Price (₹)</th><th></th>' +
     '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addPassportPack">+ Add pack</button>' +
     '<h2>Other</h2><div class="field-grid">' +
       // Fall back to the same defaults pricing.js uses at calc time — this DB may
       // predate these fields, and rendering them blank/zero would silently persist
@@ -2909,6 +2917,13 @@ async function loadPricing(){
     const tbody = document.getElementById('passportSizeRows');
     tbody.insertAdjacentHTML('beforeend', passportSizeRowHtml(null));
     bindPassportSizeRow(tbody.lastElementChild);
+  });
+
+  form.querySelectorAll('.passport-pack-row').forEach(bindPassportPackRow);
+  document.getElementById('addPassportPack').addEventListener('click', () => {
+    const tbody = document.getElementById('passportPackRows');
+    tbody.insertAdjacentHTML('beforeend', passportPackRowHtml(null));
+    bindPassportPackRow(tbody.lastElementChild);
   });
 
   document.getElementById('savePricingBtn').addEventListener('click', savePricing);

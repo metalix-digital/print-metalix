@@ -268,6 +268,17 @@ __GTM_HEAD__
   .pp-tile{ position:absolute; background-size:cover; background-position:center; outline:1px dashed rgba(0,0,0,.25); outline-offset:-1px; }
   .pp-sheet-label{ font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; align-self:center; }
 
+  /* Combined cart list — shows every item (documents + passport photos)
+     together, regardless of which upload section is currently toggled on. */
+  #cartCount{ font-weight:400; text-transform:none; letter-spacing:normal; }
+  .cart-list{ display:flex; flex-direction:column; gap:8px; }
+  .cart-row{ display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:9px 12px; }
+  .cart-row-icon{ width:28px; height:28px; border-radius:8px; background:var(--paper-dim); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .cart-row-body{ flex:1; min-width:0; }
+  .cart-row-name{ font-size:13px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cart-row-meta{ font-size:11px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:1px; }
+  .cart-row-price{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:13px; color:var(--orange-deep); flex-shrink:0; }
+
   /* Crop modal */
   .crop-stage{ position:relative; max-width:420px; max-height:60vh; overflow:hidden; background:#111; display:flex; align-items:center; justify-content:center; touch-action:none; margin:0 auto; }
   .crop-stage img{ max-width:100%; max-height:60vh; display:block; user-select:none; -webkit-user-drag:none; }
@@ -358,20 +369,26 @@ __GTM_NOSCRIPT__
         <span class="opt-label">What are you printing?</span>
         <div class="seg" id="printTypeToggle">
           <label><input type="radio" name="printType" value="document" checked><span class="pill">Documents</span></label>
+          <label><input type="radio" name="printType" value="photo"><span class="pill">Photos</span></label>
           <label><input type="radio" name="printType" value="passport-photo"><span class="pill">Passport Photos</span></label>
         </div>
-        <div class="delivery-note">You can add both to the same order — this just switches which uploader is shown.</div>
+        <div class="delivery-note">You can add all three to the same order — this just switches which uploader is shown.</div>
+      </div>
+
+      <div class="opt-group" id="cartGroup" style="display:none;">
+        <span class="opt-label">Your order <span id="cartCount"></span></span>
+        <div class="cart-list" id="cartList"></div>
       </div>
 
       <div class="opt-group" id="documentSection">
-        <span class="opt-label center">Upload document</span>
+        <span class="opt-label center" id="documentSectionLabel">Upload document</span>
         <div class="tray" id="tray">
           <div id="trayEmpty">
-            <div class="tray-icon">
+            <div class="tray-icon" id="trayIcon">
               <svg viewBox="0 0 24 24" fill="none" stroke="#FF6600" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <div class="tray-title">Drop your documents here</div>
-            <div class="tray-sub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT, PPTX, JPG or PNG, multiple files up to 100 MB total</div>
+            <div class="tray-title" id="trayTitle">Drop your documents here</div>
+            <div class="tray-sub" id="traySub">or <b>click to browse</b> — PDF, DOC, DOCX, PPT, PPTX, JPG or PNG, multiple files up to 100 MB total</div>
             <div class="tray-error" id="trayError"></div>
           </div>
 
@@ -394,7 +411,7 @@ __GTM_NOSCRIPT__
           <button class="btn btn-ghost" id="removeBtn" type="button" disabled>Remove all</button>
         </div>
 
-        <div class="hint-strip">
+        <div class="hint-strip" id="hintStrip">
           <span class="hint-chip">PDF · DOC · DOCX · PPT · PPTX · JPG · PNG</span>
           <span class="hint-chip">Up to 100 MB total</span>
         </div>
@@ -797,6 +814,11 @@ let state = {
   // croppedBlob, sizePresetId, packQty, status: 'needs-crop'|'uploading'|'ready',
   // fileId, fileName, fileType, fileSize }.
   passportItems: [],
+  // 'document' | 'photo' | 'passport-photo' — which upload section is
+  // currently showing (see the printType toggle below). Documents and
+  // Photos share the same state.files array/pricing; this only affects
+  // upload-time defaults (see uploadFiles()) and the tray's copy/accept type.
+  printType: 'document',
   uploading: false,
   deliveryMethod: 'pickup',
   deliveryTiming: 'instant',
@@ -1023,7 +1045,56 @@ function updateDeliveryHint(est){
   }
 }
 
+// Shows every item added so far — documents AND passport photos together —
+// regardless of which upload section the "What are you printing?" toggle
+// currently has visible, so it's obvious both are part of the same order.
+function renderCartList(){
+  const cartGroup = document.getElementById('cartGroup');
+  const cartList = document.getElementById('cartList');
+  const cartCount = document.getElementById('cartCount');
+  const totalItems = state.files.length + state.passportItems.length;
+  cartGroup.style.display = totalItems ? '' : 'none';
+  cartCount.textContent = totalItems ? '(' + totalItems + ' item' + (totalItems === 1 ? '' : 's') + ')' : '';
+  if(!totalItems){ cartList.innerHTML = ''; return; }
+  const docRows = state.files.map((f, i) => `
+    <div class="cart-row">
+      <div class="cart-row-icon">${f.isPhoto ? '🖼️' : '📄'}</div>
+      <div class="cart-row-body">
+        <div class="cart-row-name">${escapeAttr(f.fileName)}</div>
+        <div class="cart-row-meta">${f.isPhoto ? 'Photo' : 'Document'} · ${f.pageCount||0} page${f.pageCount===1?'':'s'}${f.pageSize?' · '+escapeAttr(pageSizeLabel(f.pageSize)):''}</div>
+      </div>
+      <div class="cart-row-price">₹${fileCost(f)}</div>
+      <button class="fremove" type="button" data-cart-doc="${i}" aria-label="Remove">✕</button>
+    </div>
+  `).join('');
+  const passportRows = state.passportItems.map((item) => {
+    const preset = passportPresetInfo(item.sizePresetId);
+    const meta = item.status === 'ready'
+      ? escapeAttr(preset ? preset.label : 'Passport photo') + ' · ' + item.packQty + '-pack'
+      : 'Needs crop';
+    return `
+    <div class="cart-row">
+      <div class="cart-row-icon">🪪</div>
+      <div class="cart-row-body">
+        <div class="cart-row-name">${escapeAttr(item.fileName || 'Passport photo')}</div>
+        <div class="cart-row-meta">Passport Photo · ${meta}</div>
+      </div>
+      <div class="cart-row-price">₹${passportItemCost(item)}</div>
+      <button class="fremove" type="button" data-cart-passport="${escapeAttr(item.localId)}" aria-label="Remove">✕</button>
+    </div>
+  `;
+  }).join('');
+  cartList.innerHTML = docRows + passportRows;
+  cartList.querySelectorAll('[data-cart-doc]').forEach((btn) => {
+    btn.addEventListener('click', () => removeFile(Number(btn.dataset.cartDoc)));
+  });
+  cartList.querySelectorAll('[data-cart-passport]').forEach((btn) => {
+    btn.addEventListener('click', () => removePassportItem(btn.dataset.cartPassport));
+  });
+}
+
 function recalc(){
+  renderCartList();
   const est = calcEstimate();
   const totalPages = state.files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
   const totalColor = state.files.reduce((sum, f) => sum + (f.colorCount || 0), 0);
@@ -1319,17 +1390,43 @@ function renderFileList(){
   });
 }
 
-// Only one upload section (Documents or Passport Photos) is shown at a time —
-// purely a layout choice to avoid two big dropzones stacked on screen. Items
-// already added to either cart stay in state and count toward the order
-// regardless of which section is currently visible: a single order can still
-// mix Documents and Passport Photos (see calcEstimate()/buildOrderPayload()).
+// Only one upload section is shown at a time — purely a layout choice to
+// avoid multiple big dropzones stacked on screen. Items already added stay
+// in state and count toward the order regardless of which section is
+// currently visible: a single order can mix Documents, Photos, and Passport
+// Photos (see calcEstimate()/buildOrderPayload()). Documents and Photos share
+// the same upload section/array/pricing (see uploadFiles()) — "Photos" just
+// swaps its copy and restricts the file picker to image types; Passport
+// Photos is the only genuinely separate flow (flat-pack pricing, crop step).
 const documentSection = document.getElementById('documentSection');
 const passportSection = document.getElementById('passportSection');
+const DOCUMENT_TRAY_COPY = {
+  label: 'Upload document',
+  title: 'Drop your documents here',
+  sub: 'or <b>click to browse</b> — PDF, DOC, DOCX, PPT, PPTX, JPG or PNG, multiple files up to 100 MB total',
+  accept: '.pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/gif',
+  hints: ['PDF · DOC · DOCX · PPT · PPTX · JPG · PNG', 'Up to 100 MB total']
+};
+const PHOTO_TRAY_COPY = {
+  label: 'Upload photos',
+  title: 'Drop your photos here',
+  sub: 'or <b>click to browse</b> — JPG, PNG or WEBP, printed on glossy or matte photo paper, multiple files up to 100 MB total',
+  accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp',
+  hints: ['JPG · PNG · WEBP', 'Glossy or Matte paper']
+};
 document.querySelectorAll('input[name=printType]').forEach((r) => r.addEventListener('change', (e) => {
-  const isPassport = e.target.value === 'passport-photo';
+  state.printType = e.target.value;
+  const isPassport = state.printType === 'passport-photo';
   documentSection.style.display = isPassport ? 'none' : '';
   passportSection.style.display = isPassport ? '' : 'none';
+  if(!isPassport){
+    const copy = state.printType === 'photo' ? PHOTO_TRAY_COPY : DOCUMENT_TRAY_COPY;
+    document.getElementById('documentSectionLabel').textContent = copy.label;
+    document.getElementById('trayTitle').textContent = copy.title;
+    document.getElementById('traySub').innerHTML = copy.sub;
+    fileInput.setAttribute('accept', copy.accept);
+    document.getElementById('hintStrip').innerHTML = copy.hints.map((h) => `<span class="hint-chip">${h}</span>`).join('');
+  }
 }));
 
 /* -- Passport Photos: upload, manual crop, and per-item options -- */
@@ -1802,6 +1899,17 @@ async function uploadFiles(fileArray){
     try{
       const json = await uploadOneFile(validFiles[i]);
       Object.assign(json, NEW_FILE_DEFAULTS);
+      // Cosmetic only (cart icon/label) — pricing/validation treat every
+      // state.files entry identically regardless of which tray added it.
+      json.isPhoto = state.printType === 'photo';
+      // Photos default to A4 + whichever A4 paper type is labeled "Gloss"
+      // (matched by label text, not a hardcoded id, since the admin names
+      // these rows themselves) — the customer can still change either.
+      if(json.isPhoto){
+        json.pageSize = 'a4';
+        const glossy = paperTypesForSize('a4').find((t) => /gloss/i.test(t.label));
+        if(glossy) json.paperType = glossy.id;
+      }
       state.files.push(json);
       if(window.gtag) window.gtag('event', 'add_to_cart', {
         currency: 'INR', value: fileCost(json),

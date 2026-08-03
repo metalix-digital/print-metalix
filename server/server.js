@@ -871,6 +871,19 @@ app.get('/api/admin/orders/:id', requireAdmin, requireTab('orders'), (req, res) 
 // PDF — page 1 cover, middle pages the real document(s), last page branding.
 const A4_PT = { width: 595.28, height: 841.89 }
 const MM_TO_PT = 2.834645669
+// fs.readFileSync can return a Buffer that's a view into a larger, reused
+// internal memory pool (a nonzero byteOffset into a bigger underlying
+// ArrayBuffer) rather than a dedicated allocation — normal and harmless for
+// almost everything, but pdf-lib's JPEG/PNG embedders read straight from
+// `buffer.buffer` at absolute offset 0 and ignore byteOffset entirely, so a
+// pooled buffer makes them parse garbage from earlier in the pool and throw
+// (e.g. "SOI not found in JPEG") — intermittently, depending on incidental
+// pool state at the time of the read, not on anything about the file itself.
+// ArrayBuffer#slice always performs a real copy, independent of any of that,
+// so this guarantees byteOffset 0 regardless of how the input was allocated.
+function toCleanBuffer(buf) {
+  return Buffer.from(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
+}
 // Physical page size for a source document's content, in PDF points — read
 // from the admin-owned pageSizes row (widthMm/heightMm) rather than a
 // hardcoded id lookup, since a row's id can outlive a rename (e.g. id
@@ -906,7 +919,9 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
 
     async function addImagePage(dataUrl) {
       const base64 = dataUrl.split(',')[1] || ''
-      const bytes = Buffer.from(base64, 'base64')
+      // toCleanBuffer: see its definition above — Buffer.from(base64string) can
+      // return a pooled, nonzero-byteOffset buffer just like fs.readFileSync.
+      const bytes = toCleanBuffer(Buffer.from(base64, 'base64'))
       const img = dataUrl.startsWith('data:image/png') ? await merged.embedPng(bytes) : await merged.embedJpg(bytes)
       const scale = A4_PT.width / img.width
       const drawHeight = Math.min(img.height * scale, A4_PT.height)
@@ -927,16 +942,15 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
     // `merged` PDFDocument, and is CPU-bound/fast either way).
     const converted = await Promise.all(files.map(async (f) => {
       // Passport-photo items are raster images, not documents — no
-      // LibreOffice conversion needed, and (per the phase-1 scope decision)
-      // no per-pack grid layout yet, just a single labeled reference page
-      // for staff. A missing fileId here is expected (admin-created orders
-      // can have a photo-less pack, see buildPricedOrderFiles), not an error.
+      // LibreOffice conversion needed. A missing fileId here is expected
+      // (admin-created orders can have a photo-less pack, see
+      // buildPricedOrderFiles), not an error.
       if ((f.productType || 'document') === 'passport-photo') {
         const safeFileId = f.fileId ? path.basename(String(f.fileId)) : ''
         const filePath = safeFileId ? path.join(uploadsDir, safeFileId) : null
         if (!filePath || !fs.existsSync(filePath)) return { f, safeFileId, isPassport: true }
         try {
-          return { f, safeFileId, isPassport: true, imageBuffer: fs.readFileSync(filePath) }
+          return { f, safeFileId, isPassport: true, imageBuffer: toCleanBuffer(fs.readFileSync(filePath)) }
         } catch (err) {
           return { f, safeFileId, isPassport: true }
         }
@@ -977,7 +991,11 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
             })
             const photoWPt = layout.photoWidthMm * MM_TO_PT
             const photoHPt = layout.photoHeightMm * MM_TO_PT
-            layout.sheets.forEach((sheet, sheetIdx) => {
+            // Nothing but the photos themselves goes on these pages — this
+            // sheet gets cut up and handed straight to the customer, so no
+            // staff label/pricing text may appear on it anywhere. Order
+            // context (size/pack/price) lives on the cover sheet instead.
+            layout.sheets.forEach((sheet) => {
               const page = merged.addPage([A4_PT.width, A4_PT.height])
               sheet.positions.forEach((pos) => {
                 const xPt = pos.x * MM_TO_PT
@@ -986,8 +1004,6 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
                 const yPt = A4_PT.height - pos.y * MM_TO_PT - photoHPt
                 page.drawImage(img, { x: xPt, y: yPt, width: photoWPt, height: photoHPt })
               })
-              const footer = layout.numSheets > 1 ? `${label} · Sheet ${sheetIdx + 1} of ${layout.numSheets}` : label
-              page.drawText(footer, { x: 20, y: 16, size: 9, font, color: rgb(0.35, 0.38, 0.42) })
             })
           } catch (err) {
             const page = merged.addPage([A4_PT.width, A4_PT.height])

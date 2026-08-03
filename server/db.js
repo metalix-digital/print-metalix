@@ -374,24 +374,23 @@ function normalizePassportSizePresets(list) {
   return out
 }
 
-// Pack quantities are a fixed business rule (8/16/32), not admin-addable —
-// only the price per tier is editable. Coerces admin input back to exactly
-// those three tiers regardless of what was submitted, so a malformed/partial
-// save can never lose or duplicate a tier.
-const PASSPORT_PACK_QTYS = [8, 16, 32]
+// Pack quantities are admin-managed, like size presets above — coerces to
+// unique positive-integer qtys (sorted ascending, first occurrence wins on a
+// duplicate) with numeric prices. Never left empty: if the admin's submitted
+// list normalizes to nothing (e.g. every row had a blank/invalid qty), falls
+// back to the seeded defaults rather than silently offering zero pack sizes.
 function normalizePassportPackPrices(list) {
-  const byQty = new Map((Array.isArray(list) ? list : []).map((row) => [Number(row && row.qty), row]))
-  return PASSPORT_PACK_QTYS.map((qty) => {
-    const row = byQty.get(qty)
-    // A tier entirely absent from the input (e.g. backfilling a settings row
-    // saved before this feature existed) falls back to the seeded default
-    // price, not 0 — matches normalizePageSizes' STANDARD_SIZE_MM fallback
-    // pattern above. A tier that IS present keeps whatever price it was
-    // given, including an admin's deliberate 0, via num()'s own fallback.
-    const seeded = DEFAULT_PRICING.passportPhotos.packPrices.find((p) => p.qty === qty)
-    const fallbackPrice = seeded ? seeded.price : 0
-    return { qty, price: row ? num(row.price, fallbackPrice) : fallbackPrice }
+  const seen = new Set()
+  const out = []
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row) return
+    const qty = Math.round(Number(row.qty))
+    if (!Number.isFinite(qty) || qty <= 0 || seen.has(qty)) return
+    seen.add(qty)
+    out.push({ qty, price: num(row.price) })
   })
+  out.sort((a, b) => a.qty - b.qty)
+  return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.passportPhotos.packPrices))
 }
 
 // Older settings rows stored rates.a4 as an object (keyed by paper type) or,
