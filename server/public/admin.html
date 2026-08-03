@@ -140,6 +140,10 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .field input,.field textarea{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;background:var(--card);color:var(--ink);}
 .field textarea{min-height:90px;resize:vertical;}
 .field-grid.full{grid-template-columns:1fr;}
+.field select{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:'Inter',sans-serif;background:var(--card);color:var(--ink);}
+.order-defaults-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.od-block{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:16px;}
+@media (max-width:640px){.order-defaults-grid{grid-template-columns:1fr;}}
 .settings-form{background:var(--card);border-radius:12px;padding:26px;box-shadow:var(--shadow);max-width:700px;}
 .settings-form h2{font-size:14px;margin:20px 0 10px;color:var(--ink2);}
 .settings-form h2:first-child{margin-top:0;}
@@ -2828,6 +2832,61 @@ function bindPassportPackRow(tr){
   tr.querySelector('.passport-pack-remove').addEventListener('click', () => tr.remove());
 }
 
+// Order defaults — starting values for a freshly uploaded file's per-file
+// options on the customer order page (client/index.html), separate for the
+// Documents and Photos tabs since they usually warrant different defaults
+// (e.g. Photos defaults to Color, not Black & White). Page size drives which
+// paper types are valid, same dependency as the Print rates table above.
+function orderDefaultsBlockHtml(context, label, defaults, pageSizes){
+  const pageSizeOpts = pageSizes.filter((s) => s.active)
+    .map((s) => '<option value="' + escHtml(s.id) + '"' + (defaults.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
+  return '<div class="od-block" data-context="' + context + '">' +
+    '<h3 style="margin:0 0 10px;font-size:13.5px;">' + escHtml(label) + '</h3>' +
+    '<div class="field-grid">' +
+      '<div class="field"><label>Print color</label><select class="od-mode">' +
+        '<option value="auto"' + (defaults.printMode === 'auto' ? ' selected' : '') + '>Auto</option>' +
+        '<option value="color"' + (defaults.printMode === 'color' ? ' selected' : '') + '>Color</option>' +
+        '<option value="bw"' + (defaults.printMode === 'bw' ? ' selected' : '') + '>Black &amp; White</option>' +
+      '</select></div>' +
+      '<div class="field"><label>Page size</label><select class="od-pagesize">' + pageSizeOpts + '</select></div>' +
+      '<div class="field"><label>Paper type</label><select class="od-papertype"></select></div>' +
+      '<div class="field"><label>Orientation</label><select class="od-orientation">' +
+        '<option value="portrait"' + (defaults.orientation === 'portrait' ? ' selected' : '') + '>Portrait</option>' +
+        '<option value="landscape"' + (defaults.orientation === 'landscape' ? ' selected' : '') + '>Landscape</option>' +
+      '</select></div>' +
+      '<div class="field"><label>Printing side</label><select class="od-side">' +
+        '<option value="single"' + (defaults.printSide === 'single' ? ' selected' : '') + '>Single</option>' +
+        '<option value="double"' + (defaults.printSide === 'double' ? ' selected' : '') + '>Double</option>' +
+      '</select></div>' +
+    '</div>' +
+  '</div>';
+}
+// Repopulates a block's paper-type <select> from the current Print rates
+// table (not the just-loaded pricing config), so editing page sizes/rates
+// above and the defaults below in the same save always agree — mirrors
+// refreshRateSizeSelects()'s reasoning for the same dependency.
+function refreshOrderDefaultsPaperTypes(block, selectedPaperType){
+  const pageSize = block.querySelector('.od-pagesize').value;
+  const rates = collectRatesFromForm()[pageSize] || [];
+  const sel = block.querySelector('.od-papertype');
+  const current = selectedPaperType != null ? selectedPaperType : sel.value;
+  sel.innerHTML = rates.map((t) => '<option value="' + escHtml(t.id) + '"' + (t.id === current ? ' selected' : '') + '>' + escHtml(t.label) + '</option>').join('');
+}
+function bindOrderDefaultsBlock(block, initialPaperType){
+  refreshOrderDefaultsPaperTypes(block, initialPaperType);
+  block.querySelector('.od-pagesize').addEventListener('change', () => refreshOrderDefaultsPaperTypes(block));
+}
+function collectOrderDefaultsFromForm(context){
+  const block = document.querySelector('.od-block[data-context="' + context + '"]');
+  return {
+    printMode: block.querySelector('.od-mode').value,
+    pageSize: block.querySelector('.od-pagesize').value,
+    paperType: block.querySelector('.od-papertype').value,
+    orientation: block.querySelector('.od-orientation').value,
+    printSide: block.querySelector('.od-side').value
+  };
+}
+
 async function loadPricing(){
   const form = document.getElementById('pricingForm');
   const res = await fetch('/api/pricing');
@@ -2860,6 +2919,10 @@ async function loadPricing(){
   const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
   const passportPackRowsHtml = passportPackPrices.map(passportPackRowHtml).join('');
 
+  const orderDefaults = p.orderDefaults || {};
+  const documentDefaults = orderDefaults.document || { printMode: 'bw', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
+  const photoDefaults = orderDefaults.photo || { printMode: 'color', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
+
   form.innerHTML =
     '<h2>Page sizes</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Sizes customers can choose per file at checkout, and that feed the print rates table below. Width/Height set the physical print size (used for the job sheet and preview) — A4 is required and can’t be removed. "Photo" marks which size a JPG/PNG upload defaults to when staff place an order for a customer. "Photo only" hides a size from the customer order page\'s Documents uploader (e.g. 4R) — only the Photos uploader offers it.</p>' +
@@ -2885,6 +2948,12 @@ async function loadPricing(){
       '<th>Quantity</th><th>Price (₹)</th><th></th>' +
     '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPassportPack">+ Add pack</button>' +
+    '<h2>Order defaults</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Starting values for a freshly uploaded file\'s settings on the order page — customers can always change them. Documents and Photos get their own defaults (Photos default to Color, not Black &amp; White).</p>' +
+    '<div class="order-defaults-grid">' +
+      orderDefaultsBlockHtml('document', 'Documents default', documentDefaults, PAGE_SIZES) +
+      orderDefaultsBlockHtml('photo', 'Photos default', photoDefaults, PAGE_SIZES) +
+    '</div>' +
     '<h2>Other</h2><div class="field-grid">' +
       // Fall back to the same defaults pricing.js uses at calc time — this DB may
       // predate these fields, and rendering them blank/zero would silently persist
@@ -2929,21 +2998,22 @@ async function loadPricing(){
     bindPassportPackRow(tbody.lastElementChild);
   });
 
+  bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="document"]'), documentDefaults.paperType);
+  bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="photo"]'), photoDefaults.paperType);
+
   document.getElementById('savePricingBtn').addEventListener('click', savePricing);
 }
 
-async function savePricing(){
-  const btn = document.getElementById('savePricingBtn');
-  const msg = document.getElementById('pricingMessage');
+// Group editable "Print rates" rows back into rates keyed by page size.
+// Rows without a paper-type name are skipped (the server also drops them
+// defensively). Shared by savePricing() and the Order-defaults paper-type
+// dropdowns, which need this same live-edited-but-unsaved shape.
+function collectRatesFromForm(){
   const numOrZero = (el) => { const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? n : 0; };
-
-  // Group editable rows back into rates keyed by page size. Rows without a
-  // paper-type name are skipped (the server also drops them defensively).
   const rates = {};
-  let skipped = 0;
   document.querySelectorAll('#rateRows .rate-row').forEach((tr) => {
     const label = tr.querySelector('.rr-label').value.trim();
-    if (!label){ skipped++; return; }
+    if (!label) return;
     const size = tr.querySelector('.rr-size').value;
     (rates[size] = rates[size] || []).push({
       id: tr.dataset.id || '',
@@ -2953,6 +3023,16 @@ async function savePricing(){
       photoOnly: tr.querySelector('.rr-photo-only').checked
     });
   });
+  return rates;
+}
+
+async function savePricing(){
+  const btn = document.getElementById('savePricingBtn');
+  const msg = document.getElementById('pricingMessage');
+  const numOrZero = (el) => { const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? n : 0; };
+  const rates = collectRatesFromForm();
+  const skipped = Array.from(document.querySelectorAll('#rateRows .rate-row'))
+    .filter((tr) => !tr.querySelector('.rr-label').value.trim()).length;
 
   msg.textContent = '';
   msg.className = 'save-message';
@@ -2972,6 +3052,11 @@ async function savePricing(){
     passportPhotos: {
       sizePresets: collectPassportSizesFromForm(),
       packPrices: collectPassportPackPricesFromForm()
+    },
+    // Same "always include" reasoning as passportPhotos above.
+    orderDefaults: {
+      document: collectOrderDefaultsFromForm('document'),
+      photo: collectOrderDefaultsFromForm('photo')
     },
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),

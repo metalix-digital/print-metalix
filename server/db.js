@@ -252,6 +252,15 @@ const DEFAULT_PRICING = {
       { qty: 16, price: 146 },
       { qty: 32, price: 194 }
     ]
+  },
+  // Admin-configurable starting values for a freshly uploaded file's per-file
+  // options (client/index.html's file cards) — separate for the Documents
+  // and Photos tabs since they warrant different sensible defaults (e.g. a
+  // photo defaults to Color, a document to B&W). The customer can always
+  // change any of these; they just save a click for the common case.
+  orderDefaults: {
+    document: { printMode: 'bw', pageSize: 'a4', paperType: 'normal', orientation: 'portrait', printSide: 'single' },
+    photo: { printMode: 'color', pageSize: 'a4', paperType: 'premium-gloss', orientation: 'portrait', printSide: 'single' }
   }
 }
 
@@ -404,6 +413,37 @@ function normalizePassportPackPrices(list) {
   return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.passportPhotos.packPrices))
 }
 
+const VALID_PRINT_MODES = ['auto', 'color', 'bw']
+const VALID_ORIENTATIONS_LIST = ['portrait', 'landscape']
+const VALID_PRINT_SIDES = ['single', 'double']
+
+// Resolves one context's (document or photo) admin-configured file-option
+// defaults against the ALREADY-normalized pageSizes/rates for this same
+// settings row, so a default referencing a since-removed/renamed size or
+// paper type can never leave a customer with an invalid pre-selection —
+// falls back to the first active page size / first paper type under it.
+function normalizeOneOrderDefaults(input, pageSizes, rates, fallbackPrintMode) {
+  const d = input || {}
+  const activeIds = pageSizes.filter((s) => s.active).map((s) => s.id)
+  const pageSize = activeIds.includes(d.pageSize) ? d.pageSize : (activeIds[0] || 'a4')
+  const typeIds = (rates[pageSize] || []).map((t) => t.id)
+  const paperType = typeIds.includes(d.paperType) ? d.paperType : (typeIds[0] || '')
+  return {
+    printMode: VALID_PRINT_MODES.includes(d.printMode) ? d.printMode : fallbackPrintMode,
+    pageSize,
+    paperType,
+    orientation: VALID_ORIENTATIONS_LIST.includes(d.orientation) ? d.orientation : 'portrait',
+    printSide: VALID_PRINT_SIDES.includes(d.printSide) ? d.printSide : 'single'
+  }
+}
+function normalizeOrderDefaults(input, pageSizes, rates) {
+  const d = input || {}
+  return {
+    document: normalizeOneOrderDefaults(d.document, pageSizes, rates, 'bw'),
+    photo: normalizeOneOrderDefaults(d.photo, pageSizes, rates, 'color')
+  }
+}
+
 // Older settings rows stored rates.a4 as an object (keyed by paper type) or,
 // even earlier, as a flat { bw, color } with no paper types at all. Convert
 // both into the current ordered array. Already-array rows pass through
@@ -450,7 +490,11 @@ function getPricing() {
   const needsPassportBackfill = !pricing.passportPhotos ||
     !Array.isArray(pricing.passportPhotos.sizePresets) ||
     !Array.isArray(pricing.passportPhotos.packPrices)
-  if (needsCoreMigration || needsPassportBackfill) {
+  // Same reasoning as needsPassportBackfill — a settings row saved before
+  // per-context order defaults existed won't have this key, and an already-
+  // valid row otherwise never gets touched again to backfill it.
+  const needsOrderDefaultsBackfill = !pricing.orderDefaults || !pricing.orderDefaults.document || !pricing.orderDefaults.photo
+  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill) {
     const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
     migrated.passportPhotos = {
       sizePresets: normalizePassportSizePresets(
@@ -460,6 +504,7 @@ function getPricing() {
       ),
       packPrices: normalizePassportPackPrices(migrated.passportPhotos && migrated.passportPhotos.packPrices)
     }
+    migrated.orderDefaults = normalizeOrderDefaults(migrated.orderDefaults, migrated.pageSizes, migrated.rates)
     setPricing(migrated)
     return migrated
   }
@@ -497,6 +542,9 @@ function setPricing(pricing) {
       ),
       packPrices: normalizePassportPackPrices(pricing.passportPhotos && pricing.passportPhotos.packPrices)
     }
+    // Depends on pageSizes/rates already being normalized above (it validates
+    // the chosen default size/paper type against them), so this must run last.
+    pricing.orderDefaults = normalizeOrderDefaults(pricing.orderDefaults, pricing.pageSizes, pricing.rates)
   }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('pricing', JSON.stringify(pricing))

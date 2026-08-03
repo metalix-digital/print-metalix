@@ -90,7 +90,7 @@ __GTM_HEAD__
   .file-card{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; width:100%; text-align:left; box-shadow:0 1px 2px rgba(26,34,56,.03); transition: box-shadow .2s ease, border-color .2s ease; }
   .file-card:hover{ border-color:var(--line-strong); box-shadow:0 6px 16px -8px rgba(26,34,56,.12); }
   .file-card-top{ display:flex; align-items:center; gap:10px; }
-  .file-card .fdot{ width:38px;height:38px;border-radius:10px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; box-shadow:0 4px 10px -4px rgba(255,102,0,.4);}
+  .fdot{ width:38px;height:38px;border-radius:10px;flex-shrink:0; background:linear-gradient(135deg,var(--orange),var(--magenta)); display:flex;align-items:center;justify-content:center; color:#fff; font-size:17px; box-shadow:0 4px 10px -4px rgba(255,102,0,.4);}
   .file-card .fname{font-size:13.5px;font-weight:700;color:var(--ink); overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .file-card .fmeta{font-size:11.5px;color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:1px;}
   .file-card .fremove{ margin-left:0; flex-shrink:0; width:26px; height:26px; border-radius:50%; border:none; background:var(--paper-dim); color:var(--ink-soft); cursor:pointer; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
@@ -825,10 +825,24 @@ function paperTypesForFile(f){ return paperTypesForSize(f.pageSize).filter((t) =
 
 // Defaults applied to every newly uploaded file — each file's settings are
 // then fully independent (print mode, page size, paper type, orientation,
-// side, copies). pageSize/paperType are deliberately not defaulted here —
-// they're required fields the customer must actively choose (see
-// validateForConfirm); paper type also depends on which page size is picked.
-const NEW_FILE_DEFAULTS = { printMode: 'bw', pageSize: '', paperType: '', orientation: 'portrait', printSide: 'single', copies: 1, password: '' };
+// side, copies). Admin-configured per context (Documents vs Photos — see
+// server/db.js orderDefaults and the admin Pricing tab's "Order defaults"
+// section), since the two usually warrant different starting values (a
+// photo defaults to Color, a document to Black & White). Falls back to the
+// old hard-coded document defaults if pricingConfig hasn't loaded yet.
+function newFileDefaults(isPhoto){
+  const context = isPhoto ? 'photo' : 'document';
+  const d = (pricingConfig && pricingConfig.orderDefaults && pricingConfig.orderDefaults[context]) || {};
+  return {
+    printMode: d.printMode || (isPhoto ? 'color' : 'bw'),
+    pageSize: d.pageSize || '',
+    paperType: d.paperType || '',
+    orientation: d.orientation || 'portrait',
+    printSide: d.printSide || 'single',
+    copies: 1,
+    password: ''
+  };
+}
 
 let state = {
   files: [], // [{fileId, fileName, fileSize, fileType, pageCount, colorCount, printMode, pageSize, paperType, orientation, printSide, copies, password}, ...]
@@ -1266,8 +1280,14 @@ function fileExt(name){
   return m ? m[0].toLowerCase() : '';
 }
 
+// A quick visual read of what kind of file this is, at a glance — an icon
+// reads faster than "PDF"/"JPEG" text, especially in the compact cart rows.
+const FILE_TYPE_ICONS = {
+  pdf: '📄', doc: '📝', docx: '📝', ppt: '📊', pptx: '📊',
+  jpg: '🖼️', jpeg: '🖼️', png: '🖼️', webp: '🖼️', gif: '🖼️'
+};
 function fileDot(fileType){
-  return (fileType || '').toUpperCase();
+  return FILE_TYPE_ICONS[(fileType || '').toLowerCase()] || '📄';
 }
 
 function escapeAttr(s){
@@ -2019,18 +2039,10 @@ async function uploadFiles(fileArray){
     uploadProgressInner.style.width = '0%';
     try{
       const json = await uploadOneFile(validFiles[i]);
-      Object.assign(json, NEW_FILE_DEFAULTS);
       // Cosmetic only (cart icon/label) — pricing/validation treat every
       // state.files entry identically regardless of which tray added it.
       json.isPhoto = state.printType === 'photo';
-      // Photos default to A4 + whichever A4 paper type is labeled "Gloss"
-      // (matched by label text, not a hardcoded id, since the admin names
-      // these rows themselves) — the customer can still change either.
-      if(json.isPhoto){
-        json.pageSize = 'a4';
-        const glossy = paperTypesForSize('a4').find((t) => /gloss/i.test(t.label));
-        if(glossy) json.paperType = glossy.id;
-      }
+      Object.assign(json, newFileDefaults(json.isPhoto));
       state.files.push(json);
       // The newest upload opens automatically (it needs page size/paper type
       // chosen); whatever was open before collapses — only one at a time.
