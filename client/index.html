@@ -263,6 +263,10 @@ __GTM_HEAD__
   .pp-qty-tile span{ display:block; font-size:11px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:2px; }
   .pp-qty-tile.active{ border-color:var(--orange); background:var(--orange-tint); }
   .pp-qty-tile.active b{ color:var(--orange-deep); }
+  .pp-sheet-preview{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px; }
+  .pp-sheet{ position:relative; width:84px; background:#fff; border:1px solid var(--line-strong); box-shadow:0 2px 6px rgba(26,34,56,.12); flex-shrink:0; }
+  .pp-tile{ position:absolute; background-size:cover; background-position:center; outline:1px dashed rgba(0,0,0,.25); outline-offset:-1px; }
+  .pp-sheet-label{ font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; align-self:center; }
 
   /* Crop modal */
   .crop-stage{ position:relative; max-width:420px; max-height:60vh; overflow:hidden; background:#111; display:flex; align-items:center; justify-content:center; touch-action:none; margin:0 auto; }
@@ -808,6 +812,70 @@ function passportPackTiers(){ return (pricingConfig && pricingConfig.passportPho
 function passportPackPrice(qty){ const t = passportPackTiers().find((p) => p.qty === qty); return t ? Number(t.price) || 0 : 0; }
 function passportItemCost(item){ return item.sizePresetId ? passportPackPrice(item.packQty) : 0; }
 
+// Mirrors server/passportLayout.js's computeGridLayout() exactly — same
+// constants, same math — so this live preview always matches what the job
+// sheet actually prints. Pure/no I/O, same reasoning as resolveFileColorPages
+// being mirrored client-side from server/pricing.js.
+const PASSPORT_SHEET_MARGIN_MM = 5;
+const PASSPORT_GUTTER_MM = 3;
+function computePassportGridLayout({ sheetWidthMm, sheetHeightMm, photoWidthMm, photoHeightMm, qty }){
+  const usableW = sheetWidthMm - 2 * PASSPORT_SHEET_MARGIN_MM;
+  const usableH = sheetHeightMm - 2 * PASSPORT_SHEET_MARGIN_MM;
+  const cols = Math.max(1, Math.floor((usableW + PASSPORT_GUTTER_MM) / (photoWidthMm + PASSPORT_GUTTER_MM)));
+  const rows = Math.max(1, Math.floor((usableH + PASSPORT_GUTTER_MM) / (photoHeightMm + PASSPORT_GUTTER_MM)));
+  const perSheet = cols * rows;
+  const numSheets = Math.max(1, Math.ceil((qty || 1) / perSheet));
+  const gridW = cols * photoWidthMm + (cols - 1) * PASSPORT_GUTTER_MM;
+  const gridH = rows * photoHeightMm + (rows - 1) * PASSPORT_GUTTER_MM;
+  const offsetX = PASSPORT_SHEET_MARGIN_MM + (usableW - gridW) / 2;
+  const offsetY = PASSPORT_SHEET_MARGIN_MM + (usableH - gridH) / 2;
+  const sheets = [];
+  let remaining = qty || 1;
+  for(let s = 0; s < numSheets; s++){
+    const onThisSheet = Math.min(remaining, perSheet);
+    const positions = [];
+    for(let i = 0; i < onThisSheet; i++){
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      positions.push({ x: offsetX + col * (photoWidthMm + PASSPORT_GUTTER_MM), y: offsetY + row * (photoHeightMm + PASSPORT_GUTTER_MM) });
+    }
+    sheets.push({ positions });
+    remaining -= onThisSheet;
+  }
+  return { cols, rows, perSheet, numSheets, sheets, photoWidthMm, photoHeightMm, sheetWidthMm, sheetHeightMm };
+}
+
+// A4 is fixed for Passport Photos regardless of the admin's document page
+// sizes — falls back to standard A4 mm if that row was ever removed/renamed.
+function passportSheetMm(){
+  const a4 = pageSizeInfo('a4');
+  return { widthMm: (a4 && a4.widthMm) || 210, heightMm: (a4 && a4.heightMm) || 297 };
+}
+
+function passportSheetPreviewHtml(item){
+  const preset = passportPresetInfo(item.sizePresetId);
+  // Only once a real crop exists — before that there's nothing accurate to
+  // tile yet, and the raw (uncropped) photo would misrepresent the print.
+  const imgUrl = item.croppedPreviewUrl;
+  if(!preset || !imgUrl) return '';
+  const sheet = passportSheetMm();
+  const layout = computePassportGridLayout({ sheetWidthMm: sheet.widthMm, sheetHeightMm: sheet.heightMm, photoWidthMm: preset.widthMm, photoHeightMm: preset.heightMm, qty: item.packQty });
+  const sheetsHtml = layout.sheets.map((s) => {
+    const tiles = s.positions.map((pos) => {
+      const left = (pos.x / sheet.widthMm) * 100;
+      const top = (pos.y / sheet.heightMm) * 100;
+      const w = (layout.photoWidthMm / sheet.widthMm) * 100;
+      const h = (layout.photoHeightMm / sheet.heightMm) * 100;
+      return `<div class="pp-tile" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%;background-image:url('${imgUrl}');"></div>`;
+    }).join('');
+    return `<div class="pp-sheet" style="aspect-ratio:${sheet.widthMm}/${sheet.heightMm};">${tiles}</div>`;
+  }).join('');
+  const sheetLabel = layout.numSheets > 1 ? layout.numSheets + ' A4 sheets' : '1 A4 sheet';
+  return `<div class="fcard-field"><span class="fcard-field-label">Print layout preview</span>
+    <div class="pp-sheet-preview">${sheetsHtml}<span class="pp-sheet-label">${layout.cols}×${layout.rows} per sheet · ${sheetLabel}</span></div>
+  </div>`;
+}
+
 function totalUploadedBytes(){
   return state.files.reduce((sum, f) => sum + (f.fileSize || 0), 0);
 }
@@ -1305,6 +1373,7 @@ function renderPassportList(){
         <div class="pp-qty-row">
           ${tiers.map((t) => `<div class="pp-qty-tile ${item.packQty===t.qty?'active':''}" data-id="${escapeAttr(item.localId)}" data-qty="${t.qty}"><b>${t.qty}</b><span>₹${t.price}</span></div>`).join('')}
         </div>
+        ${passportSheetPreviewHtml(item)}
         ${item.status === 'ready' ? `<div class="fcard-price"><span>Cost for this pack</span><b>₹${passportItemCost(item)}</b></div>` : ''}
       </div>
     </div>

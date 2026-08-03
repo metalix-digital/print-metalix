@@ -218,6 +218,7 @@ const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads } = require('./fileRetention')
 const { buildInvoicePdf } = require('./invoice')
 const { formatRupees } = require('./format')
+const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
 
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
@@ -955,28 +956,51 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
 
     for (const { f, safeFileId, pdfBuffer, convertError, skip, isPassport, imageBuffer } of converted) {
       if (isPassport) {
-        // One reference page per pack — NOT multiplied by packQty (the
-        // physical print-sheet grid layout is a separate follow-up task;
-        // for now staff produce the pack manually from this reference).
-        const page = merged.addPage([A4_PT.width, A4_PT.height])
         // Helvetica (WinAnsi) can't render ₹ — same "Rs." convention as invoice.js.
         const label = `Passport Photo Pack — ${f.paperLabel || f.sizePresetId || 'Passport Photo'} · ${f.colorLabel || ((f.packQty || 0) + '-pack')} · Rs. ${formatRupees(f.amount || 0)}`
-        if (imageBuffer) {
+        const preset = ((pricingConfig.passportPhotos || {}).sizePresets || []).find((s) => s.id === f.sizePresetId)
+        if (imageBuffer && preset) {
+          // Real print output: tile the cropped photo across as many A4
+          // sheets as the pack quantity needs, at its actual physical size —
+          // same computeGridLayout() a customer's live preview used, so what
+          // staff print always matches what the customer saw before ordering.
           try {
             const ext = path.extname(f.fileName || safeFileId || '').toLowerCase()
             const img = ext === '.png' ? await merged.embedPng(imageBuffer) : await merged.embedJpg(imageBuffer)
-            const maxW = A4_PT.width - 100
-            const maxH = A4_PT.height - 160
-            const scale = Math.min(maxW / img.width, maxH / img.height, 1)
-            const w = img.width * scale
-            const h = img.height * scale
-            page.drawImage(img, { x: (A4_PT.width - w) / 2, y: A4_PT.height - 100 - h, width: w, height: h })
+            const a4Row = (pricingConfig.pageSizes || []).find((s) => s.id === 'a4')
+            const layout = computePassportGridLayout({
+              sheetWidthMm: (a4Row && a4Row.widthMm) || 210,
+              sheetHeightMm: (a4Row && a4Row.heightMm) || 297,
+              photoWidthMm: preset.widthMm,
+              photoHeightMm: preset.heightMm,
+              qty: f.packQty || 1
+            })
+            const photoWPt = layout.photoWidthMm * MM_TO_PT
+            const photoHPt = layout.photoHeightMm * MM_TO_PT
+            layout.sheets.forEach((sheet, sheetIdx) => {
+              const page = merged.addPage([A4_PT.width, A4_PT.height])
+              sheet.positions.forEach((pos) => {
+                const xPt = pos.x * MM_TO_PT
+                // PDF y-axis grows upward from the bottom; layout math is
+                // top-down (mm from the top edge), so flip it here.
+                const yPt = A4_PT.height - pos.y * MM_TO_PT - photoHPt
+                page.drawImage(img, { x: xPt, y: yPt, width: photoWPt, height: photoHPt })
+              })
+              const footer = layout.numSheets > 1 ? `${label} · Sheet ${sheetIdx + 1} of ${layout.numSheets}` : label
+              page.drawText(footer, { x: 20, y: 16, size: 9, font, color: rgb(0.35, 0.38, 0.42) })
+            })
           } catch (err) {
+            const page = merged.addPage([A4_PT.width, A4_PT.height])
             page.drawText('Could not render the uploaded photo — check the original file.', { x: 50, y: A4_PT.height - 120, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
+            page.drawText(label, { x: 50, y: 60, size: 13, font, color: rgb(0.1, 0.13, 0.2) })
           }
-        } else {
-          page.drawText('No photo uploaded yet for this pack.', { x: 50, y: A4_PT.height - 120, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
+          continue
         }
+        // No photo uploaded yet (admin-created order, see buildPricedOrderFiles's
+        // allowMissingFile) or an unrecognized size preset — a single
+        // placeholder reference page instead of a real grid.
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        page.drawText('No photo uploaded yet for this pack.', { x: 50, y: A4_PT.height - 120, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
         page.drawText(label, { x: 50, y: 60, size: 13, font, color: rgb(0.1, 0.13, 0.2) })
         continue
       }
