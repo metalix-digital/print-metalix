@@ -769,6 +769,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
       </div>
 
+      <div class="field branch-col">
+        <label>Branch <span class="opt">(which location ships/fulfils this order)</span></label>
+        <select id="noLocationSelect"></select>
+      </div>
+
       <div class="field" id="noDocumentSection">
         <label>Files</label>
         <div class="no-file-controls">
@@ -3727,6 +3732,19 @@ async function openNewOrderModal(){
     const data = await res.json();
     noCustomersCache = res.ok && Array.isArray(data.customers) ? data.customers : [];
   } catch (e) { noCustomersCache = []; }
+  // A branch admin's order is always pinned to their own branch server-side
+  // (see effectiveLocationId in POST /api/admin/orders), so this select is
+  // hidden for them via .branch-col — only a super admin needs to choose.
+  try {
+    const branches = await ensureBranchOptions();
+    const locSelect = document.getElementById('noLocationSelect');
+    locSelect.innerHTML = '<option value="">No branch assigned</option>' +
+      branches.map((l) => '<option value="' + escHtml(l.id) + '">' + escHtml(l.name) + '</option>').join('');
+    // Default to the first active branch so a super admin isn't forced to
+    // remember to pick one for the common single-branch case — they can
+    // still switch it before creating the order.
+    if (branches.length) locSelect.value = branches[0].id;
+  } catch (e) { /* leave just "No branch assigned" */ }
   newOrderModal.classList.remove('hidden');
   newOrderModal.classList.add('show');
   document.getElementById('noCustomerName').focus();
@@ -3779,6 +3797,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
 
   const payload = {
     customerName, customerMobile, customerEmail: customerEmail || undefined,
+    locationId: document.getElementById('noLocationSelect').value || undefined,
     files: productType === 'document'
       ? noUploadedFiles.map((f) => ({
           productType: 'document',
