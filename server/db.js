@@ -176,6 +176,18 @@ ensureColumn('orders', 'notes', 'TEXT') // optional free-text instructions from 
 // when an order contains both. Mirrors how paper_size/paper_type are already
 // denormalized summaries of files_json rather than authoritative data.
 ensureColumn('orders', 'product_type', "TEXT DEFAULT 'document'")
+// Discount fields — discount_amount is the computed ₹ actually applied,
+// baked in at order time (same reasoning as files_json's fileBreakdown: a
+// later coupon/rate change must never rewrite what a past order was charged
+// or what its invoice shows). discount_type/value record what produced that
+// amount (for display); discount_code is set only when a coupon was used
+// (vs a staff ad-hoc discount, which is discount_code IS NULL); discount_reason
+// is optional free text staff can attach to an ad-hoc discount.
+ensureColumn('orders', 'discount_type', 'TEXT')
+ensureColumn('orders', 'discount_value', 'REAL DEFAULT 0')
+ensureColumn('orders', 'discount_amount', 'INTEGER DEFAULT 0')
+ensureColumn('orders', 'discount_code', 'TEXT')
+ensureColumn('orders', 'discount_reason', 'TEXT')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -194,6 +206,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_customer_mobile ON orders(customer_mobile);
   CREATE INDEX IF NOT EXISTS idx_orders_order_status ON orders(order_status);
   CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
+  CREATE INDEX IF NOT EXISTS idx_orders_discount_code ON orders(discount_code);
 `)
 
 // Paper types are an admin-managed list: each entry is
@@ -261,7 +274,14 @@ const DEFAULT_PRICING = {
   orderDefaults: {
     document: { printMode: 'bw', pageSize: 'a4', paperType: 'normal', orientation: 'portrait', printSide: 'single' },
     photo: { printMode: 'color', pageSize: 'a4', paperType: 'premium-gloss', orientation: 'portrait', printSide: 'single' }
-  }
+  },
+  // Admin-managed coupon codes for public checkout (flat ₹ or % off). A
+  // staff-entered ad-hoc discount on a walk-in order doesn't live here — it's
+  // typed directly at order time and never goes through this list. Usage caps
+  // (maxUses) are enforced by counting matching paid/COD orders live (see
+  // countCouponUses below), not a stored counter, so it can't drift out of
+  // sync with what was actually charged.
+  coupons: []
 }
 
 // Default display labels for the three built-in paper-type ids, used when
@@ -413,6 +433,36 @@ function normalizePassportPackPrices(list) {
   return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.passportPhotos.packPrices))
 }
 
+// Coupon codes for public checkout. Unlike the lists above, an empty result
+// here is a valid end state (no coupons configured) rather than something to
+// fall back to defaults for — DEFAULT_PRICING.coupons is already []. Codes
+// are uppercased/stripped to [A-Z0-9] so lookups never depend on how staff
+// happened to type a code, and de-duped (first occurrence wins on a repeat).
+function normalizeCoupons(list) {
+  const seen = new Set()
+  const out = []
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const code = String(row.code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (!code || seen.has(code)) return
+    const type = row.type === 'flat' ? 'flat' : 'percent'
+    let value = num(row.value)
+    if (type === 'percent') value = Math.min(value, 100)
+    if (value <= 0) return
+    seen.add(code)
+    out.push({
+      code,
+      type,
+      value,
+      active: row.active !== false,
+      minOrderValue: Math.max(0, num(row.minOrderValue)),
+      maxUses: row.maxUses != null && Number(row.maxUses) > 0 ? Math.round(Number(row.maxUses)) : null,
+      expiresAt: row.expiresAt != null && Number(row.expiresAt) > 0 ? Math.round(Number(row.expiresAt)) : null
+    })
+  })
+  return out
+}
+
 const VALID_PRINT_MODES = ['auto', 'color', 'bw']
 const VALID_ORIENTATIONS_LIST = ['portrait', 'landscape']
 const VALID_PRINT_SIDES = ['single', 'double']
@@ -494,7 +544,10 @@ function getPricing() {
   // per-context order defaults existed won't have this key, and an already-
   // valid row otherwise never gets touched again to backfill it.
   const needsOrderDefaultsBackfill = !pricing.orderDefaults || !pricing.orderDefaults.document || !pricing.orderDefaults.photo
-  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill) {
+  // Rows saved before coupons existed won't have this key at all — same
+  // backfill-independently-of-core-migration reasoning as passport photos above.
+  const needsCouponsBackfill = !Array.isArray(pricing.coupons)
+  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill) {
     const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
     migrated.passportPhotos = {
       sizePresets: normalizePassportSizePresets(
@@ -505,6 +558,7 @@ function getPricing() {
       packPrices: normalizePassportPackPrices(migrated.passportPhotos && migrated.passportPhotos.packPrices)
     }
     migrated.orderDefaults = normalizeOrderDefaults(migrated.orderDefaults, migrated.pageSizes, migrated.rates)
+    migrated.coupons = normalizeCoupons(migrated.coupons)
     setPricing(migrated)
     return migrated
   }
@@ -545,6 +599,7 @@ function setPricing(pricing) {
     // Depends on pageSizes/rates already being normalized above (it validates
     // the chosen default size/paper type against them), so this must run last.
     pricing.orderDefaults = normalizeOrderDefaults(pricing.orderDefaults, pricing.pageSizes, pricing.rates)
+    pricing.coupons = normalizeCoupons(pricing.coupons)
   }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('pricing', JSON.stringify(pricing))
@@ -901,6 +956,7 @@ function createOrder(order) {
       payment_method,
       delivery_timing, scheduled_at,
       print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
+      discount_type, discount_value, discount_amount, discount_code, discount_reason,
       razorpay_order_id, cashfree_order_id, payment_status, order_status, notes,
       created_at, updated_at
     ) VALUES (
@@ -912,10 +968,15 @@ function createOrder(order) {
       @payment_method,
       @delivery_timing, @scheduled_at,
       @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount,
+      @discount_type, @discount_value, @discount_amount, @discount_code, @discount_reason,
       @razorpay_order_id, @cashfree_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
-  `).run({ files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null, ...order, created_at: now, updated_at: now })
+  `).run({
+    files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null,
+    discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null,
+    ...order, created_at: now, updated_at: now
+  })
   return getOrder(order.id)
 }
 
@@ -1091,6 +1152,19 @@ function listOrdersForCustomer(customerId) {
   `).all(customerId)
 }
 
+// How many times a coupon code has actually been used — counted live from
+// paid/COD orders (the same "confirmed order" definition used everywhere
+// else in this file) rather than a stored counter, so it can never drift
+// out of sync with what was actually charged if an order is later deleted
+// or a payment never completes.
+function countCouponUses(code) {
+  const row = db.prepare(`
+    SELECT COUNT(*) as n FROM orders
+    WHERE discount_code = ? AND (payment_status = 'paid' OR payment_method = 'cod')
+  `).get(code)
+  return row ? row.n : 0
+}
+
 function listCustomers(locationId) {
   const clauses = ["(payment_status = 'paid' OR payment_method = 'cod')", 'archived_at IS NULL']
   const params = []
@@ -1236,6 +1310,25 @@ function findUserByIdentifier(identifier) {
   return db.prepare('SELECT * FROM users WHERE email = ? OR mobile = ?').get(identifier, identifier) || null
 }
 
+// Resolves a walk-in order's staff-entered contact details to a registered
+// account, if one exists — mobile takes priority (the more reliable match: a
+// customer's own account almost always uses their real number, while email is
+// optional and more often skipped or mistyped by staff on a phone order).
+// Lets an admin-placed order still land in that person's own order history if
+// they ever log in, same as it already would for a customer checking out
+// signed-in themselves.
+function findUserByMobileOrEmail(mobile, email) {
+  if (mobile) {
+    const byMobile = db.prepare('SELECT * FROM users WHERE mobile = ?').get(mobile)
+    if (byMobile) return byMobile
+  }
+  if (email) {
+    const byEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
+    if (byEmail) return byEmail
+  }
+  return null
+}
+
 function findUserByGoogleId(googleId) {
   return db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId) || null
 }
@@ -1298,6 +1391,8 @@ module.exports = {
   listOrdersForFileCleanup,
   getAllOrderFileIds,
   listCustomers,
+  countCouponUses,
+  findUserByMobileOrEmail,
   getSalesAnalytics,
   createPrintJob,
   updatePrintJob,

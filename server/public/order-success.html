@@ -165,6 +165,7 @@ async function loadOrder(){
           '<div class="row"><span class="k">Print cost</span><span class="v">₹' + order.print_cost + '</span></div>' +
           (order.handling_charge ? '<div class="row"><span class="k">Handling charge</span><span class="v">₹' + order.handling_charge + '</span></div>' : '') +
           (order.delivery_charge ? '<div class="row"><span class="k">Delivery charge</span><span class="v">₹' + order.delivery_charge + '</span></div>' : '') +
+          (order.discount_amount ? '<div class="row"><span class="k">Discount' + (order.discount_code ? ' (' + order.discount_code + ')' : '') + '</span><span class="v" style="color:var(--green);">−₹' + order.discount_amount + '</span></div>' : '') +
           (order.gst_amount ? '<div class="row"><span class="k">GST</span><span class="v">₹' + order.gst_amount + '</span></div>' : '') +
           '<div class="row"><span class="k">Amount ' + (isCod ? 'due' : 'paid') + '</span><span class="v total">₹' + order.total_amount + '</span></div>' +
           '<div class="row"><span class="k">Order status</span><span class="v">' + order.order_status + '</span></div>' +

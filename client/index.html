@@ -212,6 +212,15 @@ __GTM_HEAD__
   .rline b{ color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; font-family:'IBM Plex Mono',monospace; font-size:13px; text-align:right; min-width:0; word-break:break-word; }
   .rline.accent b{color:var(--magenta);} .rline.good b{color:var(--green);}
   .rdiv{border-top:1px dashed var(--line); margin:12px 0;}
+  .coupon-row{display:flex; gap:8px; margin-bottom:4px;}
+  .coupon-row input{flex:1; min-width:0; border:1.5px solid var(--line); border-radius:9px; padding:8px 10px; font:inherit; font-size:13px; background:var(--surface); color:var(--ink); text-transform:uppercase;}
+  .coupon-row input:focus{outline:none; border-color:var(--orange);}
+  .coupon-row button{flex-shrink:0; border:1.5px solid var(--line); background:var(--paper-dim); color:var(--ink); border-radius:9px; padding:8px 14px; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; transition:border-color .15s ease, background .15s ease;}
+  .coupon-row button:hover{border-color:var(--line-strong);}
+  .coupon-row button:disabled{opacity:.6; cursor:default;}
+  .coupon-msg{font-size:12px; margin:-2px 0 8px; font-weight:600;}
+  .coupon-msg.ok{color:var(--green);}
+  .coupon-msg.error{color:var(--red);}
   .total-row{ display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding-top:14px; border-top:1.5px dashed var(--line-strong); }
   .total-row .tlabel{ font-family:'Sora',sans-serif; font-weight:600; font-size:14px;}
   .total-row .tvalue{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:26px; color:var(--ink); font-variant-numeric:tabular-nums; }
@@ -545,10 +554,17 @@ __GTM_NOSCRIPT__
 
         <div class="rdiv"></div>
 
+        <div class="coupon-row">
+          <input type="text" id="couponInput" placeholder="Coupon code (optional)" maxlength="20" autocomplete="off" />
+          <button type="button" id="couponApplyBtn">Apply</button>
+        </div>
+        <div class="coupon-msg" id="couponMsg" style="display:none;"></div>
+
         <div class="rline"><span>Print cost</span><b class="num-tick" id="rPrintCost">₹0</b></div>
         <div class="rline"><span>Handling charge</span><b class="num-tick" id="rHandling">₹0</b></div>
         <div class="rline"><span>Delivery charge</span><b class="num-tick" id="rDelivery">₹0</b></div>
         <div id="rDeliveryHint" style="font-size:11px;margin:-2px 0 6px;display:none;"></div>
+        <div class="rline good" id="rDiscountRow" style="display:none;"><span id="rDiscountLabel">Discount</span><b class="num-tick" id="rDiscount">−₹0</b></div>
         <div class="rline"><span>GST</span><b class="num-tick" id="rGst">₹0</b></div>
 
         <div class="total-row">
@@ -779,8 +795,14 @@ const rPrintCost = document.getElementById('rPrintCost');
 const rHandling = document.getElementById('rHandling');
 const rDelivery = document.getElementById('rDelivery');
 const rDeliveryHint = document.getElementById('rDeliveryHint');
+const rDiscountRow = document.getElementById('rDiscountRow');
+const rDiscountLabel = document.getElementById('rDiscountLabel');
+const rDiscount = document.getElementById('rDiscount');
 const rGst = document.getElementById('rGst');
 const rTotal = document.getElementById('rTotal');
+const couponInput = document.getElementById('couponInput');
+const couponApplyBtn = document.getElementById('couponApplyBtn');
+const couponMsg = document.getElementById('couponMsg');
 
 const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.webp', '.gif'];
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -869,7 +891,12 @@ let state = {
   deliveryMethod: 'pickup',
   deliveryTiming: 'instant',
   scheduledAt: null,
-  paymentMethod: 'online'
+  paymentMethod: 'online',
+  // Set only once GET /api/coupons/:code confirms the code the customer
+  // typed is currently valid — { code, type, value, minOrderValue }. The
+  // estimate below uses this for the live preview, but order creation always
+  // re-validates the code server-side too (never trusts this client state).
+  appliedCoupon: null
 };
 
 // Passport Photos config helpers — mirror activePageSizes()/paperTypesForSize()
@@ -1013,9 +1040,23 @@ function resolveDeliveryCharge(preDeliveryTotal){
   return Math.min(fallbackCharge, DELIVERY_CHARGE_CEILING);
 }
 
+// Mirrors server/pricing.js's calculateDiscountAmount() exactly — same
+// clamping, same minOrderValue gate — so this live preview never disagrees
+// with what order creation actually charges.
+function calcDiscountAmount(subtotal, coupon){
+  if(!coupon) return 0;
+  if(coupon.minOrderValue && subtotal < coupon.minOrderValue) return 0;
+  const value = Number(coupon.value) || 0;
+  if(value <= 0) return 0;
+  let amount = 0;
+  if(coupon.type === 'percent') amount = subtotal * Math.min(value, 100) / 100;
+  else if(coupon.type === 'flat') amount = value;
+  return Math.max(0, Math.min(Math.round(amount), subtotal));
+}
+
 function calcEstimate(){
   if(!pricingConfig || (!state.files.length && !state.passportItems.length)){
-    return { colorPages: 0, bwPages: 0, printCost: 0, handlingCharge: 0, deliveryCharge: 0, gstAmount: 0, totalAmount: 0 };
+    return { colorPages: 0, bwPages: 0, printCost: 0, handlingCharge: 0, deliveryCharge: 0, discountAmount: 0, gstAmount: 0, totalAmount: 0 };
   }
   let colorPages = 0, bwPages = 0, printCost = 0;
   state.files.forEach((f) => {
@@ -1033,9 +1074,12 @@ function calcEstimate(){
   const preDeliveryTotal = printCost + handlingCharge;
   const deliveryCharge = resolveDeliveryCharge(preDeliveryTotal);
   const subtotal = printCost + handlingCharge + deliveryCharge;
-  const gstAmount = Math.round(subtotal * (pricingConfig.gstPercent || 0) / 100);
-  const totalAmount = subtotal + gstAmount;
-  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, preDeliveryTotal, gstAmount, totalAmount };
+  // GST is charged on the post-discount value, same as server/pricing.js.
+  const discountAmount = calcDiscountAmount(subtotal, state.appliedCoupon);
+  const taxableAmount = subtotal - discountAmount;
+  const gstAmount = Math.round(taxableAmount * (pricingConfig.gstPercent || 0) / 100);
+  const totalAmount = taxableAmount + gstAmount;
+  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, preDeliveryTotal, discountAmount, gstAmount, totalAmount };
 }
 
 function orientationSummaryLabel(){
@@ -1184,12 +1228,78 @@ function recalc(){
   rHandling.textContent = '₹' + est.handlingCharge;
   rDelivery.textContent = '₹' + est.deliveryCharge;
   updateDeliveryHint(est);
+  if(est.discountAmount > 0){
+    rDiscountRow.style.display = 'flex';
+    rDiscountLabel.textContent = 'Discount (' + state.appliedCoupon.code + ')';
+    rDiscount.textContent = '−₹' + est.discountAmount;
+  } else {
+    rDiscountRow.style.display = 'none';
+  }
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
-  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rGst, rTotal].forEach(flash);
+  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rDiscount, rGst, rTotal].forEach(flash);
   const passportUploading = state.passportItems.some((p) => p.status === 'uploading');
   confirmBtn.disabled = (!state.files.length && !state.passportItems.length) || state.uploading || passportUploading;
 }
+
+// Validates a typed coupon code against GET /api/coupons/:code for the live
+// estimate — this is a preview only, order creation always re-validates the
+// same code server-side independently (see resolveDiscountInput in
+// server.js), so a stale/tampered client state here can never itself grant
+// a discount.
+couponApplyBtn.addEventListener('click', async () => {
+  if(state.appliedCoupon){
+    state.appliedCoupon = null;
+    couponInput.value = '';
+    couponInput.disabled = false;
+    couponApplyBtn.textContent = 'Apply';
+    couponMsg.style.display = 'none';
+    recalc();
+    return;
+  }
+  const code = couponInput.value.trim().toUpperCase();
+  if(!code) return;
+  couponApplyBtn.disabled = true;
+  couponApplyBtn.textContent = 'Checking…';
+  try {
+    const res = await fetch('/api/coupons/' + encodeURIComponent(code));
+    const data = await res.json();
+    if(!res.ok){
+      state.appliedCoupon = null;
+      couponMsg.textContent = data.message || 'Invalid coupon code.';
+      couponMsg.className = 'coupon-msg error';
+      couponMsg.style.display = 'block';
+      couponApplyBtn.textContent = 'Apply';
+    } else {
+      state.appliedCoupon = data;
+      couponMsg.textContent = 'Coupon applied — ' + (data.type === 'percent' ? data.value + '% off' : '₹' + data.value + ' off') + '.';
+      couponMsg.className = 'coupon-msg ok';
+      couponMsg.style.display = 'block';
+      couponInput.disabled = true;
+      couponApplyBtn.textContent = 'Remove';
+    }
+  } catch (e) {
+    state.appliedCoupon = null;
+    couponMsg.textContent = 'Could not check this code — try again.';
+    couponMsg.className = 'coupon-msg error';
+    couponMsg.style.display = 'block';
+    couponApplyBtn.textContent = 'Apply';
+  } finally {
+    couponApplyBtn.disabled = false;
+    recalc();
+  }
+});
+couponInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); couponApplyBtn.click(); } });
+
+// A promo link (e.g. the homepage's "?coupon=WELCOME10" banner) can drop a
+// customer here with the code already meant to apply — pre-fill and validate
+// it immediately instead of making them re-type what they just clicked.
+(function applyCouponFromUrl(){
+  const code = new URLSearchParams(window.location.search).get('coupon');
+  if(!code) return;
+  couponInput.value = code.trim().toUpperCase();
+  couponApplyBtn.click();
+})();
 
 const deliveryAddress = document.getElementById('deliveryAddress');
 document.querySelectorAll('input[name=delivery]').forEach(r=> r.addEventListener('change', e=>{
@@ -2293,7 +2403,8 @@ function buildOrderPayload(){
     scheduledAt: state.deliveryMethod === 'delivery' && state.deliveryTiming === 'scheduled' ? state.scheduledAt : undefined,
     locationId: getSelectedBranchId(),
     paymentMethod: state.paymentMethod,
-    notes: document.getElementById('customerNotes').value.trim() || undefined
+    notes: document.getElementById('customerNotes').value.trim() || undefined,
+    discountCode: state.appliedCoupon ? state.appliedCoupon.code : undefined
   };
 }
 

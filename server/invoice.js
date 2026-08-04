@@ -14,6 +14,7 @@ const MUTED = rgb(0.42, 0.45, 0.5)
 const LINE = rgb(0.85, 0.84, 0.79)
 const SOFT = rgb(0.97, 0.96, 0.93)
 const WHITE = rgb(1, 1, 1)
+const GREEN = rgb(0.09, 0.5, 0.31)
 
 function money(n) { return 'Rs. ' + formatRupees(n) }
 
@@ -161,6 +162,12 @@ async function buildInvoicePdf(order) {
   totalRow('Print cost', order.print_cost)
   if (order.handling_charge) totalRow('Handling charge', order.handling_charge)
   if (order.delivery_charge) totalRow('Delivery', order.delivery_charge)
+  if (order.discount_amount) {
+    const discountLabel = order.discount_code ? `Discount (${order.discount_code})` : 'Discount'
+    text(discountLabel, labelX, y, 10, font, MUTED)
+    right('- ' + money(order.discount_amount), width - M, y, 10, font, GREEN)
+    y -= 17
+  }
   if (order.gst_amount) totalRow('GST', order.gst_amount)
   page.drawLine({ start: { x: labelX, y: y + 6 }, end: { x: width - M, y: y + 6 }, thickness: 1, color: LINE })
   y -= 6

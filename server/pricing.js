@@ -43,7 +43,7 @@ function calculateDeliveryCharge(config, { deliveryMethod, deliveryPincode, preD
 // order should store this alongside each file so an invoice generated later
 // reflects what was actually charged, not whatever the admin's rates happen
 // to be when the invoice is printed (rates can change in between).
-function calculate(config, { files, deliveryMethod, deliveryPincode }) {
+function calculate(config, { files, deliveryMethod, deliveryPincode, discount }) {
   let printCost = 0
   let colorPages = 0
   let bwPages = 0
@@ -102,10 +102,32 @@ function calculate(config, { files, deliveryMethod, deliveryPincode }) {
     preDeliveryTotal: printCost + handlingCharge
   })
   const subtotal = printCost + deliveryCharge + handlingCharge
-  const gstAmount = Math.round((subtotal * (config.gstPercent || 0)) / 100)
-  const totalAmount = subtotal + gstAmount
+  // GST is charged on the post-discount (taxable) value, standard invoicing
+  // practice — not on the full pre-discount subtotal.
+  const discountAmount = calculateDiscountAmount(subtotal, discount)
+  const taxableAmount = subtotal - discountAmount
+  const gstAmount = Math.round((taxableAmount * (config.gstPercent || 0)) / 100)
+  const totalAmount = taxableAmount + gstAmount
 
-  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, gstAmount, totalAmount, fileBreakdown }
+  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, discountAmount, gstAmount, totalAmount, fileBreakdown }
+}
+
+// `discount` is already-resolved data the caller looked up (a coupon row, or
+// a staff-entered ad-hoc value) — pricing.js stays pure math and never itself
+// looks anything up. minOrderValue is enforced here (against the subtotal
+// this same calculate() call just computed) rather than by the caller, since
+// the caller can't know the subtotal until calculate() runs. Result is always
+// clamped to [0, subtotal] so a total can never go negative or a discount
+// exceed what there was to discount.
+function calculateDiscountAmount(subtotal, discount) {
+  if (!discount || !discount.type) return 0
+  if (discount.minOrderValue && subtotal < discount.minOrderValue) return 0
+  const value = Number(discount.value) || 0
+  if (value <= 0) return 0
+  let amount = 0
+  if (discount.type === 'percent') amount = (subtotal * Math.min(value, 100)) / 100
+  else if (discount.type === 'flat') amount = value
+  return Math.max(0, Math.min(Math.round(amount), subtotal))
 }
 
 // Resolves a single file's effective color/bw page split given its
@@ -120,4 +142,4 @@ function resolveFileColorPages(file, mode) {
   return { colorPages, bwPages: Math.max(0, pageCount - colorPages) }
 }
 
-module.exports = { calculate, resolveFileColorPages, calculateDeliveryCharge }
+module.exports = { calculate, resolveFileColorPages, calculateDeliveryCharge, calculateDiscountAmount }

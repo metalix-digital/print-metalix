@@ -373,8 +373,34 @@ app.post('/api/upload', (req, res) => {
   })
 })
 
+// Public — used by the customer order page's live estimate and the admin
+// New Order modal. Coupons are deliberately stripped here: unlike every
+// other field in this config, a coupon list is enumerable secret-ish data
+// (codes/values a promotion isn't meant to advertise to anyone poking at
+// devtools) — a caller who has a specific code validates it one at a time via
+// GET /api/coupons/:code below instead. The full list, for admin management,
+// is served separately by the authenticated GET /api/admin/pricing near the
+// pricing PUT route.
 app.get('/api/pricing', (req, res) => {
-  res.json(db.getPricing())
+  const { coupons, ...publicPricing } = db.getPricing()
+  res.json(publicPricing)
+})
+
+// Public, read-only single-code lookup for a live discount preview — on
+// customer checkout (a coupon field) and the admin New Order modal (staff
+// applying an existing code to a walk-in order). Never the source of truth
+// for what actually gets applied: order creation re-validates independently
+// (active / not expired / under its usage cap) via resolveDiscountInput, so
+// a stale preview here can never itself grant a discount.
+app.get('/api/coupons/:code', (req, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase()
+  const coupon = (db.getPricing().coupons || []).find((c) => c.code === code)
+  if (!coupon || !coupon.active) return res.status(404).json({ error: 'invalid_coupon', message: 'This coupon code is not valid.' })
+  if (coupon.expiresAt && Date.now() > coupon.expiresAt) return res.status(404).json({ error: 'coupon_expired', message: 'This coupon has expired.' })
+  if (coupon.maxUses != null && db.countCouponUses(coupon.code) >= coupon.maxUses) {
+    return res.status(404).json({ error: 'coupon_limit_reached', message: 'This coupon has reached its usage limit.' })
+  }
+  res.json({ code: coupon.code, type: coupon.type, value: coupon.value, minOrderValue: coupon.minOrderValue || 0 })
 })
 
 // The order page estimates delivery charge client-side to match this
@@ -1132,11 +1158,17 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     customer_name, customer_mobile, customer_email,
     delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
     files,
-    location_id, notes
+    location_id, notes,
+    discountType, discountValue, discountCode, discountReason
   } = req.body || {}
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
     return res.status(400).json({ error: 'payment_not_collected', message: 'This is a pay-on-delivery order — collect cash/UPI payment before marking it Completed.' })
   }
+
+  // Whether this request is explicitly touching the discount — a key being
+  // present (even as null/'', clearing it) counts, same !== undefined
+  // convention as every other optional field here.
+  const discountFieldsProvided = discountType !== undefined || discountValue !== undefined || discountCode !== undefined
 
   // Content edits (customer/delivery/print options) are only allowed before
   // money has changed hands — once paid, reprising here would mean silently
@@ -1145,9 +1177,24 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   // keep working on paid orders, which is the normal happy path.
   const wantsContentEdit = customer_name !== undefined || customer_mobile !== undefined || customer_email !== undefined ||
     delivery_method !== undefined || delivery_address !== undefined || delivery_city !== undefined ||
-    delivery_state !== undefined || delivery_pincode !== undefined || Array.isArray(files)
+    delivery_state !== undefined || delivery_pincode !== undefined || Array.isArray(files) || discountFieldsProvided
   if (wantsContentEdit && String(order.payment_status).toLowerCase() === 'paid') {
     return res.status(400).json({ error: 'order_already_paid', message: 'This order is already paid — place a new order for the customer instead of editing this one.' })
+  }
+
+  // Re-resolves fresh on every edit (never trusts the order's existing
+  // discount_amount) — same allowAdHoc: true reasoning as the walk-in create
+  // route, since this is staff-only. An explicit discountType/Value/Code in
+  // this request overrides; otherwise the order's existing discount (if any)
+  // carries forward into the repricing below unchanged.
+  let discountResolved
+  if (discountFieldsProvided) {
+    discountResolved = resolveDiscountInput({ discountCode, discountType, discountValue, discountReason }, { allowAdHoc: true })
+    if (discountResolved.error) return res.status(400).json({ error: discountResolved.error, message: discountResolved.message })
+  } else if (order.discount_type) {
+    discountResolved = { discount: { type: order.discount_type, value: order.discount_value, minOrderValue: 0 }, code: order.discount_code, reason: order.discount_reason }
+  } else {
+    discountResolved = { discount: null, code: null, reason: null }
   }
 
   if (customer_mobile !== undefined && !/^\d{10}$/.test(String(customer_mobile))) {
@@ -1188,7 +1235,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   // method/pincode the delivery charge is based on) triggers a full
   // recompute through the same pricing.calculate() used at order creation —
   // never trust a client-supplied total.
-  const repricingNeeded = Array.isArray(files) || delivery_method !== undefined || delivery_pincode !== undefined
+  const repricingNeeded = Array.isArray(files) || delivery_method !== undefined || delivery_pincode !== undefined || discountFieldsProvided
   if (repricingNeeded) {
     let currentFiles = []
     try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
@@ -1263,7 +1310,8 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     const calc = pricing.calculate(paperTypeConfig, {
       files: pricingFiles,
       deliveryMethod: effectiveDeliveryMethod || 'pickup',
-      deliveryPincode: effectiveDeliveryPincode
+      deliveryPincode: effectiveDeliveryPincode,
+      discount: discountResolved.discount
     })
 
     // Document-only summary fields — see the same rule in buildPricedOrderFiles.
@@ -1291,6 +1339,11 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     updates.handling_charge = calc.handlingCharge
     updates.gst_amount = calc.gstAmount
     updates.total_amount = calc.totalAmount
+    updates.discount_type = discountResolved.discount ? discountResolved.discount.type : null
+    updates.discount_value = discountResolved.discount ? discountResolved.discount.value : 0
+    updates.discount_amount = calc.discountAmount
+    updates.discount_code = discountResolved.code
+    updates.discount_reason = discountResolved.reason
   }
 
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'no_updates' })
@@ -1662,6 +1715,14 @@ app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab
   return res.download(filePath, fileName || safeFileId)
 })
 
+// Authenticated counterpart to the public GET /api/pricing above — the only
+// difference is this one includes `coupons`, since the admin Pricing tab is
+// the one place that legitimately needs the full code list (to manage it),
+// not just to validate one code a customer typed in.
+app.get('/api/admin/pricing', requireSuperAdmin, (req, res) => {
+  res.json(db.getPricing())
+})
+
 app.put('/api/admin/pricing', requireSuperAdmin, express.json(), (req, res) => {
   const pricing = req.body
   if (!pricing || !pricing.rates || !Array.isArray(pricing.rates.a4)) {
@@ -1677,13 +1738,46 @@ app.put('/api/admin/pricing', requireSuperAdmin, express.json(), (req, res) => {
 // (or a simulated one if no live keys are configured).
 const MAX_TOTAL_UPLOAD_BYTES = 100 * 1024 * 1024
 
+// Resolves a client-supplied discount request into pricing.calculate()'s
+// { type, value, minOrderValue } shape, or an { error, message } to reject
+// with. Two independent paths:
+//  - A coupon code: looked up fresh against the admin-managed list in
+//    Pricing on every call (active / not expired / under its usage cap) —
+//    never trusted from an earlier client-side check.
+//  - An ad-hoc type+value with no code: staff-only (allowAdHoc), for a
+//    walk-in order where there's no formal code, just "take ₹20 off this
+//    one". A customer-facing caller passes allowAdHoc: false so a tampered
+//    request body can't grant itself an arbitrary discount.
+// Returns { discount: null, code: null, reason: null } when nothing was requested.
+function resolveDiscountInput({ discountCode, discountType, discountValue, discountReason }, { allowAdHoc }) {
+  const code = String(discountCode || '').trim().toUpperCase()
+  if (code) {
+    const coupon = (db.getPricing().coupons || []).find((c) => c.code === code)
+    if (!coupon || !coupon.active) return { error: 'invalid_coupon', message: 'This coupon code is not valid.' }
+    if (coupon.expiresAt && Date.now() > coupon.expiresAt) return { error: 'coupon_expired', message: 'This coupon has expired.' }
+    if (coupon.maxUses != null && db.countCouponUses(coupon.code) >= coupon.maxUses) {
+      return { error: 'coupon_limit_reached', message: 'This coupon has reached its usage limit.' }
+    }
+    return { discount: { type: coupon.type, value: coupon.value, minOrderValue: coupon.minOrderValue || 0 }, code: coupon.code, reason: null }
+  }
+  if (discountType === 'percent' || discountType === 'flat') {
+    if (!allowAdHoc) return { error: 'invalid_discount', message: 'Only a coupon code can be applied here.' }
+    const value = Number(discountValue)
+    if (!Number.isFinite(value) || value <= 0 || (discountType === 'percent' && value > 100)) {
+      return { error: 'invalid_discount_value', message: 'Enter a valid discount value.' }
+    }
+    return { discount: { type: discountType, value, minOrderValue: 0 }, code: null, reason: String(discountReason || '').trim().slice(0, 200) || null }
+  }
+  return { discount: null, code: null, reason: null }
+}
+
 // Shared by POST /api/orders (customer checkout) and POST /api/admin/orders
 // (staff-placed order) — both validate/normalize the raw `files` input,
 // resolve delivery timing, and price the order identically; only what
 // happens next (payment method, who owns the order) differs between them.
 // Returns { error, message? } on the first invalid file/input (caller
 // responds with that as a 400), otherwise the validated, priced result.
-function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile }) {
+function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile, discount }) {
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
   const VALID_SIDES = ['single', 'double']
@@ -1841,7 +1935,8 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   const calc = pricing.calculate(pricingConfig, {
     files: pricingFiles,
     deliveryMethod: deliveryMethod || 'pickup',
-    deliveryPincode
+    deliveryPincode,
+    discount
   })
   // Bake each file's actual charged amount/labels in now, so an invoice
   // printed later reflects what was charged even if rates change meanwhile.
@@ -1860,7 +1955,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     files,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
     deliveryTiming, scheduledAt,
-    locationId, paymentMethod, notes
+    locationId, paymentMethod, notes, discountCode
   } = req.body || {}
   const isCod = paymentMethod === 'cod'
   const safeNotes = String(notes || '').trim().slice(0, 500) || null
@@ -1872,11 +1967,16 @@ app.post('/api/orders', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'missing_file_info' })
   }
 
+  // allowAdHoc: false — a customer can only apply a real coupon code, never
+  // an arbitrary type+value straight from the request body.
+  const discountResolved = resolveDiscountInput({ discountCode }, { allowAdHoc: false })
+  if (discountResolved.error) return res.status(400).json({ error: discountResolved.error, message: discountResolved.message })
+
   // allowMissingFile is never set here — a customer must always have
   // actually uploaded (and, for passport photos, cropped) the file first;
   // that upload is the whole point of the self-serve flow. Only the admin
   // walk-in endpoint below allows a photo-less passport-photo line item.
-  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt })
+  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, discount: discountResolved.discount })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
   const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, summaryProductType, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
@@ -1943,6 +2043,11 @@ app.post('/api/orders', express.json(), async (req, res) => {
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
+    discount_type: discountResolved.discount ? discountResolved.discount.type : null,
+    discount_value: discountResolved.discount ? discountResolved.discount.value : 0,
+    discount_amount: calc.discountAmount,
+    discount_code: discountResolved.code,
+    discount_reason: discountResolved.reason,
     // Simulated orders have no real cf_order_id — store the SIM_ marker here
     // instead so verify-payment can trust *this* (server-written) column to
     // tell a simulated order from a real one, never anything the client claims.
@@ -1986,7 +2091,8 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
     deliveryTiming, scheduledAt,
     locationId,
-    paymentStatus, paymentMode, notes
+    paymentStatus, paymentMode, notes,
+    discountCode, discountType, discountValue, discountReason
   } = req.body || {}
   const safeNotes = String(notes || '').trim().slice(0, 500) || null
 
@@ -2002,6 +2108,11 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     return res.status(400).json({ error: 'invalid_payment_mode', message: 'Payment mode must be cash or upi.' })
   }
 
+  // allowAdHoc: true — staff can either apply an existing coupon code or type
+  // a flat/percent discount straight in, no code required.
+  const discountResolved = resolveDiscountInput({ discountCode, discountType, discountValue, discountReason }, { allowAdHoc: true })
+  if (discountResolved.error) return res.status(400).json({ error: discountResolved.error, message: discountResolved.message })
+
   // allowMissingFile: true — real order volume comes in over WhatsApp/other
   // channels, so staff need to price a passport-photo line item, create the
   // order, and generate an invoice/payment link without necessarily having
@@ -2009,7 +2120,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
   // the shop already has it). Document items still require a real uploaded
   // file, same as always (buildPricedOrderFiles only relaxes this for
   // passport-photo items).
-  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile: true })
+  const built = buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile: true, discount: discountResolved.discount })
   if (built.error) return res.status(400).json({ error: built.error, message: built.message })
   const { safeFiles, totalPageCount, summaryMode, summaryOrientation, summarySide, summaryPaperType, summaryPageSize, totalCopies, summaryProductType, calc, resolvedDeliveryTiming, resolvedScheduledAt } = built
 
@@ -2023,9 +2134,15 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
   const effectiveLocationId = req.admin.adminRole === 'branch_admin' ? req.admin.locationId : (locationId || null)
   const chosenLocation = effectiveLocationId ? db.getLocations().find((l) => l.id === effectiveLocationId && l.active) : null
 
+  // Links this walk-in order to a registered account when the customer's
+  // mobile/email matches one, purely as a backend guarantee (see
+  // findUserByMobileOrEmail) — independent of whatever staff did or didn't
+  // pick in the New Order modal's customer search.
+  const matchedUser = db.findUserByMobileOrEmail(customerMobile, customerEmail || null)
+
   const order = db.createOrder({
     id: orderId,
-    customer_id: null,
+    customer_id: matchedUser ? matchedUser.id : null,
     customer_name: customerName,
     customer_mobile: customerMobile,
     customer_email: customerEmail || null,
@@ -2059,6 +2176,11 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount,
+    discount_type: discountResolved.discount ? discountResolved.discount.type : null,
+    discount_value: discountResolved.discount ? discountResolved.discount.value : 0,
+    discount_amount: calc.discountAmount,
+    discount_code: discountResolved.code,
+    discount_reason: discountResolved.reason,
     // 'created' mirrors the public checkout's pre-payment state — it's what
     // keeps an unpaid link order out of db.listOrders() until it's paid,
     // same as an abandoned self-checkout never shows up either.

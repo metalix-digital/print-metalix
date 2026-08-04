@@ -87,6 +87,10 @@ tr.order-row:hover{background:var(--paper);}
 .detail>div{margin:4px 0;}
 .detail>div:first-child{margin-top:0;}
 .detail>.file-list{margin:4px 0 12px;}
+.order-breakdown{background:var(--surface-hover);border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin:8px 0 12px;max-width:320px;}
+.order-breakdown .bd-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);margin-bottom:6px;}
+.order-breakdown .bd-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:2px 0;font-variant-numeric:tabular-nums;}
+.order-breakdown .bd-row.bd-total{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:700;color:var(--ink);}
 select.status-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;font-family:'Inter',sans-serif;}
 select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;font-family:'Inter',sans-serif;background:var(--card);color:var(--ink);cursor:pointer;}
 
@@ -455,6 +459,33 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
   .blog-modal{max-height:94vh;}
   .blog-cover-row{flex-direction:column;}
   .blog-cover-preview{width:100%;height:140px;}
+
+  /* Modals: the desktop 26px padding on both the card and the blog-modal
+     body eats into an already-narrow viewport twice over — tighten both so
+     single-column fields (see .field-grid's 760px rule above) get their
+     width back instead of wrapping awkwardly. */
+  .modal-overlay{padding:12px;}
+  .modal-card{padding:18px;border-radius:14px;}
+  .blog-modal-head{padding:16px 18px 0;}
+  .blog-modal-body{padding:14px 18px 6px;}
+  .blog-modal .modal-actions{padding:14px 18px 18px;}
+  /* Action buttons stack full-width instead of two cramped side-by-side
+     buttons — bigger, easier tap targets on a phone. */
+  .modal-actions{flex-direction:column-reverse;}
+  .modal-actions button{width:100%;}
+
+  /* A segmented option's label (e.g. "Send payment link (online, via SMS)")
+     can otherwise force one pill much wider than the others instead of
+     wrapping its own text — let each option size to the row and wrap. */
+  .seg-row{gap:8px;}
+  .seg-opt{flex:1 1 140px;min-width:0;justify-content:center;text-align:center;}
+}
+@media(max-width:420px){
+  .modal-card{padding:14px;}
+  .blog-modal-head{padding:14px 14px 0;}
+  .blog-modal-body{padding:12px 14px 6px;}
+  .blog-modal .modal-actions{padding:12px 14px 14px;}
+  .seg-opt{flex-basis:100%;}
 }
 </style>
 <script>
@@ -786,10 +817,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <select id="noBulkPaper"></select>
           <button type="button" class="btn-file" id="noBulkApplyBtn">Apply to all files</button>
         </div>
+        <div class="table-scroll">
         <table class="no-file-table hidden" id="noFileTable">
           <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
           <tbody id="noFileTableBody"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="field hidden" id="noPassportSection">
@@ -798,10 +831,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <button class="btn-file" id="noPassportAddBtn" type="button">+ Add pack</button>
           <span class="no-file-note">Photo is optional here — attach it now if you have it (e.g. pasted from WhatsApp elsewhere), or leave it for later. Printed on A4 glossy paper.</span>
         </div>
+        <div class="table-scroll">
         <table class="no-file-table hidden" id="noPassportTable">
           <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th></th></tr></thead>
           <tbody id="noPassportTableBody"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="field">
@@ -886,10 +921,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
       <div class="field">
         <label>Files <span class="opt">(print options only — files themselves can't be changed here)</span></label>
+        <div class="table-scroll">
         <table class="no-file-table" id="eoFileTable">
           <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th></tr></thead>
           <tbody id="eoFileTableBody"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="field">
@@ -915,6 +952,38 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <div class="field">
           <label>PIN code</label>
           <input type="text" id="eoAddrPincode" placeholder="6-digit PIN" maxlength="6" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Discount <span class="opt">(optional)</span></label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="eoDiscountMode" value="none" checked /><span>None</span></label>
+          <label class="seg-opt"><input type="radio" name="eoDiscountMode" value="code" /><span>Coupon code</span></label>
+          <label class="seg-opt"><input type="radio" name="eoDiscountMode" value="custom" /><span>Custom amount</span></label>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="eoDiscountCodeFields">
+        <div class="field">
+          <label>Code</label>
+          <input type="text" id="eoDiscountCode" placeholder="e.g. SAVE10" maxlength="20" style="text-transform:uppercase;" />
+        </div>
+      </div>
+      <div class="field-grid hidden" id="eoDiscountCustomFields">
+        <div class="field">
+          <label>Type</label>
+          <select id="eoDiscountType">
+            <option value="percent">% off</option>
+            <option value="flat">₹ off</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Value</label>
+          <input type="number" id="eoDiscountValue" min="0" step="0.5" />
+        </div>
+        <div class="field">
+          <label>Reason <span class="opt">(optional)</span></label>
+          <input type="text" id="eoDiscountReason" maxlength="200" placeholder="e.g. Regular customer" />
         </div>
       </div>
 
@@ -1467,6 +1536,30 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
   return '<li><span>' + fileName + meta + modeText + pageSizeText + paperTypeText + orientationText + sideText + copiesText + passwordText + '</span> <span class="file-actions">' + action + '</span></li>';
 }
 
+// Full price breakdown for the expanded order row — print cost, handling,
+// delivery, discount (if any), GST, total. Print cost and Total always show;
+// everything else is conditional on being non-zero, same pattern the
+// existing lone handling-charge line used before this replaced it.
+function orderBreakdownHtml(o){
+  const rows = [['Print cost', o.print_cost || 0, false]];
+  if (o.handling_charge) rows.push(['Handling charge', o.handling_charge, false]);
+  if (o.delivery_charge) rows.push(['Delivery charge', o.delivery_charge, false]);
+  if (o.discount_amount) {
+    const label = o.discount_code
+      ? 'Discount (' + escHtml(o.discount_code) + ')'
+      : 'Discount' + (o.discount_reason ? ' (' + escHtml(o.discount_reason) + ')' : '');
+    rows.push([label, o.discount_amount, true]);
+  }
+  if (o.gst_amount) rows.push(['GST', o.gst_amount, false]);
+  const lines = rows.map(([label, amt, isDiscount]) =>
+    '<div class="bd-row"><span>' + label + '</span><span' + (isDiscount ? ' style="color:var(--ok);"' : '') + '>' +
+      (isDiscount ? '−' : '') + '₹' + escHtml(amt) +
+    '</span></div>'
+  ).join('');
+  return '<div class="order-breakdown"><div class="bd-title">Bill breakdown</div>' + lines +
+    '<div class="bd-row bd-total"><span>Total</span><span>₹' + escHtml(o.total_amount) + '</span></div></div>';
+}
+
 function filesDetailHtml(o){
   let files = null;
   try { files = o.files_json ? JSON.parse(o.files_json) : null; } catch (e) { files = null; }
@@ -1642,7 +1735,7 @@ function renderOrders(orders){
         (o.delivery_method === 'delivery' ? ' — ' + escHtml(o.delivery_address) + ', ' + escHtml(o.delivery_city) + ', ' + escHtml(o.delivery_state) + ' ' + escHtml(o.delivery_pincode) : '') +
       '</div>' +
       (o.delivery_method === 'delivery' ? '<div><strong>Delivery timing:</strong> ' + (o.delivery_timing === 'scheduled' ? 'Scheduled — ' + escHtml(o.scheduled_at ? new Date(o.scheduled_at).toLocaleString() : '—') : 'Instant (within 2 hrs)') + '</div>' : '') +
-      (o.handling_charge ? '<div><strong>Handling charge:</strong> ₹' + escHtml(o.handling_charge) + '</div>' : '') +
+      orderBreakdownHtml(o) +
       (o.customer_email ? '<div><strong>Email:</strong> ' + escHtml(o.customer_email) + '</div>' : '') +
       (o.order_status === 'Completed' ? (
         feedbackByOrderId[o.id]
@@ -2837,6 +2930,59 @@ function bindPassportPackRow(tr){
   tr.querySelector('.passport-pack-remove').addEventListener('click', () => tr.remove());
 }
 
+// Discount coupons — code + flat/percent value, plus optional min order
+// value / usage cap / expiry date. Same admin-addable/removable row pattern
+// as passport packs above. Codes are uppercased and stripped to [A-Z0-9] on
+// save (mirrors db.js's normalizeCoupons), so what's shown after a save
+// always matches what's actually stored and matched against at checkout.
+function couponRowHtml(row){
+  row = row || { code: '', type: 'percent', value: '', active: true, minOrderValue: '', maxUses: '', expiresAt: null };
+  const expiryValue = row.expiresAt ? new Date(row.expiresAt).toISOString().slice(0, 10) : '';
+  return '<tr class="coupon-row">' +
+    '<td><input class="cp-code" type="text" placeholder="e.g. SAVE10" maxlength="20" style="text-transform:uppercase;" value="' + escHtml(row.code || '') + '" /></td>' +
+    '<td><select class="cp-type">' +
+      '<option value="percent"' + (row.type !== 'flat' ? ' selected' : '') + '>% off</option>' +
+      '<option value="flat"' + (row.type === 'flat' ? ' selected' : '') + '>₹ off</option>' +
+    '</select></td>' +
+    '<td class="col-rate"><input class="cp-value" type="number" step="0.5" min="0" value="' + (row.value != null ? row.value : '') + '" /></td>' +
+    '<td class="col-rate"><input class="cp-min" type="number" step="1" min="0" placeholder="none" value="' + (row.minOrderValue || '') + '" /></td>' +
+    '<td class="col-rate"><input class="cp-maxuses" type="number" step="1" min="1" placeholder="unlimited" value="' + (row.maxUses || '') + '" /></td>' +
+    '<td><input class="cp-expires" type="date" value="' + expiryValue + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="cp-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove coupon-remove" aria-label="Remove coupon">✕</button></td>' +
+  '</tr>';
+}
+
+function collectCouponsFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#couponRows .coupon-row').forEach((tr) => {
+    const code = tr.querySelector('.cp-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const value = Number(tr.querySelector('.cp-value').value);
+    if (!code || seen.has(code) || !Number.isFinite(value) || value <= 0) return;
+    seen.add(code);
+    const minRaw = tr.querySelector('.cp-min').value;
+    const maxRaw = tr.querySelector('.cp-maxuses').value;
+    const expiresRaw = tr.querySelector('.cp-expires').value;
+    out.push({
+      code,
+      type: tr.querySelector('.cp-type').value === 'flat' ? 'flat' : 'percent',
+      value,
+      active: tr.querySelector('.cp-active').checked,
+      minOrderValue: minRaw ? Number(minRaw) : 0,
+      maxUses: maxRaw ? Math.round(Number(maxRaw)) : null,
+      // End-of-day in the admin's own local time — good enough for a
+      // promotional expiry, not a customer-facing delivery-time commitment.
+      expiresAt: expiresRaw ? new Date(expiresRaw + 'T23:59:59').getTime() : null
+    });
+  });
+  return out;
+}
+
+function bindCouponRow(tr){
+  tr.querySelector('.coupon-remove').addEventListener('click', () => tr.remove());
+}
+
 // Order defaults — starting values for a freshly uploaded file's per-file
 // options on the customer order page (client/index.html), separate for the
 // Documents and Photos tabs since they usually warrant different defaults
@@ -2894,7 +3040,11 @@ function collectOrderDefaultsFromForm(context){
 
 async function loadPricing(){
   const form = document.getElementById('pricingForm');
-  const res = await fetch('/api/pricing');
+  // Authenticated variant of GET /api/pricing — the only difference is this
+  // one includes `coupons`, which the public endpoint deliberately strips
+  // (see server.js) since a coupon list isn't meant to be enumerable by
+  // anyone poking at devtools.
+  const res = await adminFetch('/api/admin/pricing');
   const p = await res.json();
 
   PAGE_SIZES = Array.isArray(p.pageSizes) && p.pageSizes.length ? p.pageSizes : PAGE_SIZES;
@@ -2923,6 +3073,9 @@ async function loadPricing(){
   const passportSizeRowsHtml = passportSizes.map(passportSizeRowHtml).join('');
   const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
   const passportPackRowsHtml = passportPackPrices.map(passportPackRowHtml).join('');
+
+  const coupons = Array.isArray(p.coupons) ? p.coupons : [];
+  const couponRowsHtml = coupons.map(couponRowHtml).join('');
 
   const orderDefaults = p.orderDefaults || {};
   const documentDefaults = orderDefaults.document || { printMode: 'bw', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
@@ -2953,6 +3106,12 @@ async function loadPricing(){
       '<th>Quantity</th><th>Price (₹)</th><th></th>' +
     '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPassportPack">+ Add pack</button>' +
+    '<h2>Discount coupons</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Codes customers can enter at checkout for a flat ₹ or % discount. Min order / Max uses / Expires are all optional — leave blank for no limit. A walk-in order can also apply one of these codes, or staff can type an ad-hoc discount directly without a code.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Code</th><th>Type</th><th>Value</th><th>Min order (₹)</th><th>Max uses</th><th>Expires</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="couponRows">' + couponRowsHtml + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addCoupon">+ Add coupon</button>' +
     '<h2>Order defaults</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Starting values for a freshly uploaded file\'s settings on the order page — customers can always change them. Documents and Photos get their own defaults (Photos default to Color, not Black &amp; White).</p>' +
     '<div class="order-defaults-grid">' +
@@ -3001,6 +3160,13 @@ async function loadPricing(){
     const tbody = document.getElementById('passportPackRows');
     tbody.insertAdjacentHTML('beforeend', passportPackRowHtml(null));
     bindPassportPackRow(tbody.lastElementChild);
+  });
+
+  form.querySelectorAll('.coupon-row').forEach(bindCouponRow);
+  document.getElementById('addCoupon').addEventListener('click', () => {
+    const tbody = document.getElementById('couponRows');
+    tbody.insertAdjacentHTML('beforeend', couponRowHtml(null));
+    bindCouponRow(tbody.lastElementChild);
   });
 
   bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="document"]'), documentDefaults.paperType);
@@ -3063,6 +3229,8 @@ async function savePricing(){
       document: collectOrderDefaultsFromForm('document'),
       photo: collectOrderDefaultsFromForm('photo')
     },
+    // Same "always include" reasoning as passportPhotos above.
+    coupons: collectCouponsFromForm(),
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
     deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
@@ -3851,6 +4019,11 @@ const editOrderModal = document.getElementById('editOrderModal');
 let eoCurrentOrder = null;
 let eoFiles = [];
 
+document.querySelectorAll('input[name=eoDiscountMode]').forEach((r) => r.addEventListener('change', (e) => {
+  document.getElementById('eoDiscountCodeFields').classList.toggle('hidden', e.target.value !== 'code');
+  document.getElementById('eoDiscountCustomFields').classList.toggle('hidden', e.target.value !== 'custom');
+}));
+
 function eoFileRowHtml(f, idx){
   const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
   const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
@@ -3925,6 +4098,15 @@ async function openEditOrderModal(order){
   document.getElementById('eoAddrState').value = order.delivery_state || '';
   document.getElementById('eoAddrPincode').value = order.delivery_pincode || '';
 
+  const discountMode = order.discount_code ? 'code' : (order.discount_type ? 'custom' : 'none');
+  document.querySelector('input[name=eoDiscountMode][value=' + discountMode + ']').checked = true;
+  document.getElementById('eoDiscountCodeFields').classList.toggle('hidden', discountMode !== 'code');
+  document.getElementById('eoDiscountCustomFields').classList.toggle('hidden', discountMode !== 'custom');
+  document.getElementById('eoDiscountCode').value = order.discount_code || '';
+  document.getElementById('eoDiscountType').value = order.discount_type === 'flat' ? 'flat' : 'percent';
+  document.getElementById('eoDiscountValue').value = order.discount_value || '';
+  document.getElementById('eoDiscountReason').value = order.discount_reason || '';
+
   const msg = document.getElementById('editOrderModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   editOrderModal.classList.remove('hidden');
@@ -3962,6 +4144,21 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     return;
   }
 
+  const discountMode = document.querySelector('input[name=eoDiscountMode]:checked').value;
+  if (discountMode === 'custom') {
+    const value = Number(document.getElementById('eoDiscountValue').value);
+    if (!Number.isFinite(value) || value <= 0) {
+      msg.textContent = 'Enter a valid discount value.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+      return;
+    }
+  }
+  if (discountMode === 'code' && !document.getElementById('eoDiscountCode').value.trim()) {
+    msg.textContent = 'Enter a coupon code, or switch Discount to "None".';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+
   const payload = {
     customer_name: customerName,
     customer_mobile: customerMobile,
@@ -3972,7 +4169,14 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
     delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
     files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies })),
-    notes: document.getElementById('eoNotes').value.trim() || null
+    notes: document.getElementById('eoNotes').value.trim() || null,
+    // discountType null (rather than omitted) is what tells the server this
+    // request is explicitly touching the discount even in the "None" case —
+    // see resolveDiscountInput/discountFieldsProvided in server.js.
+    discountType: discountMode === 'custom' ? document.getElementById('eoDiscountType').value : null,
+    discountValue: discountMode === 'custom' ? Number(document.getElementById('eoDiscountValue').value) || 0 : 0,
+    discountCode: discountMode === 'code' ? document.getElementById('eoDiscountCode').value.trim() : '',
+    discountReason: discountMode === 'custom' ? (document.getElementById('eoDiscountReason').value.trim() || undefined) : undefined
   };
 
   const saveBtn = document.getElementById('editOrderModalSave');

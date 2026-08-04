@@ -261,7 +261,7 @@
         <div class="s2-card"><div class="c-icon">🌐</div><div class="c-label">Order Online</div><div class="c-value">print.metalix.in</div></div>
         <div class="s2-card"><div class="c-icon">📄</div><div class="c-label">Accepted Files</div><div class="c-value">PDF · DOC · PPT</div></div>
         <div class="s2-card"><div class="c-icon">⏱️</div><div class="c-label">Ready In</div><div class="c-value">3–4 hrs after payment</div></div>
-        <div class="s2-card"><div class="c-icon">🚚</div><div class="c-label">Delivery</div><div class="c-value">Collect in-store or home delivery (+₹30)</div></div>
+        <div class="s2-card"><div class="c-icon">🚚</div><div class="c-label">Delivery</div><div class="c-value" id="s2DeliveryValue">Collect in-store or home delivery</div></div>
       </div>
     </div>
 
@@ -343,6 +343,13 @@ async function mergePaperTypeLabels(){
     });
     (p.pageSizes || []).forEach((s) => { if (s.id) PAGE_SIZE_LABELS[s.id] = s.label; });
     ((p.passportPhotos || {}).sizePresets || []).forEach((s) => { if (s.id) PASSPORT_SIZE_LABELS[s.id] = s.label; });
+    // Sheet 2's back-branding promo card used to hardcode "+₹30" — now pulled
+    // live from Pricing so it never drifts from whatever the admin actually
+    // charges (same local/Gurugram split shown on the website itself).
+    const deliveryEl = document.getElementById('s2DeliveryValue');
+    if (deliveryEl && p.deliveryLocalCharge != null && p.deliveryGurugramCharge != null) {
+      deliveryEl.textContent = `Collect in-store or home delivery (+₹${p.deliveryLocalCharge}–₹${p.deliveryGurugramCharge})`;
+    }
   } catch (err) { /* fall back to built-in labels / raw id */ }
 }
 const MODE_LABELS = { auto: 'Auto', color: 'Color', bw: 'Black & White', mixed: 'Mixed' };
