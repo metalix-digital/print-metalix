@@ -431,6 +431,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .no-file-note{font-size:12px;color:var(--ink3);}
 .no-bulk-apply{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:var(--bg);border-radius:8px;}
 .no-bulk-apply select{border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);}
+.no-customer-results{position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-height:220px;overflow-y:auto;z-index:20;}
+.no-customer-results .ncr-item{padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line-soft);}
+.no-customer-results .ncr-item:last-child{border-bottom:none;}
+.no-customer-results .ncr-item:hover{background:var(--surface-hover);}
+.no-customer-results .ncr-name{font-weight:600;font-size:13px;color:var(--ink);}
+.no-customer-results .ncr-meta{font-size:11.5px;color:var(--ink3);margin-top:1px;}
 .no-file-table{width:100%;border-collapse:collapse;font-size:12.5px;}
 .no-file-table th{text-align:left;color:var(--ink3);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line);}
 .no-file-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
@@ -777,6 +783,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <button class="blog-modal-close" id="newOrderModalClose" type="button" aria-label="Close">✕</button>
     </div>
     <div class="blog-modal-body">
+      <div class="field" style="position:relative;">
+        <label>Existing customer? <span class="opt">(search by name, mobile, or email to autofill)</span></label>
+        <input type="text" id="noCustomerSearch" placeholder="Start typing to search…" autocomplete="off" />
+        <div class="no-customer-results hidden" id="noCustomerResults"></div>
+      </div>
       <div class="field-grid">
         <div class="field">
           <label>Customer name</label>
@@ -806,21 +817,15 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field" id="noDocumentSection">
-        <label>Files</label>
+        <label>Print lines</label>
         <div class="no-file-controls">
-          <button class="btn-file" id="noFilePickBtn" type="button">📄 Choose files</button>
-          <input type="file" id="noFileInput" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif" multiple class="hidden" />
-          <span class="no-file-note">PDF, DOC, DOCX, PPT, PPTX, JPG, PNG — up to 100 MB total. Copied a photo from WhatsApp? Click anywhere here and paste (Ctrl+V).</span>
-        </div>
-        <div class="no-bulk-apply hidden" id="noBulkApply">
-          <select id="noBulkSize"></select>
-          <select id="noBulkPaper"></select>
-          <button type="button" class="btn-file" id="noBulkApplyBtn">Apply to all files</button>
+          <button class="btn-file" id="noQuickAddBtn" type="button">+ Add line</button>
+          <span class="no-file-note">Pick a page type and how many prints — the price comes from the rate card, not a file. Attaching a file is optional and only for reference/printing.</span>
         </div>
         <div class="table-scroll">
-        <table class="no-file-table hidden" id="noFileTable">
-          <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th><th></th></tr></thead>
-          <tbody id="noFileTableBody"></tbody>
+        <table class="no-file-table hidden" id="noQuickTable">
+          <thead><tr><th>Page type</th><th>Prints</th><th>File</th><th>Amount</th><th></th></tr></thead>
+          <tbody id="noQuickTableBody"></tbody>
         </table>
         </div>
       </div>
@@ -833,7 +838,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
         <div class="table-scroll">
         <table class="no-file-table hidden" id="noPassportTable">
-          <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th></th></tr></thead>
+          <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th>Amount</th><th></th></tr></thead>
           <tbody id="noPassportTableBody"></tbody>
         </table>
         </div>
@@ -884,8 +889,54 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
+        <label>Discount <span class="opt">(optional)</span></label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="none" checked /><span>None</span></label>
+          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="code" /><span>Coupon code</span></label>
+          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="custom" /><span>Custom amount</span></label>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="noDiscountCodeFields">
+        <div class="field">
+          <label>Code</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="noDiscountCode" placeholder="e.g. WELCOME10" maxlength="20" style="text-transform:uppercase;flex:1;" />
+            <button type="button" class="btn-file" id="noDiscountCodeApplyBtn">Check</button>
+          </div>
+          <div class="save-message hidden" id="noDiscountCodeMsg" style="margin-top:6px;"></div>
+        </div>
+      </div>
+      <div class="field-grid hidden" id="noDiscountCustomFields">
+        <div class="field">
+          <label>Type</label>
+          <select id="noDiscountType">
+            <option value="percent">% off</option>
+            <option value="flat">₹ off</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Value</label>
+          <input type="number" id="noDiscountValue" min="0" step="0.5" />
+        </div>
+        <div class="field">
+          <label>Reason <span class="opt">(optional)</span></label>
+          <input type="text" id="noDiscountReason" maxlength="200" placeholder="e.g. Regular customer" />
+        </div>
+      </div>
+
+      <div class="field">
         <label>Notes <span class="opt">(optional — visible to staff, shown on the job sheet)</span></label>
         <textarea id="noNotes" maxlength="500" rows="2"></textarea>
+      </div>
+
+      <div class="order-breakdown" id="noBreakdown">
+        <div class="bd-title">Order summary</div>
+        <div class="bd-row"><span>Print cost</span><span id="noBdPrint">₹0</span></div>
+        <div class="bd-row"><span>Handling charge</span><span id="noBdHandling">₹0</span></div>
+        <div class="bd-row"><span>Delivery charge</span><span id="noBdDelivery">₹0</span></div>
+        <div class="bd-row hidden" id="noBdDiscountRow"><span id="noBdDiscountLabel">Discount</span><span id="noBdDiscount" style="color:var(--ok);">−₹0</span></div>
+        <div class="bd-row"><span>GST</span><span id="noBdGst">₹0</span></div>
+        <div class="bd-row bd-total"><span>Total</span><span id="noBdTotal">₹0</span></div>
       </div>
 
       <div class="save-message hidden" id="newOrderModalMsg"></div>
@@ -1523,6 +1574,11 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
   let action;
   if (deleted) {
     action = '<span class="subtle">File auto-deleted after 3 days</span>';
+  } else if (!fileId) {
+    // A New Order "print line" prices off the rate card, not a file — see
+    // buildPricedOrderFiles's allowMissingFile relaxation in server.js.
+    // Same "no file yet" treatment as a photo-less passport-photo pack above.
+    action = '<span class="subtle">No file uploaded yet</span>';
   } else {
     const nameAttr = fileName.replace(/"/g, '&quot;');
     // Direct print opens the file inline and calls the browser's print
@@ -3613,16 +3669,48 @@ async function saveSettings(){
 
 /* -- NEW ORDER (admin placing an order on behalf of a customer) -- */
 const newOrderModal = document.getElementById('newOrderModal');
-let noUploadedFiles = []; // { fileId, fileName, fileType, fileSize, pageCount, colorCount, pageSize, paperType, printMode, printSide, copies }
 // Shared with the Edit Order modal below — both fetch /api/pricing at their
 // own open-time into the same globals, same pattern as before this field existed.
+// Edit Order still edits per-file size/paper/mode/side directly (out of scope
+// for the New Order rate-card rebuild below), so these stay in their
+// original shape rather than being folded into noQuickRates.
 let noPricingConfig = { pageSizes: [], rates: {} };
-let noCustomersCache = []; // fetched fresh each time the modal opens; used for returning-customer autofill
+let noCustomersCache = []; // fetched fresh each time the modal opens; used for returning-customer autofill/search
 let noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
 let noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }]; // kept as the pre-pricing-load fallback; per-row options are otherwise resolved via noPaperOptionsForSize
 function noPaperOptionsForSize(pageSize){
   const opts = (noPricingConfig.rates && noPricingConfig.rates[pageSize]) || [];
   return opts.length ? opts : noPaperTypeOptions;
+}
+
+// New Order's Documents flow prices off a chosen rate-card entry × a typed
+// quantity ("Number of prints"), not an uploaded file's page count — see
+// buildPricedOrderFiles's allowMissingFile relaxation in server.js. Each
+// active page size × paper type yields up to 3 rows here (B&W single/double,
+// Color), flattened once per modal-open from the same live Pricing config
+// used everywhere else, so a rate change is reflected immediately with no
+// separate admin screen to maintain.
+let noQuickRates = []; // [{ pageSize, paperType, printMode, printSide, label, rate }]
+function buildNoQuickRates(){
+  const out = [];
+  ((noPricingConfig.pageSizes || []).filter((s) => s.active)).forEach((size) => {
+    const rates = (noPricingConfig.rates && noPricingConfig.rates[size.id]) || [];
+    rates.forEach((t) => {
+      if (t.bw) {
+        out.push({ pageSize: size.id, paperType: t.id, printMode: 'bw', printSide: 'single', label: size.label + ' · ' + t.label + ' · B&W Single — ₹' + (t.bw.single || 0), rate: Number(t.bw.single) || 0 });
+        out.push({ pageSize: size.id, paperType: t.id, printMode: 'bw', printSide: 'double', label: size.label + ' · ' + t.label + ' · B&W Double — ₹' + (t.bw.double || 0), rate: Number(t.bw.double) || 0 });
+      }
+      if (t.color) {
+        out.push({ pageSize: size.id, paperType: t.id, printMode: 'color', printSide: 'single', label: size.label + ' · ' + t.label + ' · Color — ₹' + (t.color.single || 0), rate: Number(t.color.single) || 0 });
+      }
+    });
+  });
+  return out;
+}
+let noQuickLines = []; // [{ quickRateIdx, quantity, fileId, fileName, fileType, fileSize }]
+function noQuickLineAmount(line){
+  const rate = noQuickRates[line.quickRateIdx];
+  return rate ? Math.round(rate.rate * (line.quantity || 0)) : 0;
 }
 
 // Passport Photo packs — deliberately no crop UI here (unlike the customer
@@ -3643,12 +3731,14 @@ function noPassportPackOptionsHtml(selected){
   return tiers.map((t) => '<option value="' + t.qty + '"' + (Number(selected) === t.qty ? ' selected' : '') + '>' + t.qty + ' photos — ₹' + t.price + '</option>').join('');
 }
 function noPassportRowHtml(item, idx){
+  const tier = ((noPricingConfig.passportPhotos || {}).packPrices || []).find((t) => t.qty === item.packQty);
   return '<tr data-idx="' + idx + '">' +
     '<td><select class="no-pp-size" data-idx="' + idx + '">' + noPassportSizeOptionsHtml(item.sizePresetId) + '</select></td>' +
     '<td><select class="no-pp-qty" data-idx="' + idx + '">' + noPassportPackOptionsHtml(item.packQty) + '</select></td>' +
     '<td>' + (item.fileId
       ? escHtml(item.fileName || 'Attached')
       : '<button type="button" class="btn-file no-pp-attach" data-idx="' + idx + '">Attach photo</button>') + '</td>' +
+    '<td>₹' + (tier ? tier.price : 0) + '</td>' +
     '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
   '</tr>';
 }
@@ -3668,10 +3758,11 @@ document.getElementById('noPassportAddBtn').addEventListener('click', () => {
     fileId: null, fileName: null, fileType: null, fileSize: null
   });
   renderNoPassportTable();
+  recalcNoOrder();
 });
 document.getElementById('noPassportTableBody').addEventListener('click', (e) => {
   const removeBtn = e.target.closest('[data-remove]');
-  if (removeBtn) { noPassportItems.splice(Number(removeBtn.dataset.remove), 1); renderNoPassportTable(); return; }
+  if (removeBtn) { noPassportItems.splice(Number(removeBtn.dataset.remove), 1); renderNoPassportTable(); recalcNoOrder(); return; }
   const attachBtn = e.target.closest('.no-pp-attach');
   if (!attachBtn) return;
   const idx = Number(attachBtn.dataset.idx);
@@ -3701,147 +3792,239 @@ document.getElementById('noPassportTableBody').addEventListener('change', (e) =>
   if (!item) return;
   if (e.target.classList.contains('no-pp-size')) item.sizePresetId = e.target.value;
   if (e.target.classList.contains('no-pp-qty')) item.packQty = Number(e.target.value);
+  renderNoPassportTable();
+  recalcNoOrder();
 });
 document.querySelectorAll('input[name=noProductType]').forEach((r) => r.addEventListener('change', (e) => {
   const isPassport = e.target.value === 'passport-photo';
   document.getElementById('noDocumentSection').classList.toggle('hidden', isPassport);
   document.getElementById('noPassportSection').classList.toggle('hidden', !isPassport);
+  recalcNoOrder();
 }));
 
-function noFileRowHtml(f, idx){
-  const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
-  const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+// One "print line" = a Page type (a flattened page-size/paper/color/side
+// rate from noQuickRates) × a typed "Number of prints" — the price is
+// rate × quantity, nothing derived from a file. Attaching a file is
+// optional and purely for reference/printing, mirroring exactly how
+// Passport Photo packs above already let staff attach-or-skip a photo.
+function noQuickLineRowHtml(line, idx){
+  const rateOptions = noQuickRates.map((r, i) => '<option value="' + i + '"' + (i === line.quickRateIdx ? ' selected' : '') + '>' + escHtml(r.label) + '</option>').join('');
   return '<tr data-idx="' + idx + '">' +
-    '<td>' + escHtml(f.fileName) + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
-    '<td><select class="no-f-size">' + sizeOptions + '</select></td>' +
-    '<td><select class="no-f-paper">' + paperOptions + '</select></td>' +
-    '<td><select class="no-f-mode"><option value="auto"' + (f.printMode === 'auto' ? ' selected' : '') + '>Auto</option><option value="color"' + (f.printMode === 'color' ? ' selected' : '') + '>Color</option><option value="bw"' + (f.printMode === 'bw' ? ' selected' : '') + '>B&amp;W</option></select></td>' +
-    '<td><select class="no-f-side"' + (f.printMode === 'color' ? ' disabled' : '') + '><option value="single"' + (f.printSide === 'single' ? ' selected' : '') + '>Single</option><option value="double"' + (f.printSide === 'double' ? ' selected' : '') + '>Double</option></select></td>' +
-    '<td><input type="number" class="no-f-copies" min="1" max="999" value="' + f.copies + '" /></td>' +
+    '<td><select class="nq-rate" data-idx="' + idx + '">' + rateOptions + '</select></td>' +
+    '<td><input type="number" class="nq-qty" data-idx="' + idx + '" min="1" max="999" value="' + line.quantity + '" /></td>' +
+    '<td>' + (line.fileId
+      ? escHtml(line.fileName || 'Attached')
+      : '<button type="button" class="btn-file nq-attach" data-idx="' + idx + '">Attach</button>') + '</td>' +
+    '<td>₹' + noQuickLineAmount(line) + '</td>' +
     '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
   '</tr>';
 }
-
-function renderNoFileTable(){
-  const table = document.getElementById('noFileTable');
-  const body = document.getElementById('noFileTableBody');
-  if (!noUploadedFiles.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
+function renderNoQuickTable(){
+  const table = document.getElementById('noQuickTable');
+  const body = document.getElementById('noQuickTableBody');
+  if (!noQuickLines.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
   table.classList.remove('hidden');
-  body.innerHTML = noUploadedFiles.map((f, i) => noFileRowHtml(f, i)).join('');
-  renderNoBulkApply();
+  body.innerHTML = noQuickLines.map((l, i) => noQuickLineRowHtml(l, i)).join('');
 }
-
-// "Apply to all files" — only worth showing once there's more than one file
-// to set at once. Rebuilds its own dropdowns from the live page-size/paper
-// lists each render so it stays in sync with what the per-row selects offer.
-function renderNoBulkApply(){
-  const wrap = document.getElementById('noBulkApply');
-  if (noUploadedFiles.length < 2) { wrap.classList.add('hidden'); return; }
-  wrap.classList.remove('hidden');
-  const sizeSel = document.getElementById('noBulkSize');
-  const paperSel = document.getElementById('noBulkPaper');
-  const currentSize = sizeSel.value || (noPageSizeOptions[0] ? noPageSizeOptions[0].id : '');
-  sizeSel.innerHTML = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (s.id === currentSize ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
-  paperSel.innerHTML = noPaperOptionsForSize(currentSize).map((p) => '<option value="' + p.id + '">' + escHtml(p.label) + '</option>').join('');
-}
-document.getElementById('noBulkSize').addEventListener('change', () => {
-  const paperSel = document.getElementById('noBulkPaper');
-  paperSel.innerHTML = noPaperOptionsForSize(document.getElementById('noBulkSize').value).map((p) => '<option value="' + p.id + '">' + escHtml(p.label) + '</option>').join('');
+document.getElementById('noQuickAddBtn').addEventListener('click', () => {
+  noQuickLines.push({ quickRateIdx: noQuickRates.length ? 0 : -1, quantity: 1, fileId: null, fileName: null, fileType: null, fileSize: null });
+  renderNoQuickTable();
+  recalcNoOrder();
 });
-document.getElementById('noBulkApplyBtn').addEventListener('click', () => {
-  const pageSize = document.getElementById('noBulkSize').value;
-  const paperType = document.getElementById('noBulkPaper').value;
-  noUploadedFiles.forEach((f) => { f.pageSize = pageSize; f.paperType = paperType; });
-  renderNoFileTable();
-});
-
-document.getElementById('noFileTableBody').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-remove]');
-  if (!btn) return;
-  noUploadedFiles.splice(Number(btn.dataset.remove), 1);
-  renderNoFileTable();
-});
-document.getElementById('noFileTableBody').addEventListener('change', (e) => {
-  const row = e.target.closest('tr');
-  if (!row) return;
-  const f = noUploadedFiles[Number(row.dataset.idx)];
-  if (!f) return;
-  if (e.target.classList.contains('no-f-size')){
-    f.pageSize = e.target.value;
-    const opts = noPaperOptionsForSize(f.pageSize);
-    f.paperType = opts[0] ? opts[0].id : '';
-    renderNoFileTable();
-  }
-  if (e.target.classList.contains('no-f-paper')) f.paperType = e.target.value;
-  if (e.target.classList.contains('no-f-mode')){
-    f.printMode = e.target.value;
-    if (f.printMode === 'color') f.printSide = 'single';
-    renderNoFileTable();
-  }
-  if (e.target.classList.contains('no-f-side')) f.printSide = e.target.value;
-  if (e.target.classList.contains('no-f-copies')) f.copies = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
-});
-
-// JPG/PNG/etc uploads default to whichever page size the admin marked
-// "Photo" in Pricing > Page sizes (see db.js normalizePageSizes) — a photo
-// texted over WhatsApp is almost always going on photo paper, not A4.
-// Falls back to the first page size when no photo default is configured.
-const IMAGE_FILE_TYPES = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-function noDefaultPageSizeFor(fileType){
-  if (IMAGE_FILE_TYPES.includes(fileType)) {
-    const photoSize = (noPricingConfig.pageSizes || []).find((s) => s.isPhotoDefault && s.active);
-    if (photoSize) return photoSize.id;
-  }
-  return noPageSizeOptions[0] ? noPageSizeOptions[0].id : 'a4';
-}
-
-async function uploadFilesToNewOrder(files){
-  const msg = document.getElementById('newOrderModalMsg');
-  for (const file of files) {
+document.getElementById('noQuickTableBody').addEventListener('click', (e) => {
+  const removeBtn = e.target.closest('[data-remove]');
+  if (removeBtn) { noQuickLines.splice(Number(removeBtn.dataset.remove), 1); renderNoQuickTable(); recalcNoOrder(); return; }
+  const attachBtn = e.target.closest('.nq-attach');
+  if (!attachBtn) return;
+  const idx = Number(attachBtn.dataset.idx);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif';
+  input.addEventListener('change', async () => {
+    if (!input.files || !input.files.length) return;
     const fd = new FormData();
-    fd.append('file', file);
+    fd.append('file', input.files[0]);
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Upload failed');
-      const pageSize = noDefaultPageSizeFor(data.fileType);
-      noUploadedFiles.push({
-        fileId: data.fileId, fileName: data.fileName, fileType: data.fileType, fileSize: data.fileSize,
-        pageCount: data.pageCount, colorCount: data.colorCount,
-        pageSize,
-        paperType: (noPaperOptionsForSize(pageSize)[0] || {}).id || 'normal',
-        printMode: 'auto', printSide: 'single', copies: 1
-      });
+      Object.assign(noQuickLines[idx], { fileId: data.fileId, fileName: data.fileName, fileType: data.fileType, fileSize: data.fileSize });
+      renderNoQuickTable();
     } catch (err) {
-      msg.textContent = '"' + (file.name || 'Pasted image') + '" — ' + (err.message || 'upload failed');
-      msg.className = 'save-message error';
-      msg.classList.remove('hidden');
+      alert(err.message || 'Upload failed');
     }
+  });
+  input.click();
+});
+document.getElementById('noQuickTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const line = noQuickLines[Number(row.dataset.idx)];
+  if (!line) return;
+  if (e.target.classList.contains('nq-rate')) line.quickRateIdx = Number(e.target.value);
+  if (e.target.classList.contains('nq-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+  renderNoQuickTable();
+  recalcNoOrder();
+});
+
+/* -- New Order: existing-customer search (name / mobile / email) -- */
+document.getElementById('noCustomerSearch').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  const resultsBox = document.getElementById('noCustomerResults');
+  if (!q) { resultsBox.classList.add('hidden'); resultsBox.innerHTML = ''; return; }
+  const matches = noCustomersCache.filter((c) =>
+    (c.customer_name || '').toLowerCase().includes(q) ||
+    (c.customer_mobile || '').includes(q) ||
+    (c.customer_email || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+  resultsBox.innerHTML = matches.length
+    ? matches.map((c) =>
+        '<div class="ncr-item" data-mobile="' + escHtml(c.customer_mobile) + '">' +
+          '<div class="ncr-name">' + escHtml(c.customer_name || '—') + '</div>' +
+          '<div class="ncr-meta">' + escHtml(c.customer_mobile || '') + (c.customer_email ? ' · ' + escHtml(c.customer_email) : '') + ' · ' + c.order_count + ' order' + (c.order_count === 1 ? '' : 's') + '</div>' +
+        '</div>'
+      ).join('')
+    : '<div class="ncr-item" style="cursor:default;color:var(--ink3);">No matching customers</div>';
+  resultsBox.classList.remove('hidden');
+});
+document.getElementById('noCustomerResults').addEventListener('click', (e) => {
+  const item = e.target.closest('.ncr-item[data-mobile]');
+  if (!item) return;
+  const match = noCustomersCache.find((c) => c.customer_mobile === item.dataset.mobile);
+  if (!match) return;
+  document.getElementById('noCustomerName').value = match.customer_name || '';
+  document.getElementById('noCustomerMobile').value = match.customer_mobile || '';
+  document.getElementById('noCustomerEmail').value = match.customer_email || '';
+  document.getElementById('noCustomerSearch').value = '';
+  document.getElementById('noCustomerResults').classList.add('hidden');
+  document.getElementById('noCustomerResults').innerHTML = '';
+});
+newOrderModal.addEventListener('click', (e) => {
+  if (!e.target.closest('#noCustomerSearch') && !e.target.closest('#noCustomerResults')) {
+    document.getElementById('noCustomerResults').classList.add('hidden');
   }
-  renderNoFileTable();
+});
+
+/* -- New Order: discount (coupon code or staff-entered ad-hoc amount) -- */
+let noAppliedCoupon = null; // { code, type, value, minOrderValue } once GET /api/coupons/:code confirms it — a preview only, order creation re-validates independently
+document.querySelectorAll('input[name=noDiscountMode]').forEach((r) => r.addEventListener('change', (e) => {
+  document.getElementById('noDiscountCodeFields').classList.toggle('hidden', e.target.value !== 'code');
+  document.getElementById('noDiscountCustomFields').classList.toggle('hidden', e.target.value !== 'custom');
+  recalcNoOrder();
+}));
+document.getElementById('noDiscountCodeApplyBtn').addEventListener('click', async () => {
+  const code = document.getElementById('noDiscountCode').value.trim().toUpperCase();
+  const msg = document.getElementById('noDiscountCodeMsg');
+  if (!code) { noAppliedCoupon = null; msg.classList.add('hidden'); recalcNoOrder(); return; }
+  try {
+    const res = await fetch('/api/coupons/' + encodeURIComponent(code));
+    const data = await res.json();
+    if (!res.ok) {
+      noAppliedCoupon = null;
+      msg.textContent = data.message || 'Invalid coupon code.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+    } else {
+      noAppliedCoupon = data;
+      msg.textContent = 'Valid — ' + (data.type === 'percent' ? data.value + '% off' : '₹' + data.value + ' off') + '.';
+      msg.className = 'save-message'; msg.classList.remove('hidden');
+    }
+  } catch (err) {
+    noAppliedCoupon = null;
+    msg.textContent = 'Could not check this code.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+  }
+  recalcNoOrder();
+});
+document.getElementById('noDiscountValue').addEventListener('input', recalcNoOrder);
+document.getElementById('noDiscountType').addEventListener('change', recalcNoOrder);
+
+/* -- New Order: live order-summary breakdown — mirrors server/pricing.js's
+   calculate() exactly (subtotal → discount → taxable → GST → total) so this
+   preview never disagrees with what order creation actually charges. -- */
+const DELIVERY_CHARGE_CEILING = 150;
+let noOutsideDeliveryEstimate = null; // { pincode, preDeliveryTotal, charge }
+async function fetchNoOutsideDeliveryEstimate(pincode, preDeliveryTotal){
+  try {
+    const res = await fetch('/api/delivery-estimate?pincode=' + encodeURIComponent(pincode) + '&preDeliveryTotal=' + preDeliveryTotal);
+    const data = await res.json();
+    if (res.ok && data.deliveryCharge != null) {
+      noOutsideDeliveryEstimate = { pincode, preDeliveryTotal, charge: data.deliveryCharge };
+      recalcNoOrder();
+    }
+  } catch (err) { /* keep showing the flat fallback */ }
 }
+function noResolveDeliveryCharge(preDeliveryTotal){
+  const deliveryMethod = document.querySelector('input[name=noDelivery]:checked').value;
+  if (deliveryMethod !== 'delivery') return 0;
+  const freeThreshold = noPricingConfig.freeDeliveryThreshold != null ? noPricingConfig.freeDeliveryThreshold : 500;
+  if (preDeliveryTotal >= freeThreshold) return 0;
+  const pincode = document.getElementById('noAddrPincode').value.trim();
+  const localPin = noPricingConfig.deliveryLocalPincode || '122505';
+  const fallbackCharge = noPricingConfig.deliveryCharge != null ? noPricingConfig.deliveryCharge : 30;
+  if (!/^\d{6}$/.test(pincode)) return Math.min(fallbackCharge, DELIVERY_CHARGE_CEILING);
+  if (pincode === localPin) return Math.min(noPricingConfig.deliveryLocalCharge != null ? noPricingConfig.deliveryLocalCharge : 20, DELIVERY_CHARGE_CEILING);
+  if (pincode.startsWith('122')) return Math.min(noPricingConfig.deliveryGurugramCharge != null ? noPricingConfig.deliveryGurugramCharge : 60, DELIVERY_CHARGE_CEILING);
+  if (noOutsideDeliveryEstimate && noOutsideDeliveryEstimate.pincode === pincode && noOutsideDeliveryEstimate.preDeliveryTotal === preDeliveryTotal) {
+    return Math.min(noOutsideDeliveryEstimate.charge, DELIVERY_CHARGE_CEILING);
+  }
+  fetchNoOutsideDeliveryEstimate(pincode, preDeliveryTotal);
+  return Math.min(fallbackCharge, DELIVERY_CHARGE_CEILING);
+}
+function noCalcDiscountAmount(subtotal){
+  const mode = document.querySelector('input[name=noDiscountMode]:checked').value;
+  let discount = null;
+  if (mode === 'code' && noAppliedCoupon) {
+    discount = { type: noAppliedCoupon.type, value: noAppliedCoupon.value, minOrderValue: noAppliedCoupon.minOrderValue || 0 };
+  } else if (mode === 'custom') {
+    const value = Number(document.getElementById('noDiscountValue').value);
+    if (Number.isFinite(value) && value > 0) discount = { type: document.getElementById('noDiscountType').value, value, minOrderValue: 0 };
+  }
+  if (!discount) return 0;
+  if (discount.minOrderValue && subtotal < discount.minOrderValue) return 0;
+  const amount = discount.type === 'percent' ? (subtotal * Math.min(discount.value, 100) / 100) : discount.value;
+  return Math.max(0, Math.min(Math.round(amount), subtotal));
+}
+function recalcNoOrder(){
+  if (!noPricingConfig || !noPricingConfig.pageSizes) return;
+  const productType = document.querySelector('input[name=noProductType]:checked').value;
+  let printCost = 0;
+  if (productType === 'document') {
+    noQuickLines.forEach((line) => { printCost += noQuickLineAmount(line); });
+  } else {
+    const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
+    noPassportItems.forEach((item) => { const t = tiers.find((p) => p.qty === item.packQty); printCost += t ? t.price : 0; });
+  }
+  printCost = Math.round(printCost);
+  const handlingCharge = Number(noPricingConfig.handlingCharge) || 0;
+  const preDeliveryTotal = printCost + handlingCharge;
+  const deliveryCharge = noResolveDeliveryCharge(preDeliveryTotal);
+  const subtotal = printCost + handlingCharge + deliveryCharge;
+  const discountAmount = noCalcDiscountAmount(subtotal);
+  const taxable = subtotal - discountAmount;
+  const gstAmount = Math.round(taxable * (noPricingConfig.gstPercent || 0) / 100);
+  const totalAmount = taxable + gstAmount;
 
-document.getElementById('noFilePickBtn').addEventListener('click', () => document.getElementById('noFileInput').click());
-document.getElementById('noFileInput').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files || []);
-  e.target.value = '';
-  await uploadFilesToNewOrder(files);
-});
-
-// Paste a copied photo (e.g. from WhatsApp Web/Desktop) straight into the
-// modal instead of saving it to disk first and browsing to it.
-newOrderModal.addEventListener('paste', async (e) => {
-  if (!newOrderModal.classList.contains('show')) return;
-  const items = Array.from(e.clipboardData ? e.clipboardData.items : []);
-  const imageFiles = items.filter((it) => it.kind === 'file' && it.type.startsWith('image/')).map((it) => it.getAsFile()).filter(Boolean);
-  if (!imageFiles.length) return;
-  e.preventDefault();
-  await uploadFilesToNewOrder(imageFiles);
-});
+  document.getElementById('noBdPrint').textContent = '₹' + printCost;
+  document.getElementById('noBdHandling').textContent = '₹' + handlingCharge;
+  document.getElementById('noBdDelivery').textContent = '₹' + deliveryCharge;
+  const discRow = document.getElementById('noBdDiscountRow');
+  if (discountAmount > 0) {
+    discRow.classList.remove('hidden');
+    const mode = document.querySelector('input[name=noDiscountMode]:checked').value;
+    document.getElementById('noBdDiscountLabel').textContent = mode === 'code' && noAppliedCoupon ? 'Discount (' + noAppliedCoupon.code + ')' : 'Discount';
+    document.getElementById('noBdDiscount').textContent = '−₹' + discountAmount;
+  } else {
+    discRow.classList.add('hidden');
+  }
+  document.getElementById('noBdGst').textContent = '₹' + gstAmount;
+  document.getElementById('noBdTotal').textContent = '₹' + totalAmount;
+}
 
 document.querySelectorAll('input[name=noDelivery]').forEach((r) => r.addEventListener('change', (e) => {
   document.getElementById('noAddressFields').classList.toggle('hidden', e.target.value !== 'delivery');
+  recalcNoOrder();
 }));
+document.getElementById('noAddrPincode').addEventListener('input', recalcNoOrder);
 document.querySelectorAll('input[name=noPayment]').forEach((r) => r.addEventListener('change', (e) => {
   document.getElementById('noPaidModeFields').classList.toggle('hidden', e.target.value !== 'paid');
 }));
@@ -3861,13 +4044,16 @@ document.getElementById('noCustomerMobile').addEventListener('input', (e) => {
 });
 
 async function openNewOrderModal(){
-  noUploadedFiles = [];
-  renderNoFileTable();
+  noQuickLines = [];
+  renderNoQuickTable();
   noPassportItems = [];
   renderNoPassportTable();
   document.querySelector('input[name=noProductType][value=document]').checked = true;
   document.getElementById('noDocumentSection').classList.remove('hidden');
   document.getElementById('noPassportSection').classList.add('hidden');
+  document.getElementById('noCustomerSearch').value = '';
+  document.getElementById('noCustomerResults').classList.add('hidden');
+  document.getElementById('noCustomerResults').innerHTML = '';
   document.getElementById('noCustomerName').value = '';
   document.getElementById('noCustomerMobile').value = '';
   document.getElementById('noCustomerEmail').value = '';
@@ -3880,6 +4066,15 @@ async function openNewOrderModal(){
   document.querySelector('input[name=noPayment][value=later]').checked = true;
   document.getElementById('noPaidModeFields').classList.add('hidden');
   document.getElementById('noPaymentMode').value = 'cash';
+  document.querySelector('input[name=noDiscountMode][value=none]').checked = true;
+  document.getElementById('noDiscountCodeFields').classList.add('hidden');
+  document.getElementById('noDiscountCustomFields').classList.add('hidden');
+  document.getElementById('noDiscountCode').value = '';
+  document.getElementById('noDiscountValue').value = '';
+  document.getElementById('noDiscountReason').value = '';
+  document.getElementById('noDiscountCodeMsg').classList.add('hidden');
+  noAppliedCoupon = null;
+  noOutsideDeliveryEstimate = null;
   document.getElementById('noNotes').value = '';
   const msg = document.getElementById('newOrderModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
@@ -3891,7 +4086,9 @@ async function openNewOrderModal(){
     if (!noPageSizeOptions.length) noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
     noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+    noQuickRates = buildNoQuickRates();
   } catch (e) { /* keep the default option */ }
+  recalcNoOrder();
   // Best-effort — a branch admin without Customers-tab access simply won't
   // get autofill, never blocks order creation either way.
   try {
@@ -3940,8 +4137,13 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
-  if (productType === 'document' && !noUploadedFiles.length) {
-    msg.textContent = 'Add at least one file.';
+  if (productType === 'document' && !noQuickLines.length) {
+    msg.textContent = 'Add at least one print line.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  if (productType === 'document' && noQuickLines.some((l) => !noQuickRates[l.quickRateIdx])) {
+    msg.textContent = 'Every print line needs a page type — check Pricing has at least one paper type configured.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
@@ -3961,17 +4163,34 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
+  const discountMode = document.querySelector('input[name=noDiscountMode]:checked').value;
+  if (discountMode === 'custom') {
+    const value = Number(document.getElementById('noDiscountValue').value);
+    if (!Number.isFinite(value) || value <= 0) {
+      msg.textContent = 'Enter a valid discount value.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+      return;
+    }
+  }
+  if (discountMode === 'code' && !document.getElementById('noDiscountCode').value.trim()) {
+    msg.textContent = 'Enter a coupon code, or switch Discount to "None".';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
 
   const payload = {
     customerName, customerMobile, customerEmail: customerEmail || undefined,
     locationId: document.getElementById('noLocationSelect').value || undefined,
     files: productType === 'document'
-      ? noUploadedFiles.map((f) => ({
-          productType: 'document',
-          fileId: f.fileId, fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize,
-          pageCount: f.pageCount, colorPageCount: f.colorCount,
-          printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies
-        }))
+      ? noQuickLines.map((line) => {
+          const rate = noQuickRates[line.quickRateIdx];
+          return {
+            productType: 'document',
+            fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
+            pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
+            printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
+          };
+        })
       : noPassportItems.map((item) => ({
           productType: 'passport-photo',
           fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
@@ -3984,7 +4203,11 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     deliveryPincode: deliveryMethod === 'delivery' ? deliveryPincode : undefined,
     paymentStatus: paymentChoice === 'paid' ? 'paid' : (paymentChoice === 'link' ? 'link' : 'pending'),
     paymentMode: paymentChoice === 'paid' ? document.getElementById('noPaymentMode').value : undefined,
-    notes: document.getElementById('noNotes').value.trim() || undefined
+    notes: document.getElementById('noNotes').value.trim() || undefined,
+    discountType: discountMode === 'custom' ? document.getElementById('noDiscountType').value : undefined,
+    discountValue: discountMode === 'custom' ? Number(document.getElementById('noDiscountValue').value) || 0 : undefined,
+    discountCode: discountMode === 'code' ? document.getElementById('noDiscountCode').value.trim() : undefined,
+    discountReason: discountMode === 'custom' ? (document.getElementById('noDiscountReason').value.trim() || undefined) : undefined
   };
 
   const saveBtn = document.getElementById('newOrderModalSave');

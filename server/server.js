@@ -1834,8 +1834,19 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
       continue
     }
 
-    const safeFileId = path.basename(String(f.fileId || ''))
-    if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
+    // Same allowMissingFile relaxation as the passport-photo branch above —
+    // the walk-in "quick rate" line (New Order modal) prices off a chosen
+    // page-type rate + a typed quantity, not an uploaded file's page count,
+    // so staff can price/invoice/send a payment link before ever having the
+    // document in hand. The customer self-serve flow never sets
+    // allowMissingFile, so a real upload is still required there.
+    let safeFileId = null
+    if (f.fileId) {
+      safeFileId = path.basename(String(f.fileId))
+      if (!safeFileId || !fs.existsSync(path.join(uploadsDir, safeFileId))) {
+        return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
+      }
+    } else if (!allowMissingFile) {
       return { error: 'file_not_found', message: 'One or more uploaded files expired or were not found. Please re-upload.' }
     }
     if (!pageSizeIds.includes(f.pageSize)) {
@@ -1856,7 +1867,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     const fileData = {
       productType: 'document',
       fileId: safeFileId,
-      fileName: f.fileName || safeFileId,
+      fileName: f.fileName || safeFileId || 'Document',
       fileType: f.fileType || null,
       pageCount: Number(f.pageCount) || 0,
       colorPageCount: Number(f.colorPageCount) || 0,
