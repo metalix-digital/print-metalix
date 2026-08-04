@@ -125,6 +125,10 @@ body{font-family:'Inter','Inter Fallback',sans-serif;background:var(--paper);col
 .promo-bar b{font-weight:800;letter-spacing:.01em;}
 .promo-bar a{color:#fff;text-decoration:underline;text-underline-offset:2px;font-weight:700;flex-shrink:0;}
 .promo-bar a:hover{opacity:.85;}
+.promo-tag{
+  font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:11px;
+  background:rgba(255,255,255,.22);padding:3px 9px;border-radius:999px;flex-shrink:0;
+}
 header{
   position:sticky;top:0;z-index:50;
   background:var(--header-bg);backdrop-filter:blur(12px);
@@ -619,6 +623,7 @@ __GTM_NOSCRIPT__
      call below), so toggling a coupon off there also pulls this banner down
      without a code change. Stays hidden if no coupon is active. -->
 <div class="promo-bar hidden" id="promoBar">
+  <span class="promo-tag">🎉 Special offer</span>
   <span id="promoBarText"></span>
   <a href="/order" id="promoBarLink">Order now →</a>
 </div>
@@ -1182,8 +1187,11 @@ fetch('/api/coupons/featured').then(function(r){ return r.ok ? r.json() : null; 
   var text = document.getElementById('promoBarText');
   var link = document.getElementById('promoBarLink');
   if (!bar || !text || !link) return;
+  // Generic wording, not "first order" — this banner can now surface any
+  // active campaign, not just a welcome offer, whichever coupon happens to
+  // be Active in Admin > Discounts.
   var discountText = c.type === 'percent' ? (c.value + '% off') : ('₹' + c.value + ' off');
-  text.innerHTML = '🎉 First order? Use code <b>' + c.code.replace(/</g, '&lt;') + '</b> for ' + discountText + '.';
+  text.innerHTML = 'Use code <b>' + c.code.replace(/</g, '&lt;') + '</b> for ' + discountText + ' your order.';
   link.href = '/order?coupon=' + encodeURIComponent(c.code);
   bar.classList.remove('hidden');
 }).catch(function(){ /* no active coupon, or offline — banner just stays hidden */ });
