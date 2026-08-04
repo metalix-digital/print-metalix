@@ -1207,6 +1207,19 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     return res.status(400).json({ error: 'order_already_paid', message: 'This order is already paid — place a new order for the customer instead of editing this one.' })
   }
 
+  // Discount is excluded from the gate above, but a gateway (Cashfree)
+  // payment is its own, narrower exception to *that* exception: once
+  // payment_method is 'online' and payment_status is 'paid', the amount is
+  // already captured and settled through the gateway — changing
+  // discount_amount here would just make total_amount disagree with what
+  // Cashfree actually charged, with no corresponding refund to reconcile it.
+  // A cash/UPI walk-in order (payment_method 'cod', even though marked
+  // 'paid') has no such problem — staff can reconcile the difference by
+  // hand — so only the gateway case is blocked.
+  if (discountFieldsProvided && order.payment_method === 'online' && String(order.payment_status).toLowerCase() === 'paid') {
+    return res.status(400).json({ error: 'gateway_payment_locked', message: 'This order was paid online through the payment gateway — the discount can’t be changed after a gateway payment. Process a refund for the difference instead if needed.' })
+  }
+
   // Re-resolves fresh on every edit (never trusts the order's existing
   // discount_amount) — same allowAdHoc: true reasoning as the walk-in create
   // route, since this is staff-only. An explicit discountType/Value/Code in
@@ -1280,13 +1293,17 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     const VALID_SIDES = ['single', 'double']
     const overridesById = new Map((files || []).map((f) => [f.fileId, f]))
 
-    // Branch per-item on productType — an order can mix Documents and
-    // Passport Photos, and the two have completely disjoint editable fields.
-    // A passport-photo entry must NEVER fall through the document branch
-    // below: it has no pageSize/paperType, so it would otherwise silently
-    // get rewritten to pageSize:'a4'/paperType:'normal' and reprice as a
-    // near-zero document.
+    // Branch per-item on productType — an order can mix Documents, Passport
+    // Photos, and Additional Services, and each has completely disjoint
+    // editable fields. A passport-photo or service entry must NEVER fall
+    // through to the document branch below: neither has pageSize/paperType,
+    // so it would otherwise silently get rewritten to pageSize:'a4'/
+    // paperType:'normal' and reprice as a near-zero document. Services are
+    // add-only here (see POST .../add-service) — this general edit flow just
+    // passes an existing one through unchanged, same as it can't touch a
+    // passport pack's size/qty either.
     const mergedFiles = currentFiles.map((f) => {
+      if (f.productType === 'service') return f
       if ((f.productType || 'document') === 'passport-photo') {
         // Matched by fileId, same convention as the document branch below —
         // note this can't disambiguate between multiple photo-less (fileId:
@@ -1322,13 +1339,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       return { ...f, productType: 'document', printMode, printSide, pageSize, paperType, copies }
     })
 
-    const pricingFiles = mergedFiles.map((f) => {
-      if (f.productType === 'passport-photo') {
-        return { productType: 'passport-photo', sizePresetId: f.sizePresetId, packQty: f.packQty }
-      }
-      const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
-      return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType }
-    })
+    const pricingFiles = mergedFiles.map(toPricingFile)
 
     const effectiveDeliveryMethod = delivery_method !== undefined ? delivery_method : order.delivery_method
     const effectiveDeliveryPincode = delivery_pincode !== undefined ? delivery_pincode : order.delivery_pincode
@@ -1360,6 +1371,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     updates.copies = mergedDocFiles.reduce((sum, f) => sum + f.copies, 0) +
       mergedFiles.filter((f) => f.productType === 'passport-photo').reduce((sum, f) => sum + (f.packQty || 0), 0)
     updates.print_cost = calc.printCost
+    updates.services_cost = calc.servicesCost
     updates.delivery_charge = calc.deliveryCharge
     updates.handling_charge = calc.handlingCharge
     updates.gst_amount = calc.gstAmount
@@ -1457,6 +1469,70 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), ex
 })
 
 // Record a pay-on-delivery collection (Cash/UPI) — marks the order paid.
+// Adds one Additional Service line item (e.g. photo editing) to an already-
+// placed order — deliberately its own endpoint, not routed through the
+// general files PATCH above, for two reasons: (1) that PATCH blocks every
+// content edit once paid, but adding a service is safe even on a paid order
+// — it never touches what was already printed/delivered/charged, only adds
+// a new line item; (2) unlike discount, this can *increase* the total past
+// what a gateway payment already captured, so — unlike the discount PATCH
+// exception above — it's allowed regardless of payment_method/
+// payment_status. Staff collect the difference separately (cash/UPI, or a
+// fresh payment link for just that amount), same trust model as COD
+// collection elsewhere in this file. Add-only — no "un-add" endpoint,
+// matching collect-payment's one-directional shape just below.
+app.post('/api/admin/orders/:id/add-service', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  const { serviceId, quantity } = req.body || {}
+  const catalog = (db.getPricing().additionalServices || []).filter((s) => s.active)
+  const service = catalog.find((s) => s.id === serviceId)
+  if (!service) return res.status(400).json({ error: 'invalid_service', message: 'Select a valid additional service.' })
+  const safeQty = Math.max(1, Math.min(999, Math.round(Number(quantity)) || 1))
+
+  let currentFiles = []
+  try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
+  if (!currentFiles.length && order.file_path) {
+    currentFiles = [{
+      fileId: order.file_path, fileName: order.file_name, fileType: order.file_type,
+      pageCount: order.page_count, colorPageCount: 0,
+      printMode: order.print_mode, orientation: order.orientation,
+      printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type, copies: order.copies
+    }]
+  }
+  const newFiles = [...currentFiles, {
+    productType: 'service', fileId: null, fileName: service.label, fileType: null, fileSize: 0,
+    serviceId: service.id, quantity: safeQty
+  }]
+
+  const pricingConfig = db.getPricing()
+  // Carries the order's existing discount forward unchanged (same
+  // minOrderValue: 0 simplification the general repricing block above
+  // already makes for a not-explicitly-resubmitted discount — the original
+  // coupon's minOrderValue isn't itself stored on the order).
+  const discount = order.discount_type ? { type: order.discount_type, value: order.discount_value, minOrderValue: 0 } : null
+  const calc = pricing.calculate(pricingConfig, {
+    files: newFiles.map(toPricingFile),
+    deliveryMethod: order.delivery_method || 'pickup',
+    deliveryPincode: order.delivery_pincode,
+    discount
+  })
+  newFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+  const productTypesPresent = new Set(newFiles.map((f) => f.productType))
+
+  const updated = db.updateOrder(order.id, {
+    files_json: JSON.stringify(newFiles),
+    product_type: productTypesPresent.size === 1 ? newFiles[0].productType : 'mixed',
+    print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
+    delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
+    gst_amount: calc.gstAmount,
+    total_amount: calc.totalAmount
+  })
+  return res.json({ order: updated })
+})
+
 app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const { mode } = req.body || {}
   if (!['cash', 'upi'].includes(mode)) {
@@ -1802,6 +1878,22 @@ function resolveDiscountInput({ discountCode, discountType, discountValue, disco
 // happens next (payment method, who owns the order) differs between them.
 // Returns { error, message? } on the first invalid file/input (caller
 // responds with that as a 400), otherwise the validated, priced result.
+// Converts one already-stored files_json entry (any productType) into the
+// shape pricing.calculate() expects. Shared by the general Edit Order
+// repricing block and the add-service endpoint below, both of which need to
+// reprice a full mixed-productType files array from stored data rather than
+// raw request input (that's buildPricedOrderFiles's job, further down).
+function toPricingFile(f) {
+  if (f.productType === 'service') {
+    return { productType: 'service', serviceId: f.serviceId, quantity: f.quantity }
+  }
+  if (f.productType === 'passport-photo') {
+    return { productType: 'passport-photo', sizePresetId: f.sizePresetId, packQty: f.packQty }
+  }
+  const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
+  return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType }
+}
+
 function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile, discount }) {
   const VALID_MODES = ['auto', 'color', 'bw']
   const VALID_ORIENTATIONS = ['portrait', 'landscape']
@@ -1818,10 +1910,33 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   let totalFileSize = 0
   const safeFiles = []
   const pricingFiles = []
-  // An order can mix Documents and Passport Photos, so branching happens
-  // per-item (on each file's own productType) rather than for the whole order.
+  const serviceCatalog = (paperTypeConfig.additionalServices || []).filter((s) => s.active)
+  const serviceIds = serviceCatalog.map((s) => s.id)
+  // An order can mix Documents, Passport Photos, and Additional Services, so
+  // branching happens per-item (on each file's own productType) rather than
+  // for the whole order.
   for (const f of files) {
-    const productType = f.productType === 'passport-photo' ? 'passport-photo' : 'document'
+    const productType = f.productType === 'passport-photo' ? 'passport-photo' : (f.productType === 'service' ? 'service' : 'document')
+
+    if (productType === 'service') {
+      if (!serviceIds.includes(f.serviceId)) {
+        return { error: 'missing_service', message: 'Select an additional service for every service line.' }
+      }
+      const service = serviceCatalog.find((s) => s.id === f.serviceId)
+      const quantity = Math.max(1, Math.min(999, Math.round(Number(f.quantity)) || 1))
+      const fileData = {
+        productType: 'service',
+        fileId: null,
+        fileName: service.label,
+        fileType: null,
+        fileSize: 0,
+        serviceId: service.id,
+        quantity
+      }
+      pricingFiles.push({ productType: 'service', serviceId: service.id, quantity })
+      safeFiles.push(fileData)
+      continue
+    }
 
     if (productType === 'passport-photo') {
       if (!passportPresetIds.includes(f.sizePresetId)) {
@@ -2075,6 +2190,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
     location_name: chosenLocation ? chosenLocation.name : null,
     payment_method: isCod ? 'cod' : 'online',
     print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
@@ -2208,6 +2324,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     // checkout — everything else here is COD-shaped (staff-trusted).
     payment_method: wantsPaymentLink ? 'online' : 'cod',
     print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,

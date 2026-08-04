@@ -160,6 +160,7 @@ async function buildInvoicePdf(order) {
   const labelX = width - M - 220
   const totalRow = (label, val, f = font, color = INK, size = 10) => { text(label, labelX, y, size, f, MUTED); right(money(val), width - M, y, size, f, color); y -= 17 }
   totalRow('Print cost', order.print_cost)
+  if (order.services_cost) totalRow('Additional services', order.services_cost)
   if (order.handling_charge) totalRow('Handling charge', order.handling_charge)
   if (order.delivery_charge) totalRow('Delivery', order.delivery_charge)
   if (order.discount_amount) {

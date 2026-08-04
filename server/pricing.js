@@ -45,10 +45,30 @@ function calculateDeliveryCharge(config, { deliveryMethod, deliveryPincode, preD
 // to be when the invoice is printed (rates can change in between).
 function calculate(config, { files, deliveryMethod, deliveryPincode, discount }) {
   let printCost = 0
+  let servicesCost = 0
   let colorPages = 0
   let bwPages = 0
   const fileBreakdown = []
   ;(files || []).forEach((f) => {
+    // Additional Services (e.g. photo editing) — flat fee × quantity, staff-
+    // added extra effort rather than a per-page print cost. Kept out of
+    // printCost/fileBreakdown's page-oriented fields entirely (colorLabel
+    // would be misleading for a non-print line item) and summed separately
+    // so it can show as its own "Additional services" line on the bill.
+    if (f.productType === 'service') {
+      const catalog = config.additionalServices || []
+      const service = catalog.find((s) => s.id === f.serviceId)
+      const unitPrice = service ? Number(service.price) || 0 : 0
+      const qty = Math.max(1, f.quantity || 1)
+      const amount = unitPrice * qty
+      servicesCost += amount
+      fileBreakdown.push({
+        paperLabel: service ? service.label : (f.serviceId || 'Service'),
+        colorLabel: qty > 1 ? qty + '×' : null,
+        amount: Math.round(amount)
+      })
+      return
+    }
     // Passport Photos is a flat-pack product (8/16/32 photos at a fixed price,
     // same regardless of size preset) — entirely different math from the
     // per-page/per-copy pricing below, so it's resolved and pushed here and
@@ -94,14 +114,15 @@ function calculate(config, { files, deliveryMethod, deliveryPincode, discount })
     })
   })
   printCost = Math.round(printCost)
+  servicesCost = Math.round(servicesCost)
 
   const handlingCharge = Number(config.handlingCharge) || 0
   const deliveryCharge = calculateDeliveryCharge(config, {
     deliveryMethod,
     deliveryPincode,
-    preDeliveryTotal: printCost + handlingCharge
+    preDeliveryTotal: printCost + servicesCost + handlingCharge
   })
-  const subtotal = printCost + deliveryCharge + handlingCharge
+  const subtotal = printCost + servicesCost + deliveryCharge + handlingCharge
   // GST is charged on the post-discount (taxable) value, standard invoicing
   // practice — not on the full pre-discount subtotal.
   const discountAmount = calculateDiscountAmount(subtotal, discount)
@@ -109,7 +130,7 @@ function calculate(config, { files, deliveryMethod, deliveryPincode, discount })
   const gstAmount = Math.round((taxableAmount * (config.gstPercent || 0)) / 100)
   const totalAmount = taxableAmount + gstAmount
 
-  return { colorPages, bwPages, printCost, deliveryCharge, handlingCharge, discountAmount, gstAmount, totalAmount, fileBreakdown }
+  return { colorPages, bwPages, printCost, servicesCost, deliveryCharge, handlingCharge, discountAmount, gstAmount, totalAmount, fileBreakdown }
 }
 
 // `discount` is already-resolved data the caller looked up (a coupon row, or

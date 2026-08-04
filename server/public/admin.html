@@ -624,6 +624,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
     <div class="panel" id="panel-analytics">
       <div class="analytics-filters">
+        <button class="range-btn" data-days="today">Today</button>
         <button class="range-btn" data-days="7">Last 7 days</button>
         <button class="range-btn active" data-days="30">Last 30 days</button>
         <button class="range-btn" data-days="90">Last 90 days</button>
@@ -870,6 +871,19 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
+        <label>Additional services <span class="opt">(optional — e.g. photo editing)</span></label>
+        <div class="no-file-controls">
+          <button class="btn-file" id="noServiceAddBtn" type="button">+ Add service</button>
+        </div>
+        <div class="table-scroll">
+        <table class="no-file-table hidden" id="noServiceTable">
+          <thead><tr><th>Service</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+          <tbody id="noServiceTableBody"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="field">
         <label>Fulfilment</label>
         <div class="seg-row">
           <label class="seg-opt"><input type="radio" name="noDelivery" value="pickup" checked /><span>Collect from shop</span></label>
@@ -957,6 +971,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="order-breakdown" id="noBreakdown">
         <div class="bd-title">Order summary</div>
         <div class="bd-row"><span>Print cost</span><span id="noBdPrint">₹0</span></div>
+        <div class="bd-row hidden" id="noBdServicesRow"><span>Additional services</span><span id="noBdServices">₹0</span></div>
         <div class="bd-row"><span>Handling charge</span><span id="noBdHandling">₹0</span></div>
         <div class="bd-row"><span>Delivery charge</span><span id="noBdDelivery">₹0</span></div>
         <div class="bd-row hidden" id="noBdDiscountRow"><span id="noBdDiscountLabel">Discount</span><span id="noBdDiscount" style="color:var(--ok);">−₹0</span></div>
@@ -1062,6 +1077,16 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <label>Reason <span class="opt">(optional)</span></label>
           <input type="text" id="eoDiscountReason" maxlength="200" placeholder="e.g. Regular customer" />
         </div>
+      </div>
+
+      <div class="field">
+        <label>Add a service <span class="opt">(e.g. photo editing — adds to the bill immediately, even on a paid order; collect the extra amount separately)</span></label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select id="eoServiceSelect" style="flex:1;min-width:160px;"></select>
+          <input type="number" id="eoServiceQty" min="1" max="999" value="1" style="width:70px;" />
+          <button type="button" class="btn-file" id="eoAddServiceBtn">+ Add to bill</button>
+        </div>
+        <div class="save-message hidden" id="eoServiceMsg"></div>
       </div>
 
       <div class="field">
@@ -1575,6 +1600,10 @@ let PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 
 let PASSPORT_SIZE_LABELS = {};
 
 function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount){
+  if (productType === 'service') {
+    const amountText = amount != null ? ' — ₹' + amount : '';
+    return '<li><span>🛠 ' + escHtml(fileName || 'Additional service') + amountText + '</span></li>';
+  }
   if (productType === 'passport-photo') {
     const sizeText = sizePresetId ? (PASSPORT_SIZE_LABELS[sizePresetId] || sizePresetId) : 'Passport photo';
     const packText = packQty ? ' · ' + packQty + '-pack' : '';
@@ -1625,6 +1654,7 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
 // existing lone handling-charge line used before this replaced it.
 function orderBreakdownHtml(o){
   const rows = [['Print cost', o.print_cost || 0, false]];
+  if (o.services_cost) rows.push(['Additional services', o.services_cost, false]);
   if (o.handling_charge) rows.push(['Handling charge', o.handling_charge, false]);
   if (o.delivery_charge) rows.push(['Delivery charge', o.delivery_charge, false]);
   if (o.discount_amount) {
@@ -1844,13 +1874,18 @@ function renderOrders(orders){
         (o.payment_link_id && String(o.payment_status).toLowerCase() !== 'paid'
           ? '<button class="jobsheet-btn recheck-payment-btn" data-order="' + escHtml(o.id) + '">🔄 Recheck payment</button>'
           : '') +
-        // Always available — the modal itself locks customer/delivery/print
-        // fields once paid (money already changed hands for those), but
-        // discount stays editable regardless (see server.js's PATCH route:
-        // discount is excluded from the payment-status content-edit gate).
-        '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">' +
-          (String(o.payment_status).toLowerCase() === 'paid' ? '✎ Adjust discount' : '✎ Edit order') +
-        '</button>' +
+        // Once paid, the modal locks customer/delivery/print fields (money
+        // already changed hands for those) but discount stays editable — cash/
+        // UPI collected in person (payment_method 'cod') can be reconciled by
+        // hand, so "Adjust discount" still shows. A gateway (Cashfree) payment
+        // is captured and settled with no such give — server.js's PATCH route
+        // rejects a discount change there too, so the button is hidden rather
+        // than opening a modal that can only ever fail to save.
+        (String(o.payment_status).toLowerCase() === 'paid' && o.payment_method === 'online'
+          ? ''
+          : '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">' +
+              (String(o.payment_status).toLowerCase() === 'paid' ? '✎ Adjust discount' : '✎ Edit order') +
+            '</button>') +
         '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Archive order</button>' +
       '</div>' +
     '</div></td></tr>'
@@ -2167,14 +2202,16 @@ function renderLineChart(container, data, opts){
   hitRect.addEventListener('pointerleave', hide);
 }
 
-function renderAnalyticsStats(summary, today){
+function renderAnalyticsStats(summary, today, isToday){
   const wrap = document.getElementById('analyticsStats');
   const onlinePct = summary.totalRevenue ? Math.round((summary.onlineRevenue / summary.totalRevenue) * 100) : 0;
   wrap.innerHTML =
-    // Always today's IST calendar day, independent of the Last 7/30/90 days
-    // range toggle below — "how much have we made today" is its own
-    // question from "revenue in the selected range".
-    '<div class="stat-tile"><div class="stat-label">Today’s earnings</div><div class="stat-value">' + fmtMoney(today.revenue) + '</div><div class="subtle">' + escHtml(today.orders) + ' order' + (today.orders === 1 ? '' : 's') + ' today</div></div>' +
+    // Skipped when "Today" is itself the active range — every tile below
+    // would just repeat the same number, so the dedicated tile only earns
+    // its place when it's showing something the range summary isn't.
+    (isToday ? '' :
+      '<div class="stat-tile"><div class="stat-label">Today’s earnings</div><div class="stat-value">' + fmtMoney(today.totalRevenue) + '</div><div class="subtle">' + escHtml(today.totalOrders) + ' order' + (today.totalOrders === 1 ? '' : 's') + ' today</div></div>'
+    ) +
     '<div class="stat-tile"><div class="stat-label">Total revenue</div><div class="stat-value">' + fmtMoney(summary.totalRevenue) + '</div></div>' +
     '<div class="stat-tile"><div class="stat-label">Total orders</div><div class="stat-value">' + escHtml(summary.totalOrders) + '</div></div>' +
     '<div class="stat-tile"><div class="stat-label">Avg order value</div><div class="stat-value">' + fmtMoney(summary.avgOrderValue) + '</div></div>' +
@@ -2206,20 +2243,34 @@ function renderPaymentSplit(summary){
 
 async function loadAnalytics(days){
   analyticsRangeDays = days || analyticsRangeDays;
-  document.querySelectorAll('.range-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === analyticsRangeDays));
+  document.querySelectorAll('.range-btn').forEach((b) => b.classList.toggle('active', b.dataset.days === String(analyticsRangeDays)));
+  const isToday = analyticsRangeDays === 'today';
   try {
-    const res = await adminFetch('/api/admin/analytics/sales?days=' + analyticsRangeDays);
+    // The endpoint always computes `today` regardless of `days` — when
+    // "Today" is the active filter, the `days` query param itself is
+    // irrelevant (just needs to be a valid number), since every tile/chart
+    // below reads from data.today instead of data.summary in that mode.
+    const res = await adminFetch('/api/admin/analytics/sales?days=' + (isToday ? 1 : analyticsRangeDays));
     const data = await res.json();
-    renderAnalyticsStats(data.summary, data.today);
-    renderLineChart(document.getElementById('revenueChart'), data.daily, {
-      key: 'revenue', color: 'var(--series-1)',
-      formatAxis: (v) => '₹' + fmtCompact(v), formatTooltip: fmtMoney
-    });
-    renderLineChart(document.getElementById('ordersChart'), data.daily, {
-      key: 'orders', color: 'var(--series-1)', integer: true,
-      formatAxis: fmtCompact, formatTooltip: (v) => v + (v === 1 ? ' order' : ' orders')
-    });
-    renderPaymentSplit(data.summary);
+    const activeSummary = isToday ? data.today : data.summary;
+    renderAnalyticsStats(activeSummary, data.today, isToday);
+    if (isToday) {
+      // A single calendar day has no multi-point trend to plot — the totals
+      // above already say everything a one-point line chart would.
+      const notice = '<div class="chart-empty">Trend charts need a date range — pick Last 7/30/90 days to see one.</div>';
+      document.getElementById('revenueChart').innerHTML = notice;
+      document.getElementById('ordersChart').innerHTML = notice;
+    } else {
+      renderLineChart(document.getElementById('revenueChart'), data.daily, {
+        key: 'revenue', color: 'var(--series-1)',
+        formatAxis: (v) => '₹' + fmtCompact(v), formatTooltip: fmtMoney
+      });
+      renderLineChart(document.getElementById('ordersChart'), data.daily, {
+        key: 'orders', color: 'var(--series-1)', integer: true,
+        formatAxis: fmtCompact, formatTooltip: (v) => v + (v === 1 ? ' order' : ' orders')
+      });
+    }
+    renderPaymentSplit(activeSummary);
   } catch (err) {
     if (err.message !== 'unauthorized') {
       document.getElementById('analyticsStats').innerHTML = '<div class="chart-empty">Failed to load analytics.</div>';
@@ -2227,7 +2278,7 @@ async function loadAnalytics(days){
   }
 }
 document.querySelectorAll('.range-btn').forEach((btn) => {
-  btn.addEventListener('click', () => loadAnalytics(Number(btn.dataset.days)));
+  btn.addEventListener('click', () => loadAnalytics(btn.dataset.days === 'today' ? 'today' : Number(btn.dataset.days)));
 });
 
 /* -- LOCATIONS (branches) -- */
@@ -3021,6 +3072,41 @@ function bindPassportPackRow(tr){
   tr.querySelector('.passport-pack-remove').addEventListener('click', () => tr.remove());
 }
 
+// Additional Services — flat-priced staff-side extra work (e.g. photo
+// editing) that gets added as its own line item on an order's bill, from
+// New Order or Edit Order — never something a customer picks at checkout.
+// id/label pattern like page sizes/paper types (slugified, stable across a
+// label rename), price/active like passport pack prices above.
+function additionalServiceRowHtml(row){
+  row = row || { id: '', label: '', price: '', active: true };
+  return '<tr class="service-row" data-id="' + escHtml(row.id || '') + '">' +
+    '<td><input class="svc-label" type="text" placeholder="e.g. Photo editing" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="svc-price" type="number" step="1" min="0" value="' + (row.price != null ? row.price : '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="svc-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove service-remove" aria-label="Remove service">✕</button></td>' +
+  '</tr>';
+}
+function collectAdditionalServicesFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#serviceRows .service-row').forEach((tr) => {
+    const label = tr.querySelector('.svc-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'service';
+    let unique = id;
+    let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    const price = Number(tr.querySelector('.svc-price').value) || 0;
+    if (price <= 0) return;
+    out.push({ id: unique, label, price, active: tr.querySelector('.svc-active').checked });
+  });
+  return out;
+}
+function bindAdditionalServiceRow(tr){
+  tr.querySelector('.service-remove').addEventListener('click', () => tr.remove());
+}
+
 // 9-character alphanumeric code generator for the 🎲 button below — same
 // excludes-0/O/1/I convention server.js's generateOrderId() already uses for
 // order IDs, so a code never has the same "is that a zero or an O" ambiguity
@@ -3154,6 +3240,9 @@ async function loadPricing(){
   const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
   const passportPackRowsHtml = passportPackPrices.map(passportPackRowHtml).join('');
 
+  const additionalServices = Array.isArray(p.additionalServices) ? p.additionalServices : [];
+  const serviceRowsHtml = additionalServices.map(additionalServiceRowHtml).join('');
+
   const orderDefaults = p.orderDefaults || {};
   const documentDefaults = orderDefaults.document || { printMode: 'bw', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
   const photoDefaults = orderDefaults.photo || { printMode: 'color', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
@@ -3183,6 +3272,12 @@ async function loadPricing(){
       '<th>Quantity</th><th>Price (₹)</th><th></th>' +
     '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPassportPack">+ Add pack</button>' +
+    '<h2>Additional services</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Staff-side extra work that isn\'t a per-page print rate — e.g. photo editing before printing. Added as its own line on the bill from New Order or Edit Order, never something a customer picks themselves at checkout.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Label</th><th>Price (₹)</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="serviceRows">' + serviceRowsHtml + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addService">+ Add service</button>' +
     '<h2>Order defaults</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Starting values for a freshly uploaded file\'s settings on the order page — customers can always change them. Documents and Photos get their own defaults (Photos default to Color, not Black &amp; White).</p>' +
     '<div class="order-defaults-grid">' +
@@ -3231,6 +3326,13 @@ async function loadPricing(){
     const tbody = document.getElementById('passportPackRows');
     tbody.insertAdjacentHTML('beforeend', passportPackRowHtml(null));
     bindPassportPackRow(tbody.lastElementChild);
+  });
+
+  form.querySelectorAll('.service-row').forEach(bindAdditionalServiceRow);
+  document.getElementById('addService').addEventListener('click', () => {
+    const tbody = document.getElementById('serviceRows');
+    tbody.insertAdjacentHTML('beforeend', additionalServiceRowHtml(null));
+    bindAdditionalServiceRow(tbody.lastElementChild);
   });
 
   bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="document"]'), documentDefaults.paperType);
@@ -3307,6 +3409,7 @@ async function savePricing(){
     // Same "always include" reasoning as passportPhotos above — freshly
     // fetched just above, not collected from this tab's own DOM.
     coupons: currentCoupons,
+    additionalServices: collectAdditionalServicesFromForm(),
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
     deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
@@ -3366,11 +3469,16 @@ function activeCouponsSummaryHtml(coupons){
       '<td>' + escHtml(minText) + '</td>' +
       '<td>' + escHtml(usesText) + '</td>' +
       '<td>' + escHtml(expiresText) + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button type="button" class="btn-file ac-deactivate" data-code="' + escHtml(c.code) + '" title="Turn this coupon off">⏸ Deactivate</button> ' +
+        '<button type="button" class="rate-remove ac-delete" data-code="' + escHtml(c.code) + '" title="Delete this coupon entirely">🗑</button>' +
+      '</td>' +
     '</tr>';
   }).join('');
   return '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
-    '<th>Code</th><th>Discount</th><th>Min order</th><th>Usage cap</th><th>Expires</th>' +
-  '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    '<th>Code</th><th>Discount</th><th>Min order</th><th>Usage cap</th><th>Expires</th><th></th>' +
+  '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+  '<p class="detail" style="margin-top:8px;">To change a code’s value, limits, or expiry (not just turn it off), edit it in the table above and save. Deactivate/Delete here save immediately.</p>';
 }
 
 async function loadDiscounts(){
@@ -3410,6 +3518,25 @@ async function loadDiscounts(){
     bindCouponRow(tbody.lastElementChild);
   });
   document.getElementById('saveDiscountsBtn').addEventListener('click', saveDiscounts);
+
+  // Quick actions on the read-only "Active right now" table below — operate
+  // on the editor table above (find the matching row by code, toggle/remove
+  // it) and immediately save, rather than being a second, separate write
+  // path. Note this saves whatever else is currently in the editor table
+  // too, same as clicking "Save coupons" directly would — the UI copy above
+  // says as much.
+  document.getElementById('activeCouponsSummary').addEventListener('click', (e) => {
+    const deactivateBtn = e.target.closest('.ac-deactivate');
+    const deleteBtn = e.target.closest('.ac-delete');
+    if (!deactivateBtn && !deleteBtn) return;
+    const code = (deactivateBtn || deleteBtn).dataset.code;
+    const row = [...document.querySelectorAll('#discountCouponRows .coupon-row')]
+      .find((tr) => tr.querySelector('.cp-code').value.trim().toUpperCase() === code);
+    if (!row) return;
+    if (deactivateBtn) row.querySelector('.cp-active').checked = false;
+    else row.remove();
+    saveDiscounts();
+  });
 }
 
 // Coupon rows only ever render in one place at a time (the Discounts tab),
@@ -3869,6 +3996,56 @@ function noQuickLineAmount(line){
   return rate ? Math.round(rate.rate * (line.quantity || 0)) : 0;
 }
 
+// Additional Services — flat-priced staff-side extra work (photo editing,
+// etc.), independent of Documents/Passport Photo — a service line can sit
+// alongside either. noServiceCatalog is the admin's active-only list,
+// rebuilt on modal open same as noQuickRates.
+let noServiceCatalog = []; // [{ id, label, price }]
+let noServiceLines = []; // [{ serviceIdx, quantity }]
+function noServiceLineAmount(line){
+  const svc = noServiceCatalog[line.serviceIdx];
+  return svc ? Math.round(svc.price * (line.quantity || 0)) : 0;
+}
+function noServiceRowHtml(line, idx){
+  const options = noServiceCatalog.map((s, i) => '<option value="' + i + '"' + (i === line.serviceIdx ? ' selected' : '') + '>' + escHtml(s.label) + ' — ₹' + s.price + '</option>').join('');
+  return '<tr data-idx="' + idx + '">' +
+    '<td><select class="ns-service" data-idx="' + idx + '">' + options + '</select></td>' +
+    '<td><input type="number" class="ns-qty" data-idx="' + idx + '" min="1" max="999" value="' + line.quantity + '" /></td>' +
+    '<td>₹' + noServiceLineAmount(line) + '</td>' +
+    '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
+  '</tr>';
+}
+function renderNoServiceTable(){
+  const table = document.getElementById('noServiceTable');
+  const body = document.getElementById('noServiceTableBody');
+  if (!noServiceLines.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
+  table.classList.remove('hidden');
+  body.innerHTML = noServiceLines.map((l, i) => noServiceRowHtml(l, i)).join('');
+}
+document.getElementById('noServiceAddBtn').addEventListener('click', () => {
+  if (!noServiceCatalog.length) { alert('No additional services are configured yet — add one in Pricing first.'); return; }
+  noServiceLines.push({ serviceIdx: 0, quantity: 1 });
+  renderNoServiceTable();
+  recalcNoOrder();
+});
+document.getElementById('noServiceTableBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove]');
+  if (!btn) return;
+  noServiceLines.splice(Number(btn.dataset.remove), 1);
+  renderNoServiceTable();
+  recalcNoOrder();
+});
+document.getElementById('noServiceTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const line = noServiceLines[Number(row.dataset.idx)];
+  if (!line) return;
+  if (e.target.classList.contains('ns-service')) line.serviceIdx = Number(e.target.value);
+  if (e.target.classList.contains('ns-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+  renderNoServiceTable();
+  recalcNoOrder();
+});
+
 // Passport Photo packs — deliberately no crop UI here (unlike the customer
 // order page): staff placing a walk-in/WhatsApp order aren't cropping a live
 // photo, they're recording "this size, this pack qty" and optionally
@@ -4151,16 +4328,22 @@ function recalcNoOrder(){
     noPassportItems.forEach((item) => { const t = tiers.find((p) => p.qty === item.packQty); printCost += t ? t.price : 0; });
   }
   printCost = Math.round(printCost);
+  let servicesCost = 0;
+  noServiceLines.forEach((line) => { servicesCost += noServiceLineAmount(line); });
+  servicesCost = Math.round(servicesCost);
   const handlingCharge = Number(noPricingConfig.handlingCharge) || 0;
-  const preDeliveryTotal = printCost + handlingCharge;
+  const preDeliveryTotal = printCost + servicesCost + handlingCharge;
   const deliveryCharge = noResolveDeliveryCharge(preDeliveryTotal);
-  const subtotal = printCost + handlingCharge + deliveryCharge;
+  const subtotal = printCost + servicesCost + handlingCharge + deliveryCharge;
   const discountAmount = noCalcDiscountAmount(subtotal);
   const taxable = subtotal - discountAmount;
   const gstAmount = Math.round(taxable * (noPricingConfig.gstPercent || 0) / 100);
   const totalAmount = taxable + gstAmount;
 
   document.getElementById('noBdPrint').textContent = '₹' + printCost;
+  const svcRow = document.getElementById('noBdServicesRow');
+  if (servicesCost > 0) { svcRow.classList.remove('hidden'); document.getElementById('noBdServices').textContent = '₹' + servicesCost; }
+  else svcRow.classList.add('hidden');
   document.getElementById('noBdHandling').textContent = '₹' + handlingCharge;
   document.getElementById('noBdDelivery').textContent = '₹' + deliveryCharge;
   const discRow = document.getElementById('noBdDiscountRow');
@@ -4243,7 +4426,10 @@ async function openNewOrderModal(){
     noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
     noQuickRates = buildNoQuickRates();
+    noServiceCatalog = ((cfg.additionalServices || []).filter((s) => s.active));
   } catch (e) { /* keep the default option */ }
+  noServiceLines = [];
+  renderNoServiceTable();
   recalcNoOrder();
   // Best-effort — a branch admin without Customers-tab access simply won't
   // get autofill, never blocks order creation either way.
@@ -4334,24 +4520,30 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     return;
   }
 
+  const baseFiles = productType === 'document'
+    ? noQuickLines.map((line) => {
+        const rate = noQuickRates[line.quickRateIdx];
+        return {
+          productType: 'document',
+          fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
+          pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
+          printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
+        };
+      })
+    : noPassportItems.map((item) => ({
+        productType: 'passport-photo',
+        fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
+        sizePresetId: item.sizePresetId, packQty: item.packQty
+      }));
+  const serviceFiles = noServiceLines.map((line) => {
+    const svc = noServiceCatalog[line.serviceIdx];
+    return { productType: 'service', serviceId: svc ? svc.id : undefined, quantity: line.quantity };
+  });
+
   const payload = {
     customerName, customerMobile, customerEmail: customerEmail || undefined,
     locationId: document.getElementById('noLocationSelect').value || undefined,
-    files: productType === 'document'
-      ? noQuickLines.map((line) => {
-          const rate = noQuickRates[line.quickRateIdx];
-          return {
-            productType: 'document',
-            fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
-            pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
-            printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
-          };
-        })
-      : noPassportItems.map((item) => ({
-          productType: 'passport-photo',
-          fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
-          sizePresetId: item.sizePresetId, packQty: item.packQty
-        })),
+    files: baseFiles.concat(serviceFiles),
     deliveryMethod,
     deliveryAddress: deliveryMethod === 'delivery' ? deliveryAddress : undefined,
     deliveryCity: deliveryMethod === 'delivery' ? deliveryCity : undefined,
@@ -4500,11 +4692,46 @@ async function openEditOrderModal(order){
   document.getElementById('eoDiscountValue').value = order.discount_value || '';
   document.getElementById('eoDiscountReason').value = order.discount_reason || '';
 
+  const svcCatalog = (noPricingConfig.additionalServices || []).filter((s) => s.active);
+  const svcSelect = document.getElementById('eoServiceSelect');
+  svcSelect.innerHTML = svcCatalog.length
+    ? svcCatalog.map((s) => '<option value="' + escHtml(s.id) + '">' + escHtml(s.label) + ' — ₹' + s.price + '</option>').join('')
+    : '<option value="">No services configured — add one in Pricing</option>';
+  document.getElementById('eoServiceQty').value = 1;
+  document.getElementById('eoServiceMsg').classList.add('hidden');
+
   const msg = document.getElementById('editOrderModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   editOrderModal.classList.remove('hidden');
   editOrderModal.classList.add('show');
 }
+document.getElementById('eoAddServiceBtn').addEventListener('click', async () => {
+  if (!eoCurrentOrder) return;
+  const serviceId = document.getElementById('eoServiceSelect').value;
+  const svcMsg = document.getElementById('eoServiceMsg');
+  if (!serviceId) { svcMsg.textContent = 'No service selected.'; svcMsg.className = 'save-message error'; svcMsg.classList.remove('hidden'); return; }
+  const quantity = Math.max(1, Math.min(999, Math.round(Number(document.getElementById('eoServiceQty').value)) || 1));
+  const btn = document.getElementById('eoAddServiceBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(eoCurrentOrder.id) + '/add-service', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serviceId, quantity })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || 'Could not add service');
+    eoCurrentOrder = data.order;
+    svcMsg.textContent = 'Added — new total ₹' + data.order.total_amount + '.';
+    svcMsg.className = 'save-message'; svcMsg.classList.remove('hidden');
+    loadOrders();
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      svcMsg.textContent = err.message || 'Could not add service.';
+      svcMsg.className = 'save-message error'; svcMsg.classList.remove('hidden');
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '+ Add to bill';
+  }
+});
 function closeEditOrderModal(){
   editOrderModal.classList.remove('show');
   editOrderModal.classList.add('hidden');

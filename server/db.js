@@ -188,6 +188,12 @@ ensureColumn('orders', 'discount_value', 'REAL DEFAULT 0')
 ensureColumn('orders', 'discount_amount', 'INTEGER DEFAULT 0')
 ensureColumn('orders', 'discount_code', 'TEXT')
 ensureColumn('orders', 'discount_reason', 'TEXT')
+// Sum of any 'service' productType line items in files_json (e.g. photo
+// editing) — kept as its own summary column, same denormalized-from-
+// files_json convention as print_cost, so invoices/breakdowns can show
+// "Additional services" as its own line without re-summing files_json every
+// render. Distinct from print_cost since these aren't a per-page print rate.
+ensureColumn('orders', 'services_cost', 'INTEGER DEFAULT 0')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -281,7 +287,14 @@ const DEFAULT_PRICING = {
   // (maxUses) are enforced by counting matching paid/COD orders live (see
   // countCouponUses below), not a stored counter, so it can't drift out of
   // sync with what was actually charged.
-  coupons: []
+  coupons: [],
+  // Flat-priced catalog of staff-side extra work that isn't captured by the
+  // per-page print rates above — e.g. photo editing before printing. Added
+  // to an order as its own line item (productType 'service' in files_json)
+  // by staff in New Order or Edit Order, never something a customer picks
+  // themselves at checkout. Priced as a flat fee × quantity, same shape as
+  // passportPhotos.packPrices, not a per-page rate.
+  additionalServices: []
 }
 
 // Default display labels for the three built-in paper-type ids, used when
@@ -463,6 +476,33 @@ function normalizeCoupons(list) {
   return out
 }
 
+// Flat-priced catalog of staff-side extra work (e.g. "Photo editing" — ₹50).
+// Same id/label shape as page sizes/paper types (slugified, stable, unique)
+// since these get referenced by id from an order's files_json line item, not
+// looked up by a user-typed string like coupon codes are. `active` lets the
+// admin retire an offering from the New/Edit Order dropdowns without losing
+// what it's already been charged as on past orders (those keep their own
+// baked-in label/amount regardless — see fileBreakdown's reasoning in
+// pricing.js).
+function normalizeAdditionalServices(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugify(row.id || label) || 'service'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    const price = num(row.price)
+    if (price <= 0) return
+    out.push({ id: unique, label, price, active: row.active !== false })
+  })
+  return out
+}
+
 const VALID_PRINT_MODES = ['auto', 'color', 'bw']
 const VALID_ORIENTATIONS_LIST = ['portrait', 'landscape']
 const VALID_PRINT_SIDES = ['single', 'double']
@@ -547,7 +587,9 @@ function getPricing() {
   // Rows saved before coupons existed won't have this key at all — same
   // backfill-independently-of-core-migration reasoning as passport photos above.
   const needsCouponsBackfill = !Array.isArray(pricing.coupons)
-  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill) {
+  // Same reasoning again for additionalServices.
+  const needsServicesBackfill = !Array.isArray(pricing.additionalServices)
+  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill || needsServicesBackfill) {
     const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
     migrated.passportPhotos = {
       sizePresets: normalizePassportSizePresets(
@@ -559,6 +601,7 @@ function getPricing() {
     }
     migrated.orderDefaults = normalizeOrderDefaults(migrated.orderDefaults, migrated.pageSizes, migrated.rates)
     migrated.coupons = normalizeCoupons(migrated.coupons)
+    migrated.additionalServices = normalizeAdditionalServices(migrated.additionalServices)
     setPricing(migrated)
     return migrated
   }
@@ -600,6 +643,7 @@ function setPricing(pricing) {
     // the chosen default size/paper type against them), so this must run last.
     pricing.orderDefaults = normalizeOrderDefaults(pricing.orderDefaults, pricing.pageSizes, pricing.rates)
     pricing.coupons = normalizeCoupons(pricing.coupons)
+    pricing.additionalServices = normalizeAdditionalServices(pricing.additionalServices)
   }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('pricing', JSON.stringify(pricing))
@@ -955,7 +999,7 @@ function createOrder(order) {
       location_id, location_name,
       payment_method,
       delivery_timing, scheduled_at,
-      print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
+      print_cost, delivery_charge, handling_charge, gst_amount, total_amount, services_cost,
       discount_type, discount_value, discount_amount, discount_code, discount_reason,
       razorpay_order_id, cashfree_order_id, payment_status, order_status, notes,
       created_at, updated_at
@@ -967,14 +1011,14 @@ function createOrder(order) {
       @location_id, @location_name,
       @payment_method,
       @delivery_timing, @scheduled_at,
-      @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount,
+      @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount, @services_cost,
       @discount_type, @discount_value, @discount_amount, @discount_code, @discount_reason,
       @razorpay_order_id, @cashfree_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
   `).run({
     files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null,
-    discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null,
+    discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null, services_cost: 0,
     ...order, created_at: now, updated_at: now
   })
   return getOrder(order.id)
@@ -1237,15 +1281,22 @@ function getSalesAnalytics(days) {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
   const istDateStr = new Date(now + IST_OFFSET_MS).toISOString().slice(0, 10)
   const todayStartMs = new Date(istDateStr + 'T00:00:00.000Z').getTime() - IST_OFFSET_MS
+  // Same shape as `summary` above (not just orders/revenue) so the frontend
+  // can treat "Today" as a full-fledged range option — driving the payment-
+  // split chart too, not just the dedicated stat tile — with the exact same
+  // rendering code as the Last 7/30/90 days summary.
   const today = db.prepare(`
     SELECT
-      COUNT(*) as orders,
-      COALESCE(SUM(total_amount), 0) as revenue
+      COUNT(*) as totalOrders,
+      COALESCE(SUM(total_amount), 0) as totalRevenue,
+      COALESCE(SUM(CASE WHEN payment_method = 'cod' THEN total_amount ELSE 0 END), 0) as codRevenue,
+      COALESCE(SUM(CASE WHEN payment_method != 'cod' THEN total_amount ELSE 0 END), 0) as onlineRevenue
     FROM orders
     WHERE (payment_status = 'paid' OR payment_method = 'cod')
       AND archived_at IS NULL
       AND created_at >= ?
   `).get(todayStartMs)
+  today.avgOrderValue = today.totalOrders ? Math.round(today.totalRevenue / today.totalOrders) : 0
 
   return { daily, summary, today }
 }
