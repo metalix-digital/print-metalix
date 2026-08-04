@@ -1172,12 +1172,22 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
 
   // Content edits (customer/delivery/print options) are only allowed before
   // money has changed hands — once paid, reprising here would mean silently
-  // rewriting a paid amount. Place a new order for the customer instead.
-  // Status changes (order_status/failure_reason) are unaffected — those must
-  // keep working on paid orders, which is the normal happy path.
+  // rewriting what was actually printed/delivered for a paid amount. Place a
+  // new order for the customer instead. Status changes (order_status/
+  // failure_reason) are unaffected — those must keep working on paid orders,
+  // which is the normal happy path.
+  //
+  // Discount is deliberately excluded from this gate, same as notes/
+  // location_id below — a post-hoc goodwill discount or correcting a missed
+  // one on an already-paid (including Completed) order doesn't touch what
+  // was printed or delivered, only the recorded price. The repricing block
+  // further down still recomputes print/delivery cost from the order's
+  // EXISTING files/delivery info whenever only discount fields are sent (no
+  // files/delivery_method in the request), so those figures come out
+  // unchanged — only discount_amount/gst_amount/total_amount actually move.
   const wantsContentEdit = customer_name !== undefined || customer_mobile !== undefined || customer_email !== undefined ||
     delivery_method !== undefined || delivery_address !== undefined || delivery_city !== undefined ||
-    delivery_state !== undefined || delivery_pincode !== undefined || Array.isArray(files) || discountFieldsProvided
+    delivery_state !== undefined || delivery_pincode !== undefined || Array.isArray(files)
   if (wantsContentEdit && String(order.payment_status).toLowerCase() === 'paid') {
     return res.status(400).json({ error: 'order_already_paid', message: 'This order is already paid — place a new order for the customer instead of editing this one.' })
   }

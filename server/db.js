@@ -1228,7 +1228,26 @@ function getSalesAnalytics(days) {
   `).get(since)
   summary.avgOrderValue = summary.totalOrders ? Math.round(summary.totalRevenue / summary.totalOrders) : 0
 
-  return { daily, summary }
+  // "Today" is always the current IST calendar day, independent of the
+  // days/range filter above (staff want "how much have we made today"
+  // regardless of whether the Last 7/30/90 days toggle is selected) — and
+  // must be an IST day boundary, not a UTC one, since a naive UTC midnight
+  // would roll over at 5:30am IST and misattribute early-morning orders to
+  // "yesterday" for a business that operates in Asia/Kolkata.
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+  const istDateStr = new Date(now + IST_OFFSET_MS).toISOString().slice(0, 10)
+  const todayStartMs = new Date(istDateStr + 'T00:00:00.000Z').getTime() - IST_OFFSET_MS
+  const today = db.prepare(`
+    SELECT
+      COUNT(*) as orders,
+      COALESCE(SUM(total_amount), 0) as revenue
+    FROM orders
+    WHERE (payment_status = 'paid' OR payment_method = 'cod')
+      AND archived_at IS NULL
+      AND created_at >= ?
+  `).get(todayStartMs)
+
+  return { daily, summary, today }
 }
 
 function createPrintJob(orderId) {

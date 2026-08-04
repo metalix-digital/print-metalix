@@ -544,6 +544,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
     <button class="tab-btn" data-tab="pricing" data-super-only>Pricing</button>
+    <button class="tab-btn" data-tab="discounts" data-super-only>Discounts</button>
     <button class="tab-btn" data-tab="locations" data-super-only>Locations</button>
     <button class="tab-btn" data-tab="stages" data-super-only>Stages</button>
     <button class="tab-btn" data-tab="blog" data-super-only>Blog</button>
@@ -628,6 +629,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
     <div class="panel" id="panel-pricing">
       <div class="pricing-form" id="pricingForm">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-discounts">
+      <div class="pricing-form" id="discountsForm">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -955,6 +962,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <button class="blog-modal-close" id="editOrderModalClose" type="button" aria-label="Close">✕</button>
     </div>
     <div class="blog-modal-body">
+      <div class="save-message hidden" id="eoPaidNotice" style="background:var(--orange-soft);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;color:var(--ink);">This order is already paid — customer, delivery, and file details are locked (what was printed/delivered can't be silently rewritten). Discount and notes can still be adjusted.</div>
       <div class="field-grid">
         <div class="field">
           <label>Customer name</label>
@@ -1238,6 +1246,7 @@ async function showDash(){
   if (!isBranch) {
     loadAnalytics(analyticsRangeDays);
     loadPricing();
+    loadDiscounts();
     loadLocations();
     loadStages();
     loadBlog();
@@ -1817,9 +1826,13 @@ function renderOrders(orders){
         (o.payment_link_id && String(o.payment_status).toLowerCase() !== 'paid'
           ? '<button class="jobsheet-btn recheck-payment-btn" data-order="' + escHtml(o.id) + '">🔄 Recheck payment</button>'
           : '') +
-        (String(o.payment_status).toLowerCase() !== 'paid'
-          ? '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">✎ Edit order</button>'
-          : '') +
+        // Always available — the modal itself locks customer/delivery/print
+        // fields once paid (money already changed hands for those), but
+        // discount stays editable regardless (see server.js's PATCH route:
+        // discount is excluded from the payment-status content-edit gate).
+        '<button class="jobsheet-btn edit-order-btn" data-order="' + escHtml(o.id) + '">' +
+          (String(o.payment_status).toLowerCase() === 'paid' ? '✎ Adjust discount' : '✎ Edit order') +
+        '</button>' +
         '<button class="jobsheet-btn del-order-btn" data-order="' + escHtml(o.id) + '">🗑 Archive order</button>' +
       '</div>' +
     '</div></td></tr>'
@@ -2136,10 +2149,14 @@ function renderLineChart(container, data, opts){
   hitRect.addEventListener('pointerleave', hide);
 }
 
-function renderAnalyticsStats(summary){
+function renderAnalyticsStats(summary, today){
   const wrap = document.getElementById('analyticsStats');
   const onlinePct = summary.totalRevenue ? Math.round((summary.onlineRevenue / summary.totalRevenue) * 100) : 0;
   wrap.innerHTML =
+    // Always today's IST calendar day, independent of the Last 7/30/90 days
+    // range toggle below — "how much have we made today" is its own
+    // question from "revenue in the selected range".
+    '<div class="stat-tile"><div class="stat-label">Today’s earnings</div><div class="stat-value">' + fmtMoney(today.revenue) + '</div><div class="subtle">' + escHtml(today.orders) + ' order' + (today.orders === 1 ? '' : 's') + ' today</div></div>' +
     '<div class="stat-tile"><div class="stat-label">Total revenue</div><div class="stat-value">' + fmtMoney(summary.totalRevenue) + '</div></div>' +
     '<div class="stat-tile"><div class="stat-label">Total orders</div><div class="stat-value">' + escHtml(summary.totalOrders) + '</div></div>' +
     '<div class="stat-tile"><div class="stat-label">Avg order value</div><div class="stat-value">' + fmtMoney(summary.avgOrderValue) + '</div></div>' +
@@ -2175,7 +2192,7 @@ async function loadAnalytics(days){
   try {
     const res = await adminFetch('/api/admin/analytics/sales?days=' + analyticsRangeDays);
     const data = await res.json();
-    renderAnalyticsStats(data.summary);
+    renderAnalyticsStats(data.summary, data.today);
     renderLineChart(document.getElementById('revenueChart'), data.daily, {
       key: 'revenue', color: 'var(--series-1)',
       formatAxis: (v) => '₹' + fmtCompact(v), formatTooltip: fmtMoney
@@ -2986,16 +3003,30 @@ function bindPassportPackRow(tr){
   tr.querySelector('.passport-pack-remove').addEventListener('click', () => tr.remove());
 }
 
+// 9-character alphanumeric code generator for the 🎲 button below — same
+// excludes-0/O/1/I convention server.js's generateOrderId() already uses for
+// order IDs, so a code never has the same "is that a zero or an O" ambiguity
+// a customer would have to read back over the phone or type in by hand.
+const COUPON_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateCouponCode(){
+  let out = '';
+  for (let i = 0; i < 9; i++) out += COUPON_CODE_CHARS[Math.floor(Math.random() * COUPON_CODE_CHARS.length)];
+  return out;
+}
+
 // Discount coupons — code + flat/percent value, plus optional min order
 // value / usage cap / expiry date. Same admin-addable/removable row pattern
 // as passport packs above. Codes are uppercased and stripped to [A-Z0-9] on
 // save (mirrors db.js's normalizeCoupons), so what's shown after a save
 // always matches what's actually stored and matched against at checkout.
 function couponRowHtml(row){
-  row = row || { code: '', type: 'percent', value: '', active: true, minOrderValue: '', maxUses: '', expiresAt: null };
+  row = row || { code: generateCouponCode(), type: 'percent', value: '', active: true, minOrderValue: '', maxUses: '', expiresAt: null };
   const expiryValue = row.expiresAt ? new Date(row.expiresAt).toISOString().slice(0, 10) : '';
   return '<tr class="coupon-row">' +
-    '<td><input class="cp-code" type="text" placeholder="e.g. SAVE10" maxlength="20" style="text-transform:uppercase;" value="' + escHtml(row.code || '') + '" /></td>' +
+    '<td><div style="display:flex;gap:6px;align-items:center;">' +
+      '<input class="cp-code" type="text" placeholder="e.g. SAVE10" maxlength="20" style="text-transform:uppercase;width:auto;flex:1;" value="' + escHtml(row.code || '') + '" />' +
+      '<button type="button" class="rate-remove cp-randomize" title="Generate a random code" aria-label="Generate a random code" style="width:30px;height:30px;flex-shrink:0;">🎲</button>' +
+    '</div></td>' +
     '<td><select class="cp-type">' +
       '<option value="percent"' + (row.type !== 'flat' ? ' selected' : '') + '>% off</option>' +
       '<option value="flat"' + (row.type === 'flat' ? ' selected' : '') + '>₹ off</option>' +
@@ -3009,34 +3040,9 @@ function couponRowHtml(row){
   '</tr>';
 }
 
-function collectCouponsFromForm(){
-  const out = [];
-  const seen = new Set();
-  document.querySelectorAll('#couponRows .coupon-row').forEach((tr) => {
-    const code = tr.querySelector('.cp-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const value = Number(tr.querySelector('.cp-value').value);
-    if (!code || seen.has(code) || !Number.isFinite(value) || value <= 0) return;
-    seen.add(code);
-    const minRaw = tr.querySelector('.cp-min').value;
-    const maxRaw = tr.querySelector('.cp-maxuses').value;
-    const expiresRaw = tr.querySelector('.cp-expires').value;
-    out.push({
-      code,
-      type: tr.querySelector('.cp-type').value === 'flat' ? 'flat' : 'percent',
-      value,
-      active: tr.querySelector('.cp-active').checked,
-      minOrderValue: minRaw ? Number(minRaw) : 0,
-      maxUses: maxRaw ? Math.round(Number(maxRaw)) : null,
-      // End-of-day in the admin's own local time — good enough for a
-      // promotional expiry, not a customer-facing delivery-time commitment.
-      expiresAt: expiresRaw ? new Date(expiresRaw + 'T23:59:59').getTime() : null
-    });
-  });
-  return out;
-}
-
 function bindCouponRow(tr){
   tr.querySelector('.coupon-remove').addEventListener('click', () => tr.remove());
+  tr.querySelector('.cp-randomize').addEventListener('click', () => { tr.querySelector('.cp-code').value = generateCouponCode(); });
 }
 
 // Order defaults — starting values for a freshly uploaded file's per-file
@@ -3130,9 +3136,6 @@ async function loadPricing(){
   const passportPackPrices = Array.isArray(passportPhotos.packPrices) ? passportPhotos.packPrices : [];
   const passportPackRowsHtml = passportPackPrices.map(passportPackRowHtml).join('');
 
-  const coupons = Array.isArray(p.coupons) ? p.coupons : [];
-  const couponRowsHtml = coupons.map(couponRowHtml).join('');
-
   const orderDefaults = p.orderDefaults || {};
   const documentDefaults = orderDefaults.document || { printMode: 'bw', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
   const photoDefaults = orderDefaults.photo || { printMode: 'color', pageSize: 'a4', paperType: '', orientation: 'portrait', printSide: 'single' };
@@ -3162,12 +3165,6 @@ async function loadPricing(){
       '<th>Quantity</th><th>Price (₹)</th><th></th>' +
     '</tr></thead><tbody id="passportPackRows">' + passportPackRowsHtml + '</tbody></table></div>' +
     '<button type="button" class="rate-add" id="addPassportPack">+ Add pack</button>' +
-    '<h2>Discount coupons</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Codes customers can enter at checkout for a flat ₹ or % discount. Min order / Max uses / Expires are all optional — leave blank for no limit. A walk-in order can also apply one of these codes, or staff can type an ad-hoc discount directly without a code.</p>' +
-    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
-      '<th>Code</th><th>Type</th><th>Value</th><th>Min order (₹)</th><th>Max uses</th><th>Expires</th><th>Active</th><th></th>' +
-    '</tr></thead><tbody id="couponRows">' + couponRowsHtml + '</tbody></table></div>' +
-    '<button type="button" class="rate-add" id="addCoupon">+ Add coupon</button>' +
     '<h2>Order defaults</h2>' +
     '<p class="detail" style="margin-bottom:12px;">Starting values for a freshly uploaded file\'s settings on the order page — customers can always change them. Documents and Photos get their own defaults (Photos default to Color, not Black &amp; White).</p>' +
     '<div class="order-defaults-grid">' +
@@ -3218,13 +3215,6 @@ async function loadPricing(){
     bindPassportPackRow(tbody.lastElementChild);
   });
 
-  form.querySelectorAll('.coupon-row').forEach(bindCouponRow);
-  document.getElementById('addCoupon').addEventListener('click', () => {
-    const tbody = document.getElementById('couponRows');
-    tbody.insertAdjacentHTML('beforeend', couponRowHtml(null));
-    bindCouponRow(tbody.lastElementChild);
-  });
-
   bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="document"]'), documentDefaults.paperType);
   bindOrderDefaultsBlock(document.querySelector('.od-block[data-context="photo"]'), photoDefaults.paperType);
 
@@ -3269,6 +3259,17 @@ async function savePricing(){
     return;
   }
 
+  // Coupons live in this same settings blob but are now managed entirely
+  // from the Discounts tab — fetched fresh here (not from a form this tab no
+  // longer renders) so saving Pricing can never clobber whatever's currently
+  // set there, including anything changed after this tab was last loaded.
+  let currentCoupons = [];
+  try {
+    const couponsRes = await adminFetch('/api/admin/pricing');
+    const couponsCfg = await couponsRes.json();
+    currentCoupons = Array.isArray(couponsCfg.coupons) ? couponsCfg.coupons : [];
+  } catch (e) { /* best effort — worst case this save round-trips whatever coupons were last rendered here */ }
+
   const pricing = {
     pageSizes: collectPageSizesFromForm(),
     rates,
@@ -3285,8 +3286,9 @@ async function savePricing(){
       document: collectOrderDefaultsFromForm('document'),
       photo: collectOrderDefaultsFromForm('photo')
     },
-    // Same "always include" reasoning as passportPhotos above.
-    coupons: collectCouponsFromForm(),
+    // Same "always include" reasoning as passportPhotos above — freshly
+    // fetched just above, not collected from this tab's own DOM.
+    coupons: currentCoupons,
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
     deliveryLocalCharge: numOrZero(document.querySelector('#pricingForm input[data-key="deliveryLocalCharge"]')),
@@ -3320,6 +3322,100 @@ async function savePricing(){
   } finally {
     const b = document.getElementById('savePricingBtn');
     if (b){ b.disabled = false; b.textContent = 'Save pricing'; }
+  }
+}
+
+/* -- DISCOUNTS (coupon codes — a dedicated tab so campaigns aren't buried at
+   the bottom of Pricing) -- */
+async function loadDiscounts(){
+  const form = document.getElementById('discountsForm');
+  const res = await adminFetch('/api/admin/pricing');
+  const p = await res.json();
+  const coupons = Array.isArray(p.coupons) ? p.coupons : [];
+
+  form.innerHTML =
+    '<h2>Discount coupons</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Codes customers can enter at checkout for a flat ₹ or % discount, and staff can apply on a walk-in order too (or type an ad-hoc discount there directly, no code needed). Min order / Max uses / Expires are all optional — leave blank for no limit. Use the 🎲 to generate a random 9-character code, or type your own (e.g. a memorable campaign name like SUMMER25).</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>Code</th><th>Type</th><th>Value</th><th>Min order (₹)</th><th>Max uses</th><th>Expires</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="discountCouponRows">' + coupons.map(couponRowHtml).join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addDiscountCoupon">+ Add coupon</button>' +
+    '<button class="save-btn" id="saveDiscountsBtn">Save coupons</button>' +
+    '<div id="discountsMessage"></div>';
+
+  form.querySelectorAll('.coupon-row').forEach(bindCouponRow);
+  document.getElementById('addDiscountCoupon').addEventListener('click', () => {
+    const tbody = document.getElementById('discountCouponRows');
+    tbody.insertAdjacentHTML('beforeend', couponRowHtml(null));
+    bindCouponRow(tbody.lastElementChild);
+  });
+  document.getElementById('saveDiscountsBtn').addEventListener('click', saveDiscounts);
+}
+
+// Coupon rows only ever render in one place at a time (the Discounts tab),
+// but takes the container id explicitly rather than hardcoding it, same
+// spirit as the other collectXFromForm() helpers on this page.
+function collectCouponsFrom(containerId){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#' + containerId + ' .coupon-row').forEach((tr) => {
+    const code = tr.querySelector('.cp-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const value = Number(tr.querySelector('.cp-value').value);
+    if (!code || seen.has(code) || !Number.isFinite(value) || value <= 0) return;
+    seen.add(code);
+    const minRaw = tr.querySelector('.cp-min').value;
+    const maxRaw = tr.querySelector('.cp-maxuses').value;
+    const expiresRaw = tr.querySelector('.cp-expires').value;
+    out.push({
+      code,
+      type: tr.querySelector('.cp-type').value === 'flat' ? 'flat' : 'percent',
+      value,
+      active: tr.querySelector('.cp-active').checked,
+      minOrderValue: minRaw ? Number(minRaw) : 0,
+      maxUses: maxRaw ? Math.round(Number(maxRaw)) : null,
+      // End-of-day in the admin's own local time — good enough for a
+      // promotional expiry, not a customer-facing delivery-time commitment.
+      expiresAt: expiresRaw ? new Date(expiresRaw + 'T23:59:59').getTime() : null
+    });
+  });
+  return out;
+}
+
+async function saveDiscounts(){
+  const btn = document.getElementById('saveDiscountsBtn');
+  const msg = document.getElementById('discountsMessage');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.textContent = ''; msg.className = 'save-message';
+  try {
+    // Fetches the full current pricing config fresh right before saving (not
+    // whatever was loaded when this tab opened) and only overwrites
+    // `coupons` — same reasoning as savePricing()'s fresh-fetch above, in the
+    // other direction: this must never clobber a rates/GST/delivery change
+    // made from the Pricing tab in the meantime.
+    const res = await adminFetch('/api/admin/pricing');
+    const current = await res.json();
+    current.coupons = collectCouponsFrom('discountCouponRows');
+    const putRes = await adminFetch('/api/admin/pricing', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(current)
+    });
+    if (!putRes.ok) throw new Error('save_failed');
+    await loadDiscounts(); // reload so new rows pick up their normalized codes
+    // loadDiscounts() just rebuilt the whole form (including #discountsMessage
+    // itself), so the `msg` reference above is now detached from the
+    // document — re-fetch it fresh, same as savePricing() does after its own
+    // reload, or this text would be set on an element nothing can see.
+    const m = document.getElementById('discountsMessage');
+    if (m) { m.textContent = 'Saved.'; m.className = 'save-message'; }
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      msg.textContent = 'Failed to save coupons.';
+      msg.className = 'save-message error';
+    }
+  } finally {
+    const b = document.getElementById('saveDiscountsBtn');
+    if (b){ b.disabled = false; b.textContent = 'Save coupons'; }
   }
 }
 
@@ -4290,10 +4386,19 @@ document.querySelectorAll('input[name=eoDelivery]').forEach((r) => r.addEventLis
 async function openEditOrderModal(order){
   if (!order) return;
   eoCurrentOrder = order;
+  // Mirrors server.js's PATCH route exactly: once paid, customer/delivery/
+  // file details are locked (they'd silently rewrite what was actually
+  // printed/delivered for money already collected) — discount and notes
+  // stay editable regardless, same as location_id already does.
+  const isPaid = String(order.payment_status || '').toLowerCase() === 'paid';
+  document.getElementById('eoPaidNotice').classList.toggle('hidden', !isPaid);
   document.getElementById('eoOrderIdLabel').textContent = order.id;
   document.getElementById('eoCustomerName').value = order.customer_name || '';
   document.getElementById('eoCustomerMobile').value = order.customer_mobile || '';
   document.getElementById('eoCustomerEmail').value = order.customer_email || '';
+  document.getElementById('eoCustomerName').disabled = isPaid;
+  document.getElementById('eoCustomerMobile').disabled = isPaid;
+  document.getElementById('eoCustomerEmail').disabled = isPaid;
   document.getElementById('eoNotes').value = order.notes || '';
 
   let files = [];
@@ -4313,6 +4418,9 @@ async function openEditOrderModal(order){
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
   } catch (e) { /* keep whatever paper types were already loaded */ }
   renderEoFileTable();
+  if (isPaid) {
+    document.querySelectorAll('#eoFileTableBody input, #eoFileTableBody select').forEach((el) => { el.disabled = true; });
+  }
 
   document.querySelector('input[name=eoDelivery][value=' + (order.delivery_method === 'delivery' ? 'delivery' : 'pickup') + ']').checked = true;
   document.getElementById('eoAddressFields').classList.toggle('hidden', order.delivery_method !== 'delivery');
@@ -4320,6 +4428,8 @@ async function openEditOrderModal(order){
   document.getElementById('eoAddrCity').value = order.delivery_city || '';
   document.getElementById('eoAddrState').value = order.delivery_state || '';
   document.getElementById('eoAddrPincode').value = order.delivery_pincode || '';
+  document.querySelectorAll('input[name=eoDelivery]').forEach((r) => { r.disabled = isPaid; });
+  ['eoAddrLine', 'eoAddrCity', 'eoAddrState', 'eoAddrPincode'].forEach((id) => { document.getElementById(id).disabled = isPaid; });
 
   const discountMode = order.discount_code ? 'code' : (order.discount_type ? 'custom' : 'none');
   document.querySelector('input[name=eoDiscountMode][value=' + discountMode + ']').checked = true;
@@ -4345,6 +4455,7 @@ editOrderModal.addEventListener('click', (e) => { if (e.target === editOrderModa
 
 document.getElementById('editOrderModalSave').addEventListener('click', async () => {
   if (!eoCurrentOrder) return;
+  const isPaid = String(eoCurrentOrder.payment_status || '').toLowerCase() === 'paid';
   const msg = document.getElementById('editOrderModalMsg');
   msg.classList.add('hidden');
   const customerName = document.getElementById('eoCustomerName').value.trim();
@@ -4352,16 +4463,21 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
   const customerEmail = document.getElementById('eoCustomerEmail').value.trim();
   const deliveryMethod = document.querySelector('input[name=eoDelivery]:checked').value;
 
-  if (!customerName || !/^\d{10}$/.test(customerMobile)) {
-    msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
-    msg.className = 'save-message error'; msg.classList.remove('hidden');
-    return;
+  // Customer/delivery fields are disabled (and left out of the payload
+  // below) once paid, so their validation is skipped too — nothing there is
+  // actually being submitted, only Discount and Notes are.
+  if (!isPaid) {
+    if (!customerName || !/^\d{10}$/.test(customerMobile)) {
+      msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
+      msg.className = 'save-message error'; msg.classList.remove('hidden');
+      return;
+    }
   }
   const deliveryAddress = document.getElementById('eoAddrLine').value.trim();
   const deliveryCity = document.getElementById('eoAddrCity').value.trim();
   const deliveryState = document.getElementById('eoAddrState').value.trim();
   const deliveryPincode = document.getElementById('eoAddrPincode').value.trim();
-  if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !/^\d{6}$/.test(deliveryPincode))) {
+  if (!isPaid && deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !/^\d{6}$/.test(deliveryPincode))) {
     msg.textContent = 'Fill in the full delivery address (with a valid 6-digit PIN code).';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
@@ -4382,17 +4498,7 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     return;
   }
 
-  const payload = {
-    customer_name: customerName,
-    customer_mobile: customerMobile,
-    customer_email: customerEmail || null,
-    delivery_method: deliveryMethod,
-    delivery_address: deliveryMethod === 'delivery' ? deliveryAddress : null,
-    delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
-    delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
-    delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
-    files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies })),
-    notes: document.getElementById('eoNotes').value.trim() || null,
+  const discountFields = {
     // discountType null (rather than omitted) is what tells the server this
     // request is explicitly touching the discount even in the "None" case —
     // see resolveDiscountInput/discountFieldsProvided in server.js.
@@ -4401,6 +4507,26 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
     discountCode: discountMode === 'code' ? document.getElementById('eoDiscountCode').value.trim() : '',
     discountReason: discountMode === 'custom' ? (document.getElementById('eoDiscountReason').value.trim() || undefined) : undefined
   };
+  // Once paid, customer/delivery/files are left out of the payload entirely
+  // (not just unchanged) — the server's content-edit gate keys off whether
+  // these fields are *present* in the request at all, so sending them
+  // (even unchanged) on a paid order gets the whole save rejected. Only
+  // Notes and Discount are genuinely being submitted here.
+  const payload = isPaid
+    ? { notes: document.getElementById('eoNotes').value.trim() || null, ...discountFields }
+    : {
+        customer_name: customerName,
+        customer_mobile: customerMobile,
+        customer_email: customerEmail || null,
+        delivery_method: deliveryMethod,
+        delivery_address: deliveryMethod === 'delivery' ? deliveryAddress : null,
+        delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
+        delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
+        delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
+        files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies })),
+        notes: document.getElementById('eoNotes').value.trim() || null,
+        ...discountFields
+      };
 
   const saveBtn = document.getElementById('editOrderModalSave');
   saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
