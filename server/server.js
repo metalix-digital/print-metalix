@@ -386,6 +386,21 @@ app.get('/api/pricing', (req, res) => {
   res.json(publicPricing)
 })
 
+// Public — surfaces at most one coupon (the first active, not-yet-expired
+// one, in Admin > Discounts' list order) for the homepage promo banner.
+// Registered before the /:code route below since Express matches routes in
+// registration order and /:code would otherwise treat "featured" as a
+// literal code lookup. Deliberately narrower than exposing the full list —
+// see GET /api/pricing's coupons-stripping comment above — just enough for
+// "Use code X for Y% off", nothing about any other configured coupon.
+app.get('/api/coupons/featured', (req, res) => {
+  const coupons = db.getPricing().coupons || []
+  const now = Date.now()
+  const featured = coupons.find((c) => c.active && (!c.expiresAt || c.expiresAt > now))
+  if (!featured) return res.status(404).json({ error: 'no_active_coupon' })
+  res.json({ code: featured.code, type: featured.type, value: featured.value })
+})
+
 // Public, read-only single-code lookup for a live discount preview — on
 // customer checkout (a coupon field) and the admin New Order modal (staff
 // applying an existing code to a walk-in order). Never the source of truth

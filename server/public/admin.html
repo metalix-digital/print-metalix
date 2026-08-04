@@ -172,6 +172,14 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .rate-table input,.rate-table select{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box;background:var(--card);color:var(--ink);}
 .rate-table .col-rate input{max-width:110px;}
 .rate-table .col-size select{min-width:96px;}
+/* Scoped to the coupon-editor table only (not the other .rate-table uses
+   above/below on Pricing) — under the default auto layout, the Code column's
+   input+🎲 pair was wide enough that every other column's width got decided
+   by its own narrow content instead of a deliberate proportion, making Type/
+   Value/etc look cramped and misaligned under their own headers. Explicit
+   colgroup percentages (see loadDiscounts()) fix every column to a set
+   share of the table's width regardless of what's actually typed into it. */
+.coupon-table{table-layout:fixed;}
 .rate-remove{background:none;border:1.5px solid var(--line-strong,#C7C2B0);color:var(--ink3);border-radius:7px;width:30px;height:30px;font-size:15px;line-height:1;cursor:pointer;}
 .rate-remove:hover{border-color:#DC2626;color:#DC2626;}
 .rate-add{margin-top:14px;background:none;border:1.5px dashed var(--orange);color:var(--orange);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}
@@ -3337,6 +3345,34 @@ async function savePricing(){
 
 /* -- DISCOUNTS (coupon codes — a dedicated tab so campaigns aren't buried at
    the bottom of Pricing) -- */
+// One row per currently-active, not-yet-expired coupon — a quick "what's
+// actually live right now" reference distinct from the edit table above,
+// which mixes active/inactive/expired rows together with edit controls and
+// doesn't say at a glance which ones a customer could use this minute.
+function activeCouponsSummaryHtml(coupons){
+  const now = Date.now();
+  const active = coupons.filter((c) => c.active && (!c.expiresAt || c.expiresAt > now));
+  if (!active.length) {
+    return '<p class="detail">No coupons are currently active.</p>';
+  }
+  const rows = active.map((c) => {
+    const discountText = c.type === 'flat' ? ('₹' + c.value + ' off') : (c.value + '% off');
+    const minText = c.minOrderValue ? ('₹' + c.minOrderValue + ' min order') : 'No minimum';
+    const usesText = c.maxUses != null ? ('Up to ' + c.maxUses + ' uses') : 'Unlimited uses';
+    const expiresText = c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : 'No expiry';
+    return '<tr>' +
+      '<td><span class="split-legend-swatch" style="background:var(--ok);display:inline-block;margin-right:6px;"></span><strong>' + escHtml(c.code) + '</strong></td>' +
+      '<td>' + escHtml(discountText) + '</td>' +
+      '<td>' + escHtml(minText) + '</td>' +
+      '<td>' + escHtml(usesText) + '</td>' +
+      '<td>' + escHtml(expiresText) + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+    '<th>Code</th><th>Discount</th><th>Min order</th><th>Usage cap</th><th>Expires</th>' +
+  '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
 async function loadDiscounts(){
   const form = document.getElementById('discountsForm');
   const res = await adminFetch('/api/admin/pricing');
@@ -3345,8 +3381,11 @@ async function loadDiscounts(){
 
   form.innerHTML =
     '<h2>Discount coupons</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Codes customers can enter at checkout for a flat ₹ or % discount, and staff can apply on a walk-in order too (or type an ad-hoc discount there directly, no code needed). Min order / Max uses / Expires are all optional — leave blank for no limit. Use the 🎲 to generate a random 9-character code, or type your own (e.g. a memorable campaign name like SUMMER25).</p>' +
-    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+    '<p class="detail" style="margin-bottom:12px;">Codes customers can enter at checkout for a flat ₹ or % discount, and staff can apply on a walk-in order too (or type an ad-hoc discount there directly, no code needed). Min order / Max uses / Expires are all optional — leave blank for no limit. Use the 🎲 to generate a random 9-character code, or type your own (e.g. a memorable campaign name like SUMMER25). The first active one here also appears in the homepage promo banner.</p>' +
+    '<div class="table-scroll"><table class="rate-table coupon-table"><colgroup>' +
+      '<col style="width:26%"><col style="width:11%"><col style="width:11%"><col style="width:13%">' +
+      '<col style="width:12%"><col style="width:14%"><col style="width:10%"><col style="width:6%">' +
+    '</colgroup><thead><tr>' +
       '<th>Code</th><th>Type</th><th>Value</th><th>Min order (₹)</th><th>Max uses</th><th>Expires</th><th>Active</th><th></th>' +
     '</tr></thead><tbody id="discountCouponRows">' + coupons.map(couponRowHtml).join('') + '</tbody></table></div>' +
     // .rate-add/.save-btn are both inline-block by default and, everywhere
@@ -3360,7 +3399,9 @@ async function loadDiscounts(){
       '<button type="button" class="rate-add" id="addDiscountCoupon">+ Add coupon</button>' +
       '<button class="save-btn" id="saveDiscountsBtn">Save coupons</button>' +
     '</div>' +
-    '<div id="discountsMessage"></div>';
+    '<div id="discountsMessage"></div>' +
+    '<h2 style="margin-top:32px;">Active right now</h2>' +
+    '<div id="activeCouponsSummary">' + activeCouponsSummaryHtml(coupons) + '</div>';
 
   form.querySelectorAll('.coupon-row').forEach(bindCouponRow);
   document.getElementById('addDiscountCoupon').addEventListener('click', () => {
