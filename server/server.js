@@ -1533,6 +1533,51 @@ app.post('/api/admin/orders/:id/add-service', requireAdmin, requireTab('orders')
   return res.json({ order: updated })
 })
 
+// Removes one Additional Service line item added via add-service above.
+// Identified by array index (not serviceId) since an order can carry more
+// than one line for the same service. Unlike add-service, this can only
+// ever *decrease* total_amount — the same risk a discount change poses on a
+// captured gateway payment — so it reuses that exact guard: blocked once
+// payment_method is 'online' and payment_status is 'paid', allowed on a
+// cash/UPI (cod) paid order since staff can reconcile by hand.
+app.post('/api/admin/orders/:id/remove-service', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  if (order.payment_method === 'online' && String(order.payment_status).toLowerCase() === 'paid') {
+    return res.status(400).json({ error: 'gateway_payment_locked', message: 'This order was paid online through the payment gateway — services can’t be removed after a gateway payment. Process a refund for the difference instead if needed.' })
+  }
+  const index = Number(req.body && req.body.index)
+  let currentFiles = []
+  try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
+  if (!Number.isInteger(index) || !currentFiles[index] || currentFiles[index].productType !== 'service') {
+    return res.status(400).json({ error: 'invalid_index', message: 'That service line item was not found on this order.' })
+  }
+  const newFiles = currentFiles.filter((_, i) => i !== index)
+
+  const pricingConfig = db.getPricing()
+  const discount = order.discount_type ? { type: order.discount_type, value: order.discount_value, minOrderValue: 0 } : null
+  const calc = pricing.calculate(pricingConfig, {
+    files: newFiles.map(toPricingFile),
+    deliveryMethod: order.delivery_method || 'pickup',
+    deliveryPincode: order.delivery_pincode,
+    discount
+  })
+  newFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+  const productTypesPresent = new Set(newFiles.map((f) => f.productType))
+
+  const updated = db.updateOrder(order.id, {
+    files_json: JSON.stringify(newFiles),
+    product_type: productTypesPresent.size === 1 ? newFiles[0].productType : (productTypesPresent.size ? 'mixed' : 'document'),
+    print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
+    delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
+    gst_amount: calc.gstAmount,
+    total_amount: calc.totalAmount
+  })
+  return res.json({ order: updated })
+})
+
 app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
   const { mode } = req.body || {}
   if (!['cash', 'upi'].includes(mode)) {

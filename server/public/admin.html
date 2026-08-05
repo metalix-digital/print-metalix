@@ -1599,10 +1599,16 @@ let PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 
 // PAGE_SIZE_LABELS above — populated from live pricing once it loads.
 let PASSPORT_SIZE_LABELS = {};
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount, idx, removable){
   if (productType === 'service') {
     const amountText = amount != null ? ' — ₹' + amount : '';
-    return '<li><span>🛠 ' + escHtml(fileName || 'Additional service') + amountText + '</span></li>';
+    // Removing a service can only ever decrease total_amount, the same risk
+    // a discount change poses on a captured gateway payment — so it's locked
+    // under the same condition (see server.js's remove-service guard).
+    const action = removable
+      ? '<button class="rate-remove remove-service-btn" data-order="' + orderId + '" data-idx="' + idx + '" title="Remove this service">🗑</button>'
+      : '<span class="subtle">Locked</span>';
+    return '<li><span>🛠 ' + escHtml(fileName || 'Additional service') + amountText + '</span> <span class="file-actions">' + action + '</span></li>';
   }
   if (productType === 'passport-photo') {
     const sizeText = sizePresetId ? (PASSPORT_SIZE_LABELS[sizePresetId] || sizePresetId) : 'Passport photo';
@@ -1682,8 +1688,9 @@ function filesDetailHtml(o){
       fileRowHtml(o.id, o.file_path, o.file_name, null, null, !!o.files_deleted_at, null, null, null, null, o.paper_size, null, o.file_type, 'document') +
       '</ul>';
   }
+  const removable = !(o.payment_method === 'online' && String(o.payment_status).toLowerCase() === 'paid');
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType, f.productType || 'document', f.sizePresetId, f.packQty, f.amount)).join('') +
+    files.map((f, idx) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType, f.productType || 'document', f.sizePresetId, f.packQty, f.amount, idx, removable)).join('') +
     '</ul>';
 }
 
@@ -1789,6 +1796,23 @@ async function collectPayment(orderId, mode){
     showFlash('Payment collected · ' + (mode === 'upi' ? 'UPI' : 'Cash'));
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Could not record payment.');
+  }
+}
+
+// Remove one Additional Service line item from an order (see fileRowHtml's
+// service branch, the only place this button appears).
+async function removeService(orderId, idx){
+  const ok = await showConfirmModal('<h3 class="modal-title">Remove this service?</h3><p class="modal-sub">This will recalculate the order total.</p>', 'Remove', true);
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(orderId) + '/remove-service', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: idx })
+    });
+    if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Could not remove service.'); return; }
+    await loadOrders();
+    showFlash('Service removed.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not remove service.');
   }
 }
 
@@ -1932,6 +1956,12 @@ function renderOrders(orders){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       collectPayment(btn.dataset.order, btn.dataset.mode);
+    });
+  });
+  body.querySelectorAll('.remove-service-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeService(btn.dataset.order, Number(btn.dataset.idx));
     });
   });
   body.querySelectorAll('.edit-order-btn').forEach((btn) => {
