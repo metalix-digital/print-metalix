@@ -205,6 +205,17 @@ function renderPaymentPill(data){
   return '<span class="pay-pill pending">Pending</span>';
 }
 
+// Shared by the one-time post-submit swap below and by every later
+// tracking-page visit (see loadStatus) — one source of truth so the Google
+// review ask keeps appearing after Completed instead of only flashing once.
+function reviewFeedbackHtml(reviewUrl){
+  if (!reviewUrl) return '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>';
+  return '<div class="card feedback-thanks">' +
+    'Thanks for your feedback! 🙌<br>Loved your experience? Share it with others:' +
+    '<a href="' + reviewUrl + '" target="_blank" rel="noopener" class="feedback-submit" style="display:block;text-decoration:none;text-align:center;margin-top:10px;">⭐ Leave us a Google review</a>' +
+  '</div>';
+}
+
 function renderFeedbackForm(orderId){
   const wrap = document.createElement('div');
   wrap.className = 'card feedback';
@@ -246,14 +257,7 @@ function renderFeedbackForm(orderId){
         submitBtn.disabled = false;
         return;
       }
-      if (data.reviewUrl) {
-        wrap.outerHTML = '<div class="card feedback-thanks">' +
-          'Thanks for your feedback! 🙌<br>Loved your experience? Share it with others:' +
-          '<a href="' + data.reviewUrl + '" target="_blank" rel="noopener" class="feedback-submit" style="display:block;text-decoration:none;text-align:center;margin-top:10px;">⭐ Leave us a Google review</a>' +
-        '</div>';
-      } else {
-        wrap.outerHTML = '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>';
-      }
+      wrap.outerHTML = reviewFeedbackHtml(data.reviewUrl);
     } catch (err) {
       note.textContent = 'Could not submit feedback — check your connection and try again.';
       submitBtn.disabled = false;
@@ -299,7 +303,10 @@ async function loadStatus(){
 
     if (data.completed) {
       if (data.feedback_submitted) {
-        content.insertAdjacentHTML('beforeend', '<div class="card feedback-thanks">Thanks for your feedback! 🙌</div>');
+        // Keeps showing the Google review ask on every visit after
+        // Completed, not just the single moment right after submitting —
+        // see reviewFeedbackHtml below.
+        content.insertAdjacentHTML('beforeend', reviewFeedbackHtml(data.reviewUrl));
       } else {
         content.appendChild(renderFeedbackForm(data.id));
       }

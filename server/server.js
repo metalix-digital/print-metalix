@@ -2449,6 +2449,12 @@ app.get('/api/track/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
   const stages = db.getOrderStages().map((s) => s.name)
+  const feedback = db.getOrderFeedback(order.id)
+  // Same "only nudge happy customers" gate as the feedback POST route below —
+  // re-derived here (not just returned once at submit time) so the Google
+  // review ask keeps showing on every tracking-page visit after Completed,
+  // not just the single moment right after the customer submitted feedback.
+  const reviewUrl = feedback && feedback.rating >= 4 ? (db.getSiteSettings().googleReviewUrl || null) : null
   return res.json({
     id: order.id,
     order_status: order.order_status,
@@ -2457,7 +2463,8 @@ app.get('/api/track/:id', (req, res) => {
     ready_by: (order.updated_at || order.created_at) + READY_BY_WINDOW_MS,
     created_at: order.created_at,
     completed: !!order.completed_at,
-    feedback_submitted: !!db.getOrderFeedback(order.id),
+    feedback_submitted: !!feedback,
+    reviewUrl,
     payment_status: order.payment_status,
     payment_method: order.payment_method,
     delivery_method: order.delivery_method,
