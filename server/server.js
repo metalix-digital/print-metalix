@@ -2609,7 +2609,14 @@ app.post('/api/track/:id/pay', express.json(), async (req, res) => {
     const link = await createPaymentLinkForOrder(order)
     return res.json({ linkUrl: link.link_url })
   } catch (err) {
-    return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
+    // Unlike the admin payment-link endpoint (which surfaces err.message
+    // verbatim so staff get the real diagnostic), this is a public,
+    // customer-facing surface — a raw Cashfree API/account error (e.g.
+    // "link_creation_api is not enabled...") is meaningless and unprofessional
+    // to show a paying customer. Log the real reason for us, show them the
+    // same friendly fallback as the not-configured case above.
+    console.error(`[pay-now] payment link failed for ${order.id}:`, err.message)
+    return res.status(500).json({ error: 'payment_link_failed', message: 'Online payment isn\'t available right now — please pay at pickup/delivery.' })
   }
 })
 
