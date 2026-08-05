@@ -398,7 +398,7 @@ app.get('/api/coupons/featured', (req, res) => {
   const now = Date.now()
   const featured = coupons.find((c) => c.active && (!c.expiresAt || c.expiresAt > now))
   if (!featured) return res.status(404).json({ error: 'no_active_coupon' })
-  res.json({ code: featured.code, type: featured.type, value: featured.value })
+  res.json({ code: featured.code, type: featured.type, value: featured.value, minOrderValue: featured.minOrderValue || 0 })
 })
 
 // Public, read-only single-code lookup for a live discount preview — on

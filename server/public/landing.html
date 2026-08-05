@@ -1191,7 +1191,8 @@ fetch('/api/coupons/featured').then(function(r){ return r.ok ? r.json() : null; 
   // active campaign, not just a welcome offer, whichever coupon happens to
   // be Active in Admin > Discounts.
   var discountText = c.type === 'percent' ? (c.value + '% off') : ('₹' + c.value + ' off');
-  text.innerHTML = 'Use code <b>' + c.code.replace(/</g, '&lt;') + '</b> for ' + discountText + ' your order.';
+  var minOrderText = c.minOrderValue ? (' on orders above ₹' + c.minOrderValue) : '';
+  text.innerHTML = 'Use code <b>' + c.code.replace(/</g, '&lt;') + '</b> for ' + discountText + ' your order' + minOrderText + '.';
   link.href = '/order?coupon=' + encodeURIComponent(c.code);
   bar.classList.remove('hidden');
 }).catch(function(){ /* no active coupon, or offline — banner just stays hidden */ });
