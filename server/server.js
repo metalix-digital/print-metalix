@@ -2584,6 +2584,35 @@ app.post('/api/track/:id/feedback', express.json(), (req, res) => {
   return res.json({ feedback, reviewUrl })
 })
 
+// Lets a customer pay for their own still-unpaid order directly from the
+// tracking page they already have — a COD order they'd rather pay for
+// remotely, or an online order whose original checkout session was
+// abandoned. Deliberately reuses createPaymentLinkForOrder (the exact same
+// helper the admin "Send payment link" button and the create-with-link flow
+// use) rather than trying to resume/reuse any existing link: that helper
+// always cancels a stale link first, which is what keeps this safe to call
+// even if the order's total changed since an older link was generated —
+// the customer only ever gets charged the order's current total, never a
+// stale amount. Same public, no-auth posture as the rest of /api/track/:id —
+// the order ID is the only thing gating access, same trust model already
+// accepted for feedback above.
+app.post('/api/track/:id/pay', express.json(), async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
+  if (String(order.payment_status).toLowerCase() === 'paid') {
+    return res.status(400).json({ error: 'already_paid', message: 'This order is already paid.' })
+  }
+  if (!cashfree.isConfigured()) {
+    return res.status(400).json({ error: 'cashfree_not_configured', message: 'Online payment isn\'t available right now — please pay at pickup/delivery.' })
+  }
+  try {
+    const link = await createPaymentLinkForOrder(order)
+    return res.json({ linkUrl: link.link_url })
+  } catch (err) {
+    return res.status(500).json({ error: err.code || 'payment_link_failed', message: err.message })
+  }
+})
+
 // Confirms payment for the regular checkout flow. Unlike the old Razorpay
 // integration, there's no client-supplied signature to check — Cashfree's
 // client SDK gives the browser no cryptographically verifiable proof of its
