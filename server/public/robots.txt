@@ -1,13 +1,15 @@
 User-agent: *
 Allow: /
 # Public, read-only endpoints the homepage and blog pages fetch client-side
-# to render content (pricing, branches, testimonials, article bodies) — must
-# stay crawlable or Googlebot renders those pages without this content.
+# to render content (pricing, branches, testimonials, article bodies, the
+# promo banner) — must stay crawlable or Googlebot renders those pages
+# without this content.
 Allow: /api/bootstrap
 Allow: /api/pricing
 Allow: /api/settings
 Allow: /api/locations
 Allow: /api/blog
+Allow: /api/coupons/featured
 Disallow: /admin
 Disallow: /api/
 Disallow: /orders
