@@ -267,6 +267,17 @@ function renderFeedbackForm(orderId){
   return wrap;
 }
 
+// Cashfree's Payment Link returnUrl sends the customer straight back here
+// the instant they finish paying, but confirmation is entirely webhook-
+// driven (see server.js's /api/webhook PAYMENT_LINK_EVENT handler) and can
+// lag a few seconds behind that redirect. Poll briefly so "Pending" flips to
+// "✓ Paid online" on its own instead of requiring a manual refresh — only
+// kicks in while an online order is genuinely still unpaid; a COD order or
+// one that's already paid never schedules another fetch.
+const PAYMENT_POLL_MS = 4000;
+const PAYMENT_POLL_MAX_ATTEMPTS = 20; // ~80s, generous over normal webhook latency
+let paymentPollAttempts = 0;
+
 async function loadStatus(){
   const orderId = window.location.pathname.split('/').filter(Boolean).pop();
   const content = document.getElementById('content');
@@ -310,6 +321,11 @@ async function loadStatus(){
       } else {
         content.appendChild(renderFeedbackForm(data.id));
       }
+    }
+
+    if (data.payment_method !== 'cod' && data.payment_status !== 'paid' && paymentPollAttempts < PAYMENT_POLL_MAX_ATTEMPTS) {
+      paymentPollAttempts++;
+      setTimeout(loadStatus, PAYMENT_POLL_MS);
     }
   } catch (err) {
     content.innerHTML = '<div class="card"><p class="error">Could not load order status.</p></div>';

@@ -2438,12 +2438,23 @@ app.get('/api/orders/:id', (req, res) => {
 // payment, pricing, progress) is fine to expose — it's what a package
 // tracking page normally shows.
 const READY_BY_WINDOW_MS = 4 * 60 * 60 * 1000
-// A "confirmed" order is paid online OR pay-on-delivery — matches the
-// definition used everywhere else (db.listOrders/listMyOrders/listCustomers).
+// A "confirmed" order is paid online, pay-on-delivery, or a genuine Payment
+// Link order — the payment_link_id check is this function's one addition
+// over the base definition used everywhere else (db.listOrders/listMyOrders/
+// listCustomers). Cashfree's Payment Link returnUrl sends the customer's
+// browser straight to /track/:id the instant they finish paying, but
+// confirmation itself is entirely webhook-driven (see /api/webhook's
+// PAYMENT_LINK_EVENT handler) and can lag a few seconds behind that
+// redirect. Without this, that redirect 404s on a real, already-placed
+// order for however long the webhook takes to land. Safe to allow pre-
+// confirmation here specifically because a Payment Link order only exists
+// once staff (or the create-with-link flow) generated one — unlike an
+// abandoned self-checkout, which never gets a payment_link_id and stays
+// correctly hidden until actually paid.
 // COD orders are queued for printing immediately on creation, so a customer
 // tracking one before it's paid at delivery is normal, not an error.
 function isConfirmedOrder(order) {
-  return !!order && (order.payment_status === 'paid' || order.payment_method === 'cod')
+  return !!order && (order.payment_status === 'paid' || order.payment_method === 'cod' || !!order.payment_link_id)
 }
 app.get('/api/track/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
