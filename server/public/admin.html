@@ -694,11 +694,14 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     </div>
 
     <div class="panel" id="panel-feedback">
-      <p class="subtle" style="margin:0 2px 12px;">Customers can leave a rating + comment on the order tracking page once their order is marked Completed. One submission per order.</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <p class="subtle" style="margin:0 2px;">Customers can leave a rating + comment on the order tracking page once their order is marked Completed. One submission per order.</p>
+        <button type="button" class="btn-file" id="exportFeedbackBtn">⬇ Export CSV</button>
+      </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Order</th><th>Customer</th><th>Rating</th><th>Comment</th><th>Submitted</th></tr></thead>
-          <tbody id="feedbackBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+          <thead><tr><th>Order</th><th>Customer</th><th>Rating</th><th>Comment</th><th>Submitted</th><th></th></tr></thead>
+          <tbody id="feedbackBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -2887,7 +2890,7 @@ async function loadFeedback(){
     const feedback = data.feedback || [];
     feedbackByOrderId = {};
     feedback.forEach((f) => { feedbackByOrderId[f.order_id] = f; });
-    if (!feedback.length){ body.innerHTML = '<tr><td colspan="5" class="empty">No feedback yet</td></tr>'; return; }
+    if (!feedback.length){ body.innerHTML = '<tr><td colspan="6" class="empty">No feedback yet</td></tr>'; return; }
     body.innerHTML = feedback.map((f) => {
       const stars = '★'.repeat(f.rating) + '☆'.repeat(5 - f.rating);
       return '<tr>' +
@@ -2896,12 +2899,127 @@ async function loadFeedback(){
         '<td style="color:var(--orange);letter-spacing:1px;">' + stars + '</td>' +
         '<td>' + escHtml(f.comment || '—') + '</td>' +
         '<td><span class="placed">' + escHtml(new Date(f.created_at).toLocaleDateString()) + '</span></td>' +
+        '<td class="file-actions">' +
+          '<button class="dl-btn edit-feedback-btn" data-id="' + f.id + '">✎ Edit</button>' +
+          '<button class="rate-remove delete-feedback-btn" data-id="' + f.id + '" title="Delete this feedback">🗑</button>' +
+        '</td>' +
       '</tr>';
     }).join('');
+    body.querySelectorAll('.edit-feedback-btn').forEach((btn) => {
+      btn.addEventListener('click', () => editFeedback(feedback.find((f) => String(f.id) === btn.dataset.id)));
+    });
+    body.querySelectorAll('.delete-feedback-btn').forEach((btn) => {
+      btn.addEventListener('click', () => deleteFeedback(btn.dataset.id));
+    });
   } catch (err) {
-    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="5" class="empty">Failed to load feedback</td></tr>';
+    if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="6" class="empty">Failed to load feedback</td></tr>';
   }
 }
+
+// Dynamically-built modal (same disposable-overlay pattern as
+// showConfirmModal) for correcting a garbled rating/comment or moderating
+// an inappropriate one. Resolves once saved or cancelled.
+function editFeedbackModal(f){
+  return new Promise((resolve) => {
+    let rating = f.rating;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML =
+      '<div class="modal-card" role="dialog" aria-modal="true">' +
+        '<h3 class="modal-title">Edit feedback</h3>' +
+        '<p class="modal-sub">Order ' + escHtml(f.order_id) + (f.customer_name ? ' — ' + escHtml(f.customer_name) : '') + '</p>' +
+        '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="display:block;font-size:12.5px;font-weight:600;color:var(--ink3);margin-bottom:6px;">Rating</label>' +
+          '<div id="efStars"></div>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label style="display:block;font-size:12.5px;font-weight:600;color:var(--ink3);margin-bottom:6px;">Comment</label>' +
+          '<textarea id="efComment" maxlength="2000" style="width:100%;">' + escHtml(f.comment || '') + '</textarea>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="modal-cancel" type="button">Cancel</button>' +
+          '<button class="modal-ok" type="button">Save</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    const starsEl = overlay.querySelector('#efStars');
+    function renderStars(){
+      starsEl.innerHTML = '';
+      for (let i = 1; i <= 5; i++){
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = i <= rating ? '★' : '☆';
+        btn.style.cssText = 'font-size:24px;line-height:1;background:none;border:none;color:var(--orange);cursor:pointer;padding:2px 3px;';
+        btn.addEventListener('click', () => { rating = i; renderStars(); });
+        starsEl.appendChild(btn);
+      }
+    }
+    renderStars();
+    const close = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('.modal-cancel').addEventListener('click', () => close(null));
+    overlay.querySelector('.modal-ok').addEventListener('click', () => {
+      close({ rating: rating, comment: overlay.querySelector('#efComment').value });
+    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
+async function editFeedback(f){
+  if (!f) return;
+  const result = await editFeedbackModal(f);
+  if (!result) return;
+  try {
+    const res = await adminFetch('/api/admin/feedback/' + encodeURIComponent(f.id), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: result.rating, comment: result.comment })
+    });
+    if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Could not save feedback.'); return; }
+    await loadFeedback();
+    showFlash('Feedback updated.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not save feedback.');
+  }
+}
+
+async function deleteFeedback(id){
+  const ok = await showConfirmModal(
+    '<h3 class="modal-title">Delete this feedback?</h3><p class="modal-sub">The customer will be able to submit feedback for this order again.</p>',
+    'Delete', true
+  );
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/feedback/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Could not delete feedback.'); return; }
+    await loadFeedback();
+    showFlash('Feedback deleted.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not delete feedback.');
+  }
+}
+
+async function exportFeedbackCsv(){
+  const btn = document.getElementById('exportFeedbackBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Exporting…';
+  try {
+    const res = await adminFetch('/api/admin/feedback/export');
+    if (!res.ok){ alert('Could not export feedback.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'feedback-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not export feedback.');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+document.getElementById('exportFeedbackBtn').addEventListener('click', exportFeedbackCsv);
 
 async function restoreArchivedOrder(id){
   try {

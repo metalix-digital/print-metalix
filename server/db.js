@@ -1324,6 +1324,29 @@ function getOrderFeedback(orderId) {
   return db.prepare('SELECT * FROM order_feedback WHERE order_id = ?').get(orderId) || null
 }
 
+function getOrderFeedbackById(id) {
+  return db.prepare('SELECT * FROM order_feedback WHERE id = ?').get(id) || null
+}
+
+// Staff correcting a garbled submission or moderating an inappropriate
+// comment — only touches the fields actually passed (undefined = leave as
+// is), same convention as db.updateOrder.
+function updateOrderFeedback(id, { rating, comment }) {
+  const sets = []
+  const params = []
+  if (rating !== undefined) { sets.push('rating = ?'); params.push(rating) }
+  if (comment !== undefined) { sets.push('comment = ?'); params.push(comment || null) }
+  if (sets.length) {
+    params.push(id)
+    db.prepare(`UPDATE order_feedback SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+  }
+  return getOrderFeedbackById(id)
+}
+
+function deleteOrderFeedback(id) {
+  db.prepare('DELETE FROM order_feedback WHERE id = ?').run(id)
+}
+
 // One feedback row per order — the DB's unique index on order_id is the real
 // guard; the caller (POST /api/track/:id/feedback) checks first for a clean
 // "already submitted" error instead of a raw constraint failure.
@@ -1468,7 +1491,10 @@ module.exports = {
   updatePrintJob,
   getLatestPrintJobForOrder,
   getOrderFeedback,
+  getOrderFeedbackById,
   createOrderFeedback,
+  updateOrderFeedback,
+  deleteOrderFeedback,
   listOrderFeedback,
   listPublicFeedback,
   getFeedbackStats,

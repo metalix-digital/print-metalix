@@ -1734,6 +1734,59 @@ app.get('/api/admin/feedback', requireAdmin, requireTab('feedback'), (req, res) 
   return res.json({ feedback: db.listOrderFeedback(scopeLocation(req)) })
 })
 
+// CSV download of the same list the Feedback tab shows, respecting the same
+// branch scoping. Registered as its own literal path (not a query param on
+// the route above) so it's a plain adminFetch()-able URL the client can pull
+// as a blob — see admin.html's downloadOrderFile for the same pattern.
+app.get('/api/admin/feedback/export', requireAdmin, requireTab('feedback'), (req, res) => {
+  const feedback = db.listOrderFeedback(scopeLocation(req))
+  const escapeCsvCell = (v) => {
+    const s = String(v == null ? '' : v)
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+  const rows = [
+    ['Order ID', 'Customer Name', 'Customer Mobile', 'Rating', 'Comment', 'Submitted At'],
+    ...feedback.map((f) => [f.order_id, f.customer_name || '', f.customer_mobile || '', f.rating, f.comment || '', new Date(f.created_at).toISOString()])
+  ]
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="feedback-${new Date().toISOString().slice(0, 10)}.csv"`)
+  // Leading BOM so Excel (which guesses encoding rather than reading a
+  // charset header) renders non-ASCII customer names/comments correctly
+  // instead of mangling them.
+  return res.send('\uFEFF' + csv)
+})
+
+// Staff correcting a garbled rating/comment, or moderating an inappropriate
+// one — 404s (not 403) on a branch admin viewing another branch's feedback,
+// same posture as ownsOrder elsewhere.
+app.patch('/api/admin/feedback/:id', requireAdmin, requireTab('feedback'), express.json(), (req, res) => {
+  const feedback = db.getOrderFeedbackById(req.params.id)
+  if (!feedback) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, db.getOrder(feedback.order_id))) return res.status(404).json({ error: 'not_found' })
+  const { rating, comment } = req.body || {}
+  if (rating !== undefined && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+    return res.status(400).json({ error: 'invalid_rating', message: 'Rating must be a whole number from 1 to 5.' })
+  }
+  const updated = db.updateOrderFeedback(feedback.id, {
+    rating,
+    comment: comment !== undefined ? String(comment).trim().slice(0, 2000) : undefined
+  })
+  return res.json({ feedback: updated })
+})
+
+// Deleting reopens the order for feedback (getOrderFeedback(order_id) goes
+// back to null), so the customer sees the rating form again on their next
+// tracking-page visit — acceptable, staff would only delete a spam/test/
+// abusive entry they'd want gone anyway.
+app.delete('/api/admin/feedback/:id', requireAdmin, requireTab('feedback'), (req, res) => {
+  const feedback = db.getOrderFeedbackById(req.params.id)
+  if (!feedback) return res.status(404).json({ error: 'not_found' })
+  if (!ownsOrder(req, db.getOrder(feedback.order_id))) return res.status(404).json({ error: 'not_found' })
+  db.deleteOrderFeedback(feedback.id)
+  return res.json({ deleted: true })
+})
+
 app.post('/api/admin/orders/:id/restore', requireAdmin, requireTab('orders'), (req, res) => {
   if (!ownsOrder(req, db.getOrder(req.params.id))) return res.status(404).json({ error: 'not_found' })
   const order = db.restoreOrder(req.params.id)
