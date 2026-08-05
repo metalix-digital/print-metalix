@@ -1589,6 +1589,32 @@ app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orde
   return res.json({ order: updated })
 })
 
+// Undoes a mistaken Collect Cash/Collect UPI click (wrong button, wrong
+// mode confirmed, collected against the wrong order) — reopens the order
+// for collection instead of leaving a bad payment record with no way back.
+// COD only: a gateway (Cashfree) payment is genuinely captured money with
+// no local "undo", same immutability reasoning as the discount/service-
+// removal locks elsewhere in this file. Blocked once the order has reached
+// Completed — that transition itself requires payment_status 'paid' for a
+// COD order (see the PATCH route's payment_not_collected gate above), so
+// rolling back payment here would leave a Completed order silently unpaid;
+// move it back a stage first if that's genuinely needed.
+app.post('/api/admin/orders/:id/rollback-payment', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  if (order.payment_method !== 'cod') {
+    return res.status(400).json({ error: 'not_cod', message: 'Only a cash/UPI collection can be rolled back — an online gateway payment is already captured.' })
+  }
+  if (String(order.payment_status).toLowerCase() !== 'paid') {
+    return res.status(400).json({ error: 'not_paid', message: 'This order has no collected payment to roll back.' })
+  }
+  if (order.order_status === 'Completed') {
+    return res.status(400).json({ error: 'order_completed', message: 'Move this order back from Completed before rolling back its payment.' })
+  }
+  const updated = db.updateOrder(order.id, { payment_status: 'pending', payment_mode: null, payment_collected_at: null })
+  return res.json({ order: updated })
+})
+
 // Generates (or regenerates) a Cashfree Payment Link for an already-placed
 // COD/pending order and texts it to the customer — lets a customer who
 // phoned in an order pay online remotely instead of at pickup/delivery.

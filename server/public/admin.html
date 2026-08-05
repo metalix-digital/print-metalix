@@ -1799,6 +1799,32 @@ async function collectPayment(orderId, mode){
   }
 }
 
+// Undo a mistaken Collect Cash/Collect UPI click — reopens a COD order for
+// collection. See server.js's rollback-payment guard for why this is COD-
+// only and blocked once the order is Completed.
+async function rollbackPayment(orderId){
+  const o = ordersById[orderId] || {};
+  const inner =
+    '<h3 class="modal-title">Roll back this payment?</h3>' +
+    '<p class="modal-sub">Marks this order as unpaid again — use this if Collect Cash/UPI was clicked by mistake.</p>' +
+    '<table class="modal-meta">' +
+      '<tr><td class="k">Order ID</td><td class="v">' + escHtml(orderId) + '</td></tr>' +
+      '<tr><td class="k">Customer</td><td class="v">' + escHtml(o.customer_name || '—') + '</td></tr>' +
+      '<tr><td class="k">Amount</td><td class="v">₹' + escHtml(o.total_amount) + '</td></tr>' +
+      '<tr><td class="k">Collected via</td><td class="v">' + escHtml(o.payment_mode ? String(o.payment_mode).toUpperCase() : '—') + '</td></tr>' +
+    '</table>';
+  const ok = await showConfirmModal(inner, 'Roll back', true);
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(orderId) + '/rollback-payment', { method: 'POST' });
+    if (!res.ok){ const d = await res.json().catch(() => ({})); alert(d.message || 'Could not roll back payment.'); return; }
+    await loadOrders();
+    showFlash('Payment rolled back — order is unpaid again.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not roll back payment.');
+  }
+}
+
 // Remove one Additional Service line item from an order (see fileRowHtml's
 // service branch, the only place this button appears).
 async function removeService(orderId, idx){
@@ -1892,6 +1918,13 @@ function renderOrders(orders){
             '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>' +
             '<button class="jobsheet-btn payment-link-btn" data-order="' + escHtml(o.id) + '">🔗 Send payment link</button>'
           : '') +
+        // Undo for a mistaken Collect Cash/Collect UPI click — COD only (a
+        // gateway payment is captured, no local undo — see server.js's
+        // rollback-payment guard) and only before Completed, since that
+        // transition requires the payment already be collected.
+        (o.payment_method === 'cod' && String(o.payment_status).toLowerCase() === 'paid' && o.order_status !== 'Completed'
+          ? '<button class="jobsheet-btn rollback-payment-btn" data-order="' + escHtml(o.id) + '">↩ Rollback payment</button>'
+          : '') +
         // Payment links have no automatic client-side confirmation (only the
         // webhook confirms them) — this is the manual escape hatch if a
         // webhook is ever delayed or lost.
@@ -1964,6 +1997,12 @@ function renderOrders(orders){
       removeService(btn.dataset.order, Number(btn.dataset.idx));
     });
   });
+  body.querySelectorAll('.rollback-payment-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rollbackPayment(btn.dataset.order);
+    });
+  });
   body.querySelectorAll('.edit-order-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2014,7 +2053,7 @@ function renderOrders(orders){
       }
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn)').forEach((btn) => {
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn):not(.rollback-payment-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
