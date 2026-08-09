@@ -220,7 +220,18 @@ async function buildInvoicePdf(order) {
   totalRow('Print cost', order.print_cost)
   if (order.services_cost) totalRow('Additional services', order.services_cost)
   if (order.handling_charge) totalRow('Handling charge', order.handling_charge)
-  if (order.delivery_charge) totalRow('Delivery', order.delivery_charge)
+  // Keyed off delivery_method, not delivery_charge — a free-delivery order
+  // (above the threshold) has delivery_charge: 0, and the old `if
+  // (order.delivery_charge)` check silently dropped the line entirely
+  // instead of showing it as free, same class of bug as the Additional
+  // Services fix above (a real, applicable charge of "0" getting treated as
+  // "not applicable"). A pickup order still shows nothing here.
+  if (order.delivery_method === 'delivery') {
+    const isFree = !order.delivery_charge
+    text('Delivery', labelX, y, 10, font, MUTED)
+    right(isFree ? 'Free' : money(order.delivery_charge), width - M, y, 10, font, isFree ? GREEN : INK)
+    y -= 17
+  }
   if (order.discount_amount) {
     const discountLabel = order.discount_code ? `Discount (${order.discount_code})` : 'Discount'
     text(discountLabel, labelX, y, 10, font, MUTED)
