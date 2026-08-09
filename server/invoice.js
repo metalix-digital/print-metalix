@@ -47,7 +47,12 @@ function sanitizeForFont(str, f) {
 // don't have it stored, so fall back to recomputing from *current* rates —
 // only those can drift from what was actually charged.
 function fileLineItem(f, pages, copies, paperTypes) {
-  if (f.amount != null && f.paperLabel != null && f.colorLabel != null) {
+  // colorLabel is deliberately null for a qty-1 Additional Service (see
+  // pricing.js's 'service' branch — no "×" suffix needed) — a baked-in
+  // breakdown is still valid with a null colorLabel, so it can't be part of
+  // this check, or a real service amount gets discarded in favour of
+  // recomputing it as if it were a print file (wrong rate, wrong page count).
+  if (f.amount != null && f.paperLabel != null) {
     return { paperLabel: f.paperLabel, colorLabel: f.colorLabel, amount: f.amount }
   }
   const rates = paperTypes.find((t) => t.id === f.paperType) || paperTypes[0]
@@ -153,9 +158,17 @@ async function buildInvoicePdf(order) {
       colorPageCount: order.color_page_count,
     }]
   }
+  // Additional Services (spiral binding, photo editing, etc.) are a flat fee,
+  // not a print job — no page count, paper type, or copies — so they get
+  // their own spread below instead of sharing this page-oriented table,
+  // where they used to show a nonsense "N pg x 1" quantity borrowed from an
+  // unrelated leftover field on the order.
+  const printFiles = files.filter((f) => f.productType !== 'service')
+  const serviceFiles = files.filter((f) => f.productType === 'service')
+
   let pricingConfig = {}
   try { pricingConfig = db.getPricing() } catch (e) { pricingConfig = {} }
-  for (const f of files) {
+  for (const f of printFiles) {
     const desc = String(f.fileName || 'Document')
     const pages = f.pageCount != null ? f.pageCount : (order.page_count || 0)
     const copies = f.copies || 1
@@ -165,17 +178,41 @@ async function buildInvoicePdf(order) {
     // falls through to rates.a4, its actual size at the time.
     const paperTypes = (pricingConfig.rates && (pricingConfig.rates[f.pageSize] || pricingConfig.rates.a4)) || []
     const { paperLabel, colorLabel, amount } = fileLineItem(f, pages, copies, paperTypes)
+    const qtyLabel = f.productType === 'passport-photo' ? (f.packQty || 0) + '-pack' : pages + ' pg x ' + copies
     text(desc.length > 54 ? desc.slice(0, 51) + '...' : desc, M + 8, y, 10, font)
-    right(pages + ' pg x ' + copies, width - M - 110, y, 10, font, MUTED)
+    right(qtyLabel, width - M - 110, y, 10, font, MUTED)
     right(money(amount), width - M - 8, y, 10, font)
     y -= 13
-    text(paperLabel + ' · ' + colorLabel, M + 8, y, 8.5, font, MUTED)
+    text(paperLabel + (colorLabel ? ' · ' + colorLabel : ''), M + 8, y, 8.5, font, MUTED)
     y -= 19
     if (y < 170) break
   }
   y -= 6
   page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 1, color: LINE })
   y -= 22
+
+  // Additional Services get their own mini-table — Service / Qty / Amount —
+  // clearly separated from the print items above rather than mixed into a
+  // table whose columns (pages, paper type) don't apply to them.
+  if (serviceFiles.length) {
+    page.drawRectangle({ x: M, y: y - 6, width: width - 2 * M, height: 22, color: SOFT })
+    text('ADDITIONAL SERVICES', M + 8, y, 8.5, bold, MUTED)
+    right('QTY', width - M - 110, y, 8.5, bold, MUTED)
+    right('AMOUNT', width - M - 8, y, 8.5, bold, MUTED)
+    y -= 24
+    for (const f of serviceFiles) {
+      const qty = f.quantity || 1
+      const { paperLabel, amount } = fileLineItem(f, 0, qty, [])
+      text(String(f.fileName || paperLabel || 'Service'), M + 8, y, 10, font)
+      right(qty + '×', width - M - 110, y, 10, font, MUTED)
+      right(money(amount), width - M - 8, y, 10, font)
+      y -= 19
+      if (y < 170) break
+    }
+    y -= 6
+    page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 1, color: LINE })
+    y -= 22
+  }
 
   // Totals block (right-aligned)
   const labelX = width - M - 220
