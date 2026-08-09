@@ -220,6 +220,26 @@ const { buildInvoicePdf } = require('./invoice')
 const { formatRupees } = require('./format')
 const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
 
+// pdf-lib's Standard fonts (used by the job sheet's text pages below) are
+// WinAnsi-encoded and can't represent ₹ or most non-Latin1 characters — a
+// customer file name, admin password note, or admin-entered pricing label
+// containing one would otherwise crash generation with "WinAnsi cannot
+// encode ...". Same fix as invoice.js's sanitizeForFont: swap ₹ for "Rs."
+// and drop anything else the font can't encode, one character at a time.
+function sanitizeForFont(str, f) {
+  let out = ''
+  for (const ch of String(str == null ? '' : str)) {
+    if (ch === '₹') { out += 'Rs.'; continue }
+    try {
+      f.widthOfTextAtSize(ch, 10)
+      out += ch
+    } catch (e) {
+      // unencodable in this font — drop it
+    }
+  }
+  return out
+}
+
 // Short, print/handwriting-friendly order IDs — excludes 0/O and 1/I so a
 // staff member transcribing one off a job sheet by hand can't misread it.
 const ORDER_ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -1039,7 +1059,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
     for (const { f, safeFileId, pdfBuffer, convertError, skip, isPassport, imageBuffer } of converted) {
       if (isPassport) {
         // Helvetica (WinAnsi) can't render ₹ — same "Rs." convention as invoice.js.
-        const label = `Passport Photo Pack — ${f.paperLabel || f.sizePresetId || 'Passport Photo'} · ${f.colorLabel || ((f.packQty || 0) + '-pack')} · Rs. ${formatRupees(f.amount || 0)}`
+        const label = sanitizeForFont(`Passport Photo Pack — ${f.paperLabel || f.sizePresetId || 'Passport Photo'} · ${f.colorLabel || ((f.packQty || 0) + '-pack')} · Rs. ${formatRupees(f.amount || 0)}`, font)
         const preset = ((pricingConfig.passportPhotos || {}).sizePresets || []).find((s) => s.id === f.sizePresetId)
         if (imageBuffer && preset) {
           // Real print output: tile the cropped photo across as many A4
@@ -1097,7 +1117,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
           'Use the per-file Download button in admin to print it manually.'
         ]
         if (f.password) lines.push(`Document password on file: ${f.password}`)
-        lines.forEach((line, i) => page.drawText(line, { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
+        lines.forEach((line, i) => page.drawText(sanitizeForFont(line, font), { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
         continue
       }
       try {
@@ -1143,7 +1163,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
           'Use the per-file Download button in admin to print it manually.'
         ]
         if (f.password) lines.push(`Document password on file: ${f.password}`)
-        lines.forEach((line, i) => page.drawText(line, { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
+        lines.forEach((line, i) => page.drawText(sanitizeForFont(line, font), { x: 50, y: A4_PT.height - 80 - i * 22, size: 12, font, color: rgb(0.1, 0.13, 0.2) }))
       }
     }
 

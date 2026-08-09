@@ -18,6 +18,27 @@ const GREEN = rgb(0.09, 0.5, 0.31)
 
 function money(n) { return 'Rs. ' + formatRupees(n) }
 
+// pdf-lib's Standard fonts are WinAnsi-encoded and can't represent ₹ or most
+// non-Latin1 characters (see the file-level comment above) — a customer- or
+// admin-entered value (file name, paper/service label, discount reason,
+// customer name, etc.) containing one would otherwise crash the whole PDF
+// with "WinAnsi cannot encode ...". Swap ₹ for "Rs." (matching money() above)
+// and drop anything else the font can't encode, one character at a time,
+// rather than failing the invoice over a single stray character.
+function sanitizeForFont(str, f) {
+  let out = ''
+  for (const ch of str) {
+    if (ch === '₹') { out += 'Rs.'; continue }
+    try {
+      f.widthOfTextAtSize(ch, 10)
+      out += ch
+    } catch (e) {
+      // unencodable in this font — drop it
+    }
+  }
+  return out
+}
+
 // Per-file paper type label, colour label, and cost. Orders created after
 // pricing.calculate() started returning a fileBreakdown (see pricing.js)
 // have this baked into files_json at order time, so the invoice always
@@ -64,9 +85,9 @@ async function buildInvoicePdf(order) {
   const M = 48
   let y = height - M
 
-  const text = (s, x, yy, size, f = font, color = INK) => page.drawText(String(s == null ? '' : s), { x, y: yy, size, font: f, color })
+  const text = (s, x, yy, size, f = font, color = INK) => page.drawText(sanitizeForFont(String(s == null ? '' : s), f), { x, y: yy, size, font: f, color })
   const right = (s, xRight, yy, size, f = font, color = INK) => {
-    const str = String(s == null ? '' : s)
+    const str = sanitizeForFont(String(s == null ? '' : s), f)
     page.drawText(str, { x: xRight - f.widthOfTextAtSize(str, size), y: yy, size, font: f, color })
   }
 
