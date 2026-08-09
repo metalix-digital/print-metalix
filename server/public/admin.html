@@ -1916,6 +1916,9 @@ function renderOrders(orders){
       '<div class="jobsheet-actions">' +
         '<button class="jobsheet-btn" data-action="print" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">🖨 Print Job Sheet</button>' +
         '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
+        (o.customer_email
+          ? '<button class="jobsheet-btn send-invoice-btn" data-order="' + escHtml(o.id) + '">✉ Send Invoice</button>'
+          : '') +
         ((o.payment_method === 'cod' && String(o.payment_status).toLowerCase() !== 'paid')
           ? '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="cash">💵 Collect Cash</button>' +
             '<button class="collect-btn" data-order="' + escHtml(o.id) + '" data-mode="upi">📱 Collect UPI</button>' +
@@ -2032,6 +2035,25 @@ function renderOrders(orders){
       }
     });
   });
+  body.querySelectorAll('.send-invoice-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order) + '/send-invoice', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Could not send invoice');
+        showFlash('Invoice emailed to customer.');
+      } catch (err) {
+        if (err.message !== 'unauthorized') alert(err.message || 'Could not send invoice.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  });
   body.querySelectorAll('.recheck-payment-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -2056,7 +2078,7 @@ function renderOrders(orders){
       }
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn):not(.rollback-payment-btn)').forEach((btn) => {
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn):not(.rollback-payment-btn):not(.send-invoice-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');

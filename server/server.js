@@ -1391,7 +1391,9 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   // admin's update.
   if (order.order_status !== updated.order_status) {
     printQueue.syncPrintJobStatus(updated.id, updated.order_status)
-    emailStatusChange(updated, `${req.protocol}://${req.get('host')}`)
+    const base = `${req.protocol}://${req.get('host')}`
+    emailStatusChange(updated, base)
+    smsCompletedNotification(updated, base)
   }
 
   return res.json({ order: updated })
@@ -1438,6 +1440,16 @@ function emailStatusChange(order, base) {
   }
 }
 
+// Texts the customer a link to download their invoice once an order reaches
+// Completed. Deliberately separate from emailStatusChange above — that
+// function no-ops entirely when there's no customer_email, but a mobile
+// number and an email are independent fields, so SMS gets its own gate.
+function smsCompletedNotification(order, base) {
+  if (!order || !order.customer_mobile || order.order_status !== 'Completed') return
+  const invoiceUrl = `${base}/api/orders/${order.id}/invoice.pdf`
+  sms.sendOrderCompletedSms(order, invoiceUrl).catch((err) => console.error(`[sms] order completed failed for ${order.id}:`, err.message))
+}
+
 // Bulk status update: apply one status to many orders at once. Skips orders
 // that are missing or already at that status, and emails each customer whose
 // new stage is notify-enabled.
@@ -1464,6 +1476,7 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), ex
       emailed++
       emailStatusChange(u, base)
     }
+    smsCompletedNotification(u, base)
   }
   return res.json({ updated, emailed, skippedUnpaid })
 })
@@ -1639,6 +1652,29 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, requireTab('orders'
     console.error(`[sms] payment link send failed for ${order.id}:`, err.message)
   }
   return res.json({ order: fresh, linkUrl: link.link_url, smsSent })
+})
+
+// Manual "send invoice" action — lets staff email a PDF invoice to the
+// customer for any order on demand, independent of the automatic invoice
+// that goes out when an order reaches "Completed".
+app.post('/api/admin/orders/:id/send-invoice', requireAdmin, requireTab('orders'), async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  if (!order.customer_email) {
+    return res.status(400).json({ error: 'no_email', message: 'This order has no customer email on file.' })
+  }
+  let pdf
+  try {
+    pdf = await buildInvoicePdf(order)
+  } catch (err) {
+    return res.status(500).json({ error: 'invoice_generation_failed', message: err.message })
+  }
+  try {
+    await mailer.sendInvoiceEmail(order, pdf)
+  } catch (err) {
+    return res.status(502).json({ error: 'email_send_failed', message: err.message })
+  }
+  return res.json({ ok: true })
 })
 
 // Manual escape hatch: payment links have no client-driven confirmation path
@@ -2509,6 +2545,27 @@ app.get('/api/orders/:id', (req, res) => {
   const order = db.getOrder(req.params.id)
   if (!order) return res.status(404).json({ error: 'not_found' })
   return res.json({ order })
+})
+
+// Public "download my invoice" link — what the order-completed SMS points
+// to. Same trust model as /api/track/:id/pay below (order ID is the sole
+// credential): this codebase already treats a known order ID as enough to
+// let a customer trigger a real payment, so serving the same PDF they'd
+// otherwise get as an email attachment is no larger a departure. Only ever
+// serves once the order actually has a completed_at, so it can't be used to
+// peek at an in-progress order before its invoice exists.
+app.get('/api/orders/:id/invoice.pdf', async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!isConfirmedOrder(order) || !order.completed_at) return res.status(404).json({ error: 'not_found' })
+  try {
+    const pdf = await buildInvoicePdf(order)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${order.id}.pdf"`)
+    return res.send(pdf)
+  } catch (err) {
+    console.error(`[invoice] public download failed for ${order.id}:`, err.message)
+    return res.status(500).json({ error: 'invoice_generation_failed' })
+  }
 })
 
 // Public tracking lookup behind the job sheet's QR code — deliberately never

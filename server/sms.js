@@ -60,4 +60,23 @@ async function sendPaymentLinkSms(order, linkUrl) {
   return true
 }
 
-module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms }
+// Separate DLT template again, same reasoning as sendPaymentLinkSms — needs
+// TWILIO_ORDER_COMPLETED_TEMPLATE_SID registered with this exact wording
+// before it can actually deliver in India; until then it just logs.
+async function sendOrderCompletedSms(order, invoiceUrl) {
+  if (!order || !order.customer_mobile) return false
+  const client = getClient()
+  if (!client || !process.env.TWILIO_ORDER_COMPLETED_TEMPLATE_SID) {
+    console.log(`[sms] stub -> ${order.customer_mobile}: order ${order.id} completed, download invoice ${invoiceUrl}`)
+    return false
+  }
+  await client.messages.create({
+    to: toE164India(order.customer_mobile),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+    contentSid: process.env.TWILIO_ORDER_COMPLETED_TEMPLATE_SID,
+    contentVariables: JSON.stringify({ '1': order.id, '2': invoiceUrl })
+  })
+  return true
+}
+
+module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms, sendOrderCompletedSms }

@@ -383,4 +383,43 @@ async function sendOrderConfirmationEmail(order) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail }
+// ---- Invoice (sent on demand by an admin, independent of status emails) --
+
+function invoiceEmailTemplate(order) {
+  const name = order.customer_name ? String(order.customer_name).split(' ')[0] : 'there'
+  const total = (order.total_amount === 0 || order.total_amount) ? `₹${formatRupees(order.total_amount)}` : '—'
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:34px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 style="margin:0 0 10px 0;font-size:23px;line-height:1.25;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">Your invoice</h1>
+      <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${name}, here's a copy of your invoice for order ${order.id} — see the attached PDF.</p>
+    </td></tr>
+    <tr><td style="padding:18px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.softBg};border:1px solid ${BRAND.line};border-radius:10px;">
+        <tr>
+          <td style="padding:14px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">Order ID<br><span style="font-size:14px;color:${BRAND.ink};font-weight:700;">${order.id}</span></td>
+          <td align="right" style="padding:14px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${BRAND.muted};">Order total<br><span style="font-size:14px;color:${BRAND.ink};font-weight:700;">${total}</span></td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Reply to the message you received from our team, or contact Metalix Print support.</p>`
+  const html = renderEmailShell({ preheader: `Your invoice for order ${order.id}`, cardHtml, footerHtml })
+  const text = ['Your invoice', '', `Hi ${name}, here's a copy of your invoice for order ${order.id} — see the attached PDF.`, '', `Order ID: ${order.id}`, `Order total: ${total}`, "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
+  return { html, text, subject: `Invoice — Order ${order.id}` }
+}
+
+// Emails a PDF invoice to the customer on demand (admin-triggered), separate
+// from the automatic invoice that ships with the "Completed" status email.
+async function sendInvoiceEmail(order, invoiceBuffer) {
+  if (!order || !order.customer_email) return
+  const { html, text, subject } = invoiceEmailTemplate(order)
+  const attachments = [{ filename: `Invoice-${order.id}.pdf`, content: invoiceBuffer }]
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${order.customer_email}: ${subject} (+invoice attached)`)
+    return
+  }
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail, sendInvoiceEmail }
