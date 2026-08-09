@@ -1677,6 +1677,23 @@ app.post('/api/admin/orders/:id/send-invoice', requireAdmin, requireTab('orders'
   return res.json({ ok: true })
 })
 
+// Lets staff download the PDF invoice directly — the counterpart to
+// send-invoice above for orders with no customer email on file (or when
+// staff just want a local copy), so it isn't gated on that field like the
+// email route is.
+app.get('/api/admin/orders/:id/invoice.pdf', requireAdmin, requireTab('orders'), async (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  try {
+    const pdf = await buildInvoicePdf(order)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${order.id}.pdf"`)
+    return res.send(pdf)
+  } catch (err) {
+    return res.status(500).json({ error: 'invoice_generation_failed', message: err.message })
+  }
+})
+
 // Manual escape hatch: payment links have no client-driven confirmation path
 // (see /api/webhook's PAYMENT_LINK_EVENT handler) — if a webhook is ever
 // delayed or lost for any reason, this lets staff directly ask Cashfree

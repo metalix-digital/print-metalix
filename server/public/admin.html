@@ -1916,6 +1916,7 @@ function renderOrders(orders){
       '<div class="jobsheet-actions">' +
         '<button class="jobsheet-btn" data-action="print" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">🖨 Print Job Sheet</button>' +
         '<button class="jobsheet-btn" data-action="download" data-order="' + escHtml(o.id) + '" data-status="' + escHtml(o.order_status) + '">⬇ Download PDF</button>' +
+        '<button class="jobsheet-btn download-invoice-btn" data-order="' + escHtml(o.id) + '">⬇ Download Invoice</button>' +
         (o.customer_email
           ? '<button class="jobsheet-btn send-invoice-btn" data-order="' + escHtml(o.id) + '">✉ Send Invoice</button>'
           : '') +
@@ -2054,6 +2055,35 @@ function renderOrders(orders){
       }
     });
   });
+  body.querySelectorAll('.download-invoice-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Downloading…';
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order) + '/invoice.pdf');
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message || 'Could not download invoice');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Invoice-' + btn.dataset.order + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        if (err.message !== 'unauthorized') alert(err.message || 'Could not download invoice.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  });
   body.querySelectorAll('.recheck-payment-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -2078,7 +2108,7 @@ function renderOrders(orders){
       }
     });
   });
-  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn):not(.rollback-payment-btn):not(.send-invoice-btn)').forEach((btn) => {
+  body.querySelectorAll('.jobsheet-btn:not(.del-order-btn):not(.edit-order-btn):not(.payment-link-btn):not(.recheck-payment-btn):not(.rollback-payment-btn):not(.send-invoice-btn):not(.download-invoice-btn)').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       window.open('/jobsheet.html?order=' + encodeURIComponent(btn.dataset.order) + '&action=' + btn.dataset.action, '_blank');
