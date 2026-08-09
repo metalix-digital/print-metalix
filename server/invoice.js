@@ -233,7 +233,16 @@ async function buildInvoicePdf(order) {
     y -= 17
   }
   if (order.discount_amount) {
-    const discountLabel = order.discount_code ? `Discount (${order.discount_code})` : 'Discount'
+    // A staff-applied discount can carry a free-text reason instead of a
+    // coupon code (see resolveDiscountInput's allowAdHoc path) — that reason
+    // is exactly as "recorded" on the order as a code is, so it shouldn't
+    // silently disappear here just because there's no code to show instead.
+    const reason = order.discount_reason ? String(order.discount_reason).trim() : ''
+    const discountLabel = order.discount_code
+      ? `Discount (${order.discount_code})`
+      : reason
+        ? `Discount (${reason.length > 34 ? reason.slice(0, 31) + '...' : reason})`
+        : 'Discount'
     text(discountLabel, labelX, y, 10, font, MUTED)
     right('- ' + money(order.discount_amount), width - M, y, 10, font, GREEN)
     y -= 17
