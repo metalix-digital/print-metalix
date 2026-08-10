@@ -2946,6 +2946,7 @@ const LANDING_ROUTES = {
 // window.gtag() safely regardless of whether GTM itself is set up yet.
 function gtmSnippets(settings) {
   const gtmId = (settings.analytics || {}).gtmContainerId || ''
+  const ahrefsAnalytics = `<script src="https://analytics.ahrefs.com/analytics.js" data-key="1f3z2nF4BVju06mZIUFG3A" async></script>`
   const consentBoot = `<script>
 window.dataLayer = window.dataLayer || [];
 function gtag(){window.dataLayer.push(arguments);}
@@ -2953,9 +2954,9 @@ window.gtag = gtag;
 gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});
 (function(){try{var c=localStorage.getItem('metalix_cookie_consent');if(c==='granted'||c==='denied'){gtag('consent','update',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c});}}catch(e){}})();
 </script>`
-  if (!gtmId) return { head: consentBoot, noscript: '' }
+  if (!gtmId) return { head: ahrefsAnalytics + consentBoot, noscript: '' }
   const idAttr = escAttr(gtmId)
-  const head = consentBoot + `
+  const head = ahrefsAnalytics + consentBoot + `
 <!-- Google Tag Manager -->
 <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${idAttr}');</script>
 <!-- End Google Tag Manager -->`
