@@ -216,6 +216,17 @@ function payNowHtml(data){
   '</div>';
 }
 
+// Hits the public no-auth PDF endpoint in server.js (GET
+// /api/orders/:id/invoice.pdf) — same order-ID-as-credential trust model as
+// the rest of this page, and only ever serves once completed_at is set, so
+// this link is never shown (or usable) before it actually exists.
+function invoiceDownloadHtml(orderId){
+  return '<div class="card pay-now">' +
+    '<p class="pay-now-copy">Your invoice is ready.</p>' +
+    '<a href="/api/orders/' + encodeURIComponent(orderId) + '/invoice.pdf" class="feedback-submit" style="display:block;text-decoration:none;text-align:center;">🧾 Download Invoice</a>' +
+  '</div>';
+}
+
 function renderPaymentPill(data){
   const isCod = data.payment_method === 'cod';
   const isPaid = data.payment_status === 'paid';
@@ -356,6 +367,7 @@ async function loadStatus(){
     }
 
     if (data.completed) {
+      content.insertAdjacentHTML('beforeend', invoiceDownloadHtml(data.id));
       if (data.feedback_submitted) {
         // Keeps showing the Google review ask on every visit after
         // Completed, not just the single moment right after submitting —
