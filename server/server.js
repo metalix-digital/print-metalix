@@ -2849,7 +2849,7 @@ function isShopOpen() {
 // landing.html's #faq section — the JSON-LD must describe content that's
 // actually visible on the page, not just claims made in structured data.
 const FAQ_ITEMS = [
-  { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are ready within 3–4 hours of successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
+  { q: 'How long does printing and delivery take?', a: 'Most standard orders under 100 pages are printed and ready instantly after successful payment. Bulk orders — 100+ pages or many copies — may take longer, and we’ll give you a realistic estimate at checkout.' },
   { q: 'Which file formats can I upload?', a: 'PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), and photos (JPG/PNG). We convert and calculate your page count automatically, so there’s no need to export to PDF yourself first.' },
   { q: 'Do you deliver, or is it pickup only?', a: 'Both. Shop pickup is free. Home delivery is ₹__PRICE_DELIVERY_LOCAL__ within our local PIN code (122505), ₹__PRICE_DELIVERY_GURUGRAM__ elsewhere in Gurugram, and priced by distance if you’re outside Gurugram. Delivery is free on orders over ₹__PRICE_FREE_DELIVERY_THRESHOLD__. You can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.' },
   { q: 'What’s the difference between color and black & white pricing?', a: 'Color pages cost more per page than black & white. You can print a file entirely in black & white, entirely in color, or use auto-detect so only the pages that actually contain color are billed at the color rate.' },
@@ -2885,7 +2885,7 @@ function localBusinessJsonLd() {
     url: 'https://print.metalix.in/',
     logo: 'https://print.metalix.in/images/logo.svg',
     image: 'https://print.metalix.in/images/logo.svg',
-    description: 'Online document printing — upload your PDF, Word, or PPT, choose settings, and get prints delivered, usually within 3–4 hours.',
+    description: 'Online document printing — upload your PDF, Word, or PPT, choose settings, and get prints delivered instantly.',
     telephone: '+91-7042443143',
     address: {
       '@type': 'PostalAddress',
@@ -2918,7 +2918,7 @@ function localBusinessJsonLd() {
 const LANDING_ROUTES = {
   '/': {
     title: 'Metalix Print — Upload · Print · Deliver',
-    description: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
+    description: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — instantly.',
     keywords: 'print shop, online printing, document printing, Gurugram',
     canonical: 'https://print.metalix.in/',
     includeFaq: true,
@@ -3097,7 +3097,7 @@ function defaultPolicyBody(slug) {
       <h2>Refund timeline</h2>
       <p>Approved refunds are processed to your original payment method. Cashfree typically settles refunds within <strong>5–7 business days</strong>.</p>`
     case 'delivery':
-      return `<div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Choose instant (within 2 hrs) or a scheduled slot. Most orders are ready within 3–4 hours of payment.</p></div>
+      return `<div class="callout"><p><strong>TL;DR:</strong> Pickup is free, home delivery is ₹20 (local PIN 122505) or ₹30 elsewhere. Orders are printed and ready instantly after payment — choose instant delivery (within 2 hrs) or a scheduled slot.</p></div>
       <h2>Delivery options</h2>
       <p>We offer two ways to receive your prints:</p>
       <ul>
@@ -3105,7 +3105,7 @@ function defaultPolicyBody(slug) {
         <li><strong>Home delivery</strong> — ₹20 within our local PIN code (122505), ₹30 elsewhere within the city. We dispatch your order as soon as it's printed. At checkout you can also choose instant delivery (within 2 hours) or schedule a delivery slot for later.</li>
       </ul>
       <h2>Turnaround time</h2>
-      <p>Most standard orders (under 100 pages) are ready within <strong>3–4 hours</strong> of successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
+      <p>Most standard orders (under 100 pages) are printed and ready <strong>instantly</strong> after successful payment confirmation. Bulk orders (100+ pages or multiple copies) may take longer — we'll estimate the time at checkout.</p>
       <h2>Delivery area</h2>
       <p>Home delivery is currently available within Gurugram city limits. If your PIN code is outside our zone, we'll contact you to arrange shop pickup and refund the delivery charge.</p>
       <h2>Delays</h2>
@@ -3327,7 +3327,7 @@ function renderBlogPostContentSsr(post, articleHtml, canonicalUrl, otherPosts) {
     ) : '') +
     shareRowHtml(canonicalUrl, post.title, 'bottom') +
     renderRelatedPostsSsr(otherPosts) +
-    '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — usually within 3–4 hours.</p><a href="/order">Start your order →</a></div>'
+    '<div class="cta-card"><h3>Ready to print your documents?</h3><p>Upload a file, pick your settings, and get it delivered — instantly.</p><a href="/order">Start your order →</a></div>'
 }
 
 app.get('/blog/:slug', (req, res) => {

@@ -680,7 +680,7 @@ const DEFAULT_SITE_SETTINGS = {
   },
   seo: {
     metaTitle: 'Metalix Print — Upload · Print · Deliver',
-    metaDescription: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — usually within 3–4 hours.',
+    metaDescription: 'Upload your PDF, Word, or PPT file, pick your settings, and get it printed and delivered to your door — instantly.',
     keywords: 'print shop, online printing, document printing, Gurugram'
   },
   analytics: {
