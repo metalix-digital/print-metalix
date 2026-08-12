@@ -218,9 +218,11 @@ To reproduce a production-style run manually (from the repo root):
 npm run start:prod    # builds client/, then starts the server
 ```
 
-Typical underlying setup: the server runs behind a reverse proxy (see
-`deploy/nginx.conf.example`) and is kept alive by the `metalix` systemd service. Supply
-configuration through the environment rather than committing it.
+Typical underlying setup: the server runs behind a reverse proxy (Caddy, see
+`deploy/Caddyfile.example`; migrated from nginx on 2026-08-12 — `deploy/nginx.conf.example`
+is kept for reference/rollback) and is kept alive by the `metalix` systemd service. Caddy
+manages its own TLS cert (Let's Encrypt) automatically, so there's no certbot renewal
+timer to maintain. Supply configuration through the environment rather than committing it.
 
 ---
 
@@ -245,7 +247,7 @@ server/
                          track.html (order tracking + feedback), blog.html/blog-post.html,
                          jobsheet.html (printable job sheet), closed.html (shop-closed page),
                          logo, fonts, SEO files
-deploy/                 nginx + systemd unit examples
+deploy/                 Caddyfile + systemd unit examples (nginx.conf.example: pre-2026-08-12 config, kept for rollback)
 .github/workflows/      deploy.yml — automated deploy on push to main
 ```
 

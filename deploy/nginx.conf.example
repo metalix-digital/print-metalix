@@ -1,5 +1,7 @@
 # Reference nginx configuration for print.metalix.in
 # --------------------------------------------------
+# SUPERSEDED 2026-08-12: production now runs Caddy (see deploy/Caddyfile.example).
+# Kept here for rollback reference only.
 # The app already sets correct Cache-Control headers in Express (see server.js:
 # /fonts, /logo.*, and the hashed client-dist assets), and nginx passes proxied
 # response headers through unchanged, so those caches are already effective in
