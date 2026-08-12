@@ -5,6 +5,24 @@ const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const app = express()
 
+// GCP client libraries (Secret Manager, Cloud Storage, BigQuery) each try their
+// own credential resolution in the background. When no credentials are
+// available at all (only happens on a machine without `gcloud auth
+// application-default login` set up — never in production, where the VM's
+// attached service account always resolves) google-auth-library's internal
+// retry logic schedules its failure via setTimeout, detached from the promise
+// chain any of our own try/catch blocks are attached to, so it can't be
+// caught locally — it always crashes the whole process outright. Narrowly
+// filtered so only that specific, known-non-actionable error class is
+// swallowed; anything else still crashes the process as it should.
+process.on('unhandledRejection', (reason) => {
+  if (reason && reason.message && reason.message.includes('Could not load the default credentials')) {
+    console.error('[gcp-auth] ignoring unreachable credential-retry rejection (no ADC in this environment):', reason.message)
+    return
+  }
+  throw reason
+})
+
 // Payment webhook — registered before the global express.json() below on
 // purpose. It needs the raw request body to verify the signature; once
 // express.json() has parsed a request (it matches on Content-Type:

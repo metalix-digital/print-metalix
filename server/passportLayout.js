@@ -45,4 +45,4 @@ function computeGridLayout({ sheetWidthMm, sheetHeightMm, photoWidthMm, photoHei
   return { cols, rows, perSheet, numSheets, sheets, photoWidthMm, photoHeightMm, sheetWidthMm, sheetHeightMm }
 }
 
-module.exports = { computeGridLayout, SHEET_MARGIN_MM, GUTTER_MM }
+module.exports = { computeGridLayout }

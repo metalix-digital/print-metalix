@@ -46,4 +46,4 @@ function distanceKm(fromPincode, toPincode) {
   return Math.round(haversineKm(from[0], from[1], to[0], to[1]) * 10) / 10
 }
 
-module.exports = { classifyZone, distanceKm, normalizePincode }
+module.exports = { classifyZone, distanceKm }
