@@ -1065,14 +1065,8 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
-        <label>Order type</label>
-        <div class="seg-row">
-          <label class="seg-opt"><input type="radio" name="noProductType" value="document" checked /><span>Documents</span></label>
-          <label class="seg-opt"><input type="radio" name="noProductType" value="passport-photo" /><span>Passport Photo</span></label>
-          <label class="seg-opt"><input type="radio" name="noProductType" value="stationery" /><span>Stationery</span></label>
-          <label class="seg-opt"><input type="radio" name="noProductType" value="stamp" /><span>Custom Stamp</span></label>
-        </div>
-        <div class="no-file-note" style="margin-top:6px;">Applies to the whole order — this can't be mixed with another type here (e.g. a document + a stamp together). For a mix, place separate orders, or use Additional Services below for small extras.</div>
+        <label>Add items to this order</label>
+        <div class="no-file-note">Add as many of each as you like — documents, passport photos, stationery, and stamps can all be mixed in one order.</div>
       </div>
 
       <div class="field branch-col">
@@ -1094,7 +1088,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
       </div>
 
-      <div class="field hidden" id="noPassportSection">
+      <div class="field" id="noPassportSection">
         <label>Passport photo packs</label>
         <div class="no-file-controls">
           <button class="btn-file" id="noPassportAddBtn" type="button">+ Add pack</button>
@@ -1108,7 +1102,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
       </div>
 
-      <div class="field hidden" id="noStationerySection">
+      <div class="field" id="noStationerySection">
         <label>Stationery products</label>
         <div class="no-file-controls">
           <button class="btn-file" id="noStationeryAddBtn" type="button">+ Add product</button>
@@ -1122,7 +1116,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         </div>
       </div>
 
-      <div class="field hidden" id="noStampSection">
+      <div class="field" id="noStampSection">
         <label>Custom stamps</label>
         <div class="no-file-controls">
           <button class="btn-file" id="noStampAddBtn" type="button">+ Add stamp</button>
@@ -1232,6 +1226,8 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="order-breakdown" id="noBreakdown">
         <div class="bd-title">Order summary</div>
         <div class="bd-row"><span>Print cost</span><span id="noBdPrint">₹0</span></div>
+        <div class="bd-row hidden" id="noBdStationeryRow"><span>Stationery</span><span id="noBdStationery">₹0</span></div>
+        <div class="bd-row hidden" id="noBdStampRow"><span>Custom Stamps</span><span id="noBdStamp">₹0</span></div>
         <div class="bd-row hidden" id="noBdServicesRow"><span>Additional services</span><span id="noBdServices">₹0</span></div>
         <div class="bd-row"><span>Handling charge</span><span id="noBdHandling">₹0</span></div>
         <div class="bd-row"><span>Delivery charge</span><span id="noBdDelivery">₹0</span></div>
@@ -5771,14 +5767,9 @@ document.getElementById('noStampList').addEventListener('input', (e) => {
   }
 });
 
-document.querySelectorAll('input[name=noProductType]').forEach((r) => r.addEventListener('change', (e) => {
-  const v = e.target.value;
-  document.getElementById('noDocumentSection').classList.toggle('hidden', v !== 'document');
-  document.getElementById('noPassportSection').classList.toggle('hidden', v !== 'passport-photo');
-  document.getElementById('noStationerySection').classList.toggle('hidden', v !== 'stationery');
-  document.getElementById('noStampSection').classList.toggle('hidden', v !== 'stamp');
-  recalcNoOrder();
-}));
+// All four item types (Documents/Passport Photo/Stationery/Custom Stamp) are
+// always addable side by side now — see recalcNoOrder() below, which sums
+// every category at once instead of gating on a single selected type.
 
 // One "print line" = a Page type (a flattened page-size/paper/color/side
 // rate from noQuickRates) × a typed "Number of prints" — the price is
@@ -5977,32 +5968,41 @@ function noCalcDiscountAmount(subtotal){
 }
 function recalcNoOrder(){
   if (!noPricingConfig || !noPricingConfig.pageSizes) return;
-  const productType = document.querySelector('input[name=noProductType]:checked').value;
+  // Every category is summed at once (never gated on a single "order type"
+  // anymore) — same three cost buckets the real order breakdown uses
+  // (print_cost covers documents+passport together, stationery_cost and
+  // stamp_cost are separate — see orderBreakdownHtml/pricing.js), so this
+  // preview's rows and labels match what the created order will actually show.
   let printCost = 0;
-  if (productType === 'document') {
-    noQuickLines.forEach((line) => { printCost += noQuickLineAmount(line); });
-  } else if (productType === 'passport-photo') {
-    const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
-    noPassportItems.forEach((item) => { const t = tiers.find((p) => p.qty === item.packQty); printCost += t ? t.price : 0; });
-  } else if (productType === 'stationery') {
-    noStationeryLines.forEach((line) => { printCost += noStationeryLineAmount(line); });
-  } else if (productType === 'stamp') {
-    noStampLines.forEach((line) => { printCost += noStampLineAmount(line); });
-  }
+  noQuickLines.forEach((line) => { printCost += noQuickLineAmount(line); });
+  const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
+  noPassportItems.forEach((item) => { const t = tiers.find((p) => p.qty === item.packQty); printCost += t ? t.price : 0; });
   printCost = Math.round(printCost);
+  let stationeryCost = 0;
+  noStationeryLines.forEach((line) => { stationeryCost += noStationeryLineAmount(line); });
+  stationeryCost = Math.round(stationeryCost);
+  let stampCost = 0;
+  noStampLines.forEach((line) => { stampCost += noStampLineAmount(line); });
+  stampCost = Math.round(stampCost);
   let servicesCost = 0;
   noServiceLines.forEach((line) => { servicesCost += noServiceLineAmount(line); });
   servicesCost = Math.round(servicesCost);
   const handlingCharge = Number(noPricingConfig.handlingCharge) || 0;
-  const preDeliveryTotal = printCost + servicesCost + handlingCharge;
+  const preDeliveryTotal = printCost + stationeryCost + stampCost + servicesCost + handlingCharge;
   const deliveryCharge = noResolveDeliveryCharge(preDeliveryTotal);
-  const subtotal = printCost + servicesCost + handlingCharge + deliveryCharge;
+  const subtotal = printCost + stationeryCost + stampCost + servicesCost + handlingCharge + deliveryCharge;
   const discountAmount = noCalcDiscountAmount(subtotal);
   const taxable = subtotal - discountAmount;
   const gstAmount = Math.round(taxable * (noPricingConfig.gstPercent || 0) / 100);
   const totalAmount = taxable + gstAmount;
 
   document.getElementById('noBdPrint').textContent = '₹' + printCost;
+  const stRow = document.getElementById('noBdStationeryRow');
+  if (stationeryCost > 0) { stRow.classList.remove('hidden'); document.getElementById('noBdStationery').textContent = '₹' + stationeryCost; }
+  else stRow.classList.add('hidden');
+  const smRow = document.getElementById('noBdStampRow');
+  if (stampCost > 0) { smRow.classList.remove('hidden'); document.getElementById('noBdStamp').textContent = '₹' + stampCost; }
+  else smRow.classList.add('hidden');
   const svcRow = document.getElementById('noBdServicesRow');
   if (servicesCost > 0) { svcRow.classList.remove('hidden'); document.getElementById('noBdServices').textContent = '₹' + servicesCost; }
   else svcRow.classList.add('hidden');
@@ -6053,11 +6053,6 @@ async function openNewOrderModal(){
   renderNoStationeryTable();
   noStampLines = [];
   renderNoStampList();
-  document.querySelector('input[name=noProductType][value=document]').checked = true;
-  document.getElementById('noDocumentSection').classList.remove('hidden');
-  document.getElementById('noPassportSection').classList.add('hidden');
-  document.getElementById('noStationerySection').classList.add('hidden');
-  document.getElementById('noStampSection').classList.add('hidden');
   document.getElementById('noCustomerSearch').value = '';
   document.getElementById('noCustomerResults').classList.add('hidden');
   document.getElementById('noCustomerResults').innerHTML = '';
@@ -6147,37 +6142,21 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
   const customerEmail = document.getElementById('noCustomerEmail').value.trim();
   const deliveryMethod = document.querySelector('input[name=noDelivery]:checked').value;
   const paymentChoice = document.querySelector('input[name=noPayment]:checked').value;
-  const productType = document.querySelector('input[name=noProductType]:checked').value;
 
   if (!customerName || !/^\d{10}$/.test(customerMobile)) {
     msg.textContent = 'Enter a customer name and a valid 10-digit mobile number.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
-  if (productType === 'document' && !noQuickLines.length) {
-    msg.textContent = 'Add at least one print line.';
+  // Every category is addable at once now — the order just needs at least
+  // one item from any of them (documents/passport/stationery/stamps/services).
+  if (!noQuickLines.length && !noPassportItems.length && !noStationeryLines.length && !noStampLines.length && !noServiceLines.length) {
+    msg.textContent = 'Add at least one item to the order.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
-  if (productType === 'document' && noQuickLines.some((l) => !noQuickRates[l.quickRateIdx])) {
+  if (noQuickLines.some((l) => !noQuickRates[l.quickRateIdx])) {
     msg.textContent = 'Every print line needs a page type — check Pricing has at least one paper type configured.';
-    msg.className = 'save-message error'; msg.classList.remove('hidden');
-    return;
-  }
-  // A passport-photo pack's photo is optional here (see noPassportSection's
-  // note) — only the size+qty selection is required, not an uploaded file.
-  if (productType === 'passport-photo' && !noPassportItems.length) {
-    msg.textContent = 'Add at least one passport photo pack.';
-    msg.className = 'save-message error'; msg.classList.remove('hidden');
-    return;
-  }
-  if (productType === 'stationery' && !noStationeryLines.length) {
-    msg.textContent = 'Add at least one stationery product.';
-    msg.className = 'save-message error'; msg.classList.remove('hidden');
-    return;
-  }
-  if (productType === 'stamp' && !noStampLines.length) {
-    msg.textContent = 'Add at least one stamp.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
@@ -6185,7 +6164,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
   // validation (see buildPricedOrderFiles's stamp branch) — staff can leave
   // text blank only if they're going to attach artwork instead, which this
   // condensed admin form doesn't offer, so text is effectively required here.
-  if (productType === 'stamp' && noStampLines.some((l) => !l.textLines.length)) {
+  if (noStampLines.some((l) => !l.textLines.length)) {
     msg.textContent = 'Every stamp needs at least one line of text.';
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
@@ -6214,36 +6193,36 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     return;
   }
 
-  let baseFiles = [];
-  if (productType === 'document') {
-    baseFiles = noQuickLines.map((line) => {
-      const rate = noQuickRates[line.quickRateIdx];
-      return {
-        productType: 'document',
-        fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
-        pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
-        printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
-      };
-    });
-  } else if (productType === 'passport-photo') {
-    baseFiles = noPassportItems.map((item) => ({
-      productType: 'passport-photo',
-      fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
-      sizePresetId: item.sizePresetId, packQty: item.packQty
-    }));
-  } else if (productType === 'stationery') {
-    baseFiles = noStationeryLines.map((line) => {
-      const p = noProductCatalog[line.productIdx];
-      return { productType: 'stationery', productId: p ? p.id : undefined, quantity: line.quantity };
-    });
-  } else if (productType === 'stamp') {
-    baseFiles = noStampLines.map((line) => ({
-      productType: 'stamp',
-      stampTypeId: line.stampTypeId, stampSizeId: line.stampSizeId,
-      textLines: line.textLines, logoFileId: line.logoFileId || undefined,
-      quantity: line.quantity
-    }));
-  }
+  // Every category concatenates into one files[] array — the server derives
+  // each line's handling entirely from its own productType (see
+  // buildPricedOrderFiles), so a single request mixing documents, passport
+  // photos, stationery, and stamps together is already fully supported and
+  // comes back as summaryProductType: 'mixed', same as a customer's cart.
+  const documentFiles = noQuickLines.map((line) => {
+    const rate = noQuickRates[line.quickRateIdx];
+    return {
+      productType: 'document',
+      fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
+      pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
+      printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
+    };
+  });
+  const passportFiles = noPassportItems.map((item) => ({
+    productType: 'passport-photo',
+    fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
+    sizePresetId: item.sizePresetId, packQty: item.packQty
+  }));
+  const stationeryFiles = noStationeryLines.map((line) => {
+    const p = noProductCatalog[line.productIdx];
+    return { productType: 'stationery', productId: p ? p.id : undefined, quantity: line.quantity };
+  });
+  const stampFiles = noStampLines.map((line) => ({
+    productType: 'stamp',
+    stampTypeId: line.stampTypeId, stampSizeId: line.stampSizeId,
+    textLines: line.textLines, logoFileId: line.logoFileId || undefined,
+    quantity: line.quantity
+  }));
+  const baseFiles = documentFiles.concat(passportFiles, stationeryFiles, stampFiles);
   const serviceFiles = noServiceLines.map((line) => {
     const svc = noServiceCatalog[line.serviceIdx];
     return { productType: 'service', serviceId: svc ? svc.id : undefined, quantity: line.quantity };
