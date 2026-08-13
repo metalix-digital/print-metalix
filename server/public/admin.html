@@ -479,6 +479,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .no-file-table select,.no-file-table input{width:100%;border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);}
 .no-file-table .no-file-remove{border:none;background:none;color:var(--ink3);cursor:pointer;font-size:15px;}
 .no-file-table .no-file-remove:hover{color:var(--red,#c0392b);}
+.no-stamp-card{border:1.5px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--card);}
+.no-stamp-card .field-grid{margin-bottom:8px;}
+.no-stamp-card textarea{width:100%;border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);resize:vertical;}
+.no-stamp-card-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12.5px;}
+.no-stamp-card-foot b{font-size:13.5px;}
 .blog-cover-row{display:flex;gap:14px;align-items:flex-start;}
 .blog-cover-preview{width:140px;height:80px;flex-shrink:0;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg);}
 .blog-cover-preview img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -1064,7 +1069,10 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <div class="seg-row">
           <label class="seg-opt"><input type="radio" name="noProductType" value="document" checked /><span>Documents</span></label>
           <label class="seg-opt"><input type="radio" name="noProductType" value="passport-photo" /><span>Passport Photo</span></label>
+          <label class="seg-opt"><input type="radio" name="noProductType" value="stationery" /><span>Stationery</span></label>
+          <label class="seg-opt"><input type="radio" name="noProductType" value="stamp" /><span>Custom Stamp</span></label>
         </div>
+        <div class="no-file-note" style="margin-top:6px;">Applies to the whole order — this can't be mixed with another type here (e.g. a document + a stamp together). For a mix, place separate orders, or use Additional Services below for small extras.</div>
       </div>
 
       <div class="field branch-col">
@@ -1098,6 +1106,29 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <tbody id="noPassportTableBody"></tbody>
         </table>
         </div>
+      </div>
+
+      <div class="field hidden" id="noStationerySection">
+        <label>Stationery products</label>
+        <div class="no-file-controls">
+          <button class="btn-file" id="noStationeryAddBtn" type="button">+ Add product</button>
+          <span class="no-file-note">Priced and stock-checked against the live catalog — same as a customer order.</span>
+        </div>
+        <div class="table-scroll">
+        <table class="no-file-table hidden" id="noStationeryTable">
+          <thead><tr><th>Product</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+          <tbody id="noStationeryTableBody"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="field hidden" id="noStampSection">
+        <label>Custom stamps</label>
+        <div class="no-file-controls">
+          <button class="btn-file" id="noStampAddBtn" type="button">+ Add stamp</button>
+          <span class="no-file-note">One card per stamp — text is one line per row, up to 6 lines. Logo is optional.</span>
+        </div>
+        <div id="noStampList"></div>
       </div>
 
       <div class="field">
@@ -5428,7 +5459,7 @@ function noServiceRowHtml(line, idx){
   return '<tr data-idx="' + idx + '">' +
     '<td><select class="ns-service" data-idx="' + idx + '">' + options + '</select></td>' +
     '<td><input type="number" class="ns-qty" data-idx="' + idx + '" min="1" max="999" value="' + line.quantity + '" /></td>' +
-    '<td>₹' + noServiceLineAmount(line) + '</td>' +
+    '<td class="ns-amount">₹' + noServiceLineAmount(line) + '</td>' +
     '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
   '</tr>';
 }
@@ -5460,6 +5491,17 @@ document.getElementById('noServiceTableBody').addEventListener('change', (e) => 
   if (e.target.classList.contains('ns-service')) line.serviceIdx = Number(e.target.value);
   if (e.target.classList.contains('ns-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
   renderNoServiceTable();
+  recalcNoOrder();
+});
+// Live total while typing — see the matching comment on noQuickTableBody's
+// 'input' listener above for why this doesn't just call renderNoServiceTable().
+document.getElementById('noServiceTableBody').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('ns-qty')) return;
+  const row = e.target.closest('tr');
+  const line = noServiceLines[Number(row.dataset.idx)];
+  if (!line) return;
+  line.quantity = Number(e.target.value) || 0;
+  row.querySelector('.ns-amount').textContent = '₹' + noServiceLineAmount(line);
   recalcNoOrder();
 });
 
@@ -5545,10 +5587,196 @@ document.getElementById('noPassportTableBody').addEventListener('change', (e) =>
   renderNoPassportTable();
   recalcNoOrder();
 });
+// Stationery — priced and stock-checked server-side against the live
+// catalog (see buildPricedOrderFiles's stationery branch), same as a
+// customer order; only productId+quantity are sent, name/price/sku are
+// always resolved from the live product row. noProductCatalog is fetched
+// fresh each time the modal opens (see openNewOrderModal), active only.
+let noProductCatalog = []; // [{ id, name, sku, price, stock_qty }]
+let noStationeryLines = []; // [{ productIdx, quantity }]
+function noStationeryLineAmount(line){
+  const p = noProductCatalog[line.productIdx];
+  return p ? Math.round(p.price * (line.quantity || 0)) : 0;
+}
+function noStationeryRowHtml(line, idx){
+  const options = noProductCatalog.map((p, i) => '<option value="' + i + '"' + (i === line.productIdx ? ' selected' : '') + '>' + escHtml(p.name) + ' (SKU ' + escHtml(p.sku) + ') — ₹' + p.price + ' · ' + p.stock_qty + ' in stock</option>').join('');
+  return '<tr data-idx="' + idx + '">' +
+    '<td><select class="nst-product" data-idx="' + idx + '">' + options + '</select></td>' +
+    '<td><input type="number" class="nst-qty" data-idx="' + idx + '" min="1" max="999" value="' + line.quantity + '" /></td>' +
+    '<td class="nst-amount">₹' + noStationeryLineAmount(line) + '</td>' +
+    '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
+  '</tr>';
+}
+function renderNoStationeryTable(){
+  const table = document.getElementById('noStationeryTable');
+  const body = document.getElementById('noStationeryTableBody');
+  if (!noStationeryLines.length) { table.classList.add('hidden'); body.innerHTML = ''; return; }
+  table.classList.remove('hidden');
+  body.innerHTML = noStationeryLines.map((l, i) => noStationeryRowHtml(l, i)).join('');
+}
+document.getElementById('noStationeryAddBtn').addEventListener('click', () => {
+  if (!noProductCatalog.length) { alert('No stationery products are active yet — add one in Products first.'); return; }
+  noStationeryLines.push({ productIdx: 0, quantity: 1 });
+  renderNoStationeryTable();
+  recalcNoOrder();
+});
+document.getElementById('noStationeryTableBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove]');
+  if (!btn) return;
+  noStationeryLines.splice(Number(btn.dataset.remove), 1);
+  renderNoStationeryTable();
+  recalcNoOrder();
+});
+document.getElementById('noStationeryTableBody').addEventListener('change', (e) => {
+  const row = e.target.closest('tr');
+  if (!row) return;
+  const line = noStationeryLines[Number(row.dataset.idx)];
+  if (!line) return;
+  if (e.target.classList.contains('nst-product')) line.productIdx = Number(e.target.value);
+  if (e.target.classList.contains('nst-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+  renderNoStationeryTable();
+  recalcNoOrder();
+});
+// Live total while typing — see the matching comment on noQuickTableBody's
+// 'input' listener above for why this doesn't just call renderNoStationeryTable().
+document.getElementById('noStationeryTableBody').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('nst-qty')) return;
+  const row = e.target.closest('tr');
+  const line = noStationeryLines[Number(row.dataset.idx)];
+  if (!line) return;
+  line.quantity = Number(e.target.value) || 0;
+  row.querySelector('.nst-amount').textContent = '₹' + noStationeryLineAmount(line);
+  recalcNoOrder();
+});
+
+// Custom stamps — one card per stamp (more fields than fit a table row: type,
+// size, up to 6 text lines, optional logo). Pricing mirrors stamps.html's
+// computePrice() and server/pricing.js's stamp branch exactly: base + size
+// modifier + logo price, flat regardless of qty, plus extraQuantityPrice ×
+// (qty-1) for extra physical copies of the same design.
+let noStampLines = []; // [{ stampTypeId, stampSizeId, textLines, logoFileId, logoFileName, logoUploading, quantity }]
+function noStampTypeOptionsHtml(selected){
+  return ((noPricingConfig.stamps || {}).types || []).filter((t) => t.active)
+    .map((t) => '<option value="' + t.id + '"' + (t.id === selected ? ' selected' : '') + '>' + escHtml(t.label) + ' — ₹' + t.basePrice + '</option>').join('');
+}
+function noStampSizeOptionsHtml(selected){
+  return ((noPricingConfig.stamps || {}).sizes || []).filter((s) => s.active)
+    .map((s) => '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escHtml(s.label) + (s.priceModifier ? ' (' + (s.priceModifier > 0 ? '+' : '−') + '₹' + Math.abs(s.priceModifier) + ')' : '') + '</option>').join('');
+}
+function noStampLineAmount(line){
+  const stampConfig = noPricingConfig.stamps || {};
+  const type = (stampConfig.types || []).find((t) => t.id === line.stampTypeId);
+  const size = (stampConfig.sizes || []).find((s) => s.id === line.stampSizeId);
+  const base = type ? Number(type.basePrice) || 0 : 0;
+  const sizeMod = size ? Number(size.priceModifier) || 0 : 0;
+  const logoPrice = line.logoFileId ? (Number(stampConfig.logoPrice) || 0) : 0;
+  const extraQty = (Number(stampConfig.extraQuantityPrice) || 0) * Math.max(0, (line.quantity || 1) - 1);
+  return Math.round(base + sizeMod + logoPrice + extraQty);
+}
+function noStampCardHtml(line, idx){
+  return '<div class="no-stamp-card" data-idx="' + idx + '">' +
+    '<div class="field-grid">' +
+      '<div class="field"><label>Type</label><select class="nsm-type" data-idx="' + idx + '">' + noStampTypeOptionsHtml(line.stampTypeId) + '</select></div>' +
+      '<div class="field"><label>Size</label><select class="nsm-size" data-idx="' + idx + '">' + noStampSizeOptionsHtml(line.stampSizeId) + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>Text <span class="opt">(one line per row, up to 6)</span></label><textarea class="nsm-text" data-idx="' + idx + '" rows="2" maxlength="400">' + escHtml(line.textLines.join('\n')) + '</textarea></div>' +
+    '<div class="field-grid">' +
+      '<div class="field"><label>Logo <span class="opt">(optional)</span></label>' +
+        (line.logoFileId
+          ? '<span class="no-file-note">' + escHtml(line.logoFileName || 'Attached') + ' <button type="button" class="btn-file nsm-logo-remove" data-idx="' + idx + '" style="padding:3px 8px;margin-left:6px;">✕</button></span>'
+          : '<button type="button" class="btn-file nsm-logo-attach" data-idx="' + idx + '">' + (line.logoUploading ? 'Uploading…' : 'Attach logo') + '</button>') +
+      '</div>' +
+      '<div class="field"><label>Quantity</label><input type="number" class="nsm-qty" data-idx="' + idx + '" min="1" max="999" value="' + line.quantity + '" /></div>' +
+    '</div>' +
+    '<div class="no-stamp-card-foot"><b>₹' + noStampLineAmount(line) + '</b><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕ Remove</button></div>' +
+  '</div>';
+}
+function renderNoStampList(){
+  document.getElementById('noStampList').innerHTML = noStampLines.map((l, i) => noStampCardHtml(l, i)).join('');
+}
+document.getElementById('noStampAddBtn').addEventListener('click', () => {
+  const types = ((noPricingConfig.stamps || {}).types || []).filter((t) => t.active);
+  const sizes = ((noPricingConfig.stamps || {}).sizes || []).filter((s) => s.active);
+  if (!types.length || !sizes.length) { alert('No stamp types/sizes are active yet — configure them in Stamp Settings first.'); return; }
+  noStampLines.push({ stampTypeId: types[0].id, stampSizeId: sizes[0].id, textLines: [''], logoFileId: null, logoFileName: null, logoUploading: false, quantity: 1 });
+  renderNoStampList();
+  recalcNoOrder();
+});
+document.getElementById('noStampList').addEventListener('click', (e) => {
+  const removeBtn = e.target.closest('[data-remove]');
+  if (removeBtn) { noStampLines.splice(Number(removeBtn.dataset.remove), 1); renderNoStampList(); recalcNoOrder(); return; }
+  const logoRemoveBtn = e.target.closest('.nsm-logo-remove');
+  if (logoRemoveBtn) {
+    const line = noStampLines[Number(logoRemoveBtn.dataset.idx)];
+    if (line) { line.logoFileId = null; line.logoFileName = null; renderNoStampList(); recalcNoOrder(); }
+    return;
+  }
+  const attachBtn = e.target.closest('.nsm-logo-attach');
+  if (!attachBtn) return;
+  const idx = Number(attachBtn.dataset.idx);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+  input.addEventListener('change', async () => {
+    if (!input.files || !input.files.length) return;
+    const line = noStampLines[idx];
+    if (!line) return;
+    line.logoUploading = true;
+    renderNoStampList();
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+      const res = await fetch('/api/stamp-assets/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Upload failed');
+      line.logoFileId = data.fileId;
+      line.logoFileName = data.fileName;
+    } catch (err) {
+      alert(err.message || 'Upload failed');
+    } finally {
+      line.logoUploading = false;
+      renderNoStampList();
+      recalcNoOrder();
+    }
+  });
+  input.click();
+});
+document.getElementById('noStampList').addEventListener('change', (e) => {
+  const card = e.target.closest('.no-stamp-card');
+  if (!card) return;
+  const line = noStampLines[Number(card.dataset.idx)];
+  if (!line) return;
+  if (e.target.classList.contains('nsm-type')) line.stampTypeId = e.target.value;
+  if (e.target.classList.contains('nsm-size')) line.stampSizeId = e.target.value;
+  if (e.target.classList.contains('nsm-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+  if (e.target.classList.contains('nsm-text')) {
+    line.textLines = e.target.value.split('\n').map((s) => s.trim().slice(0, 60)).filter(Boolean).slice(0, 6);
+    return; // typing shouldn't re-render and steal focus — amount still updates via recalc below
+  }
+  renderNoStampList();
+  recalcNoOrder();
+});
+document.getElementById('noStampList').addEventListener('input', (e) => {
+  if (e.target.classList.contains('nsm-text')) {
+    recalcNoOrder(); // live total while typing, without re-rendering the textarea mid-keystroke
+    return;
+  }
+  if (e.target.classList.contains('nsm-qty')) {
+    const card = e.target.closest('.no-stamp-card');
+    const line = noStampLines[Number(card.dataset.idx)];
+    if (!line) return;
+    line.quantity = Number(e.target.value) || 0;
+    card.querySelector('.no-stamp-card-foot b').textContent = '₹' + noStampLineAmount(line);
+    recalcNoOrder();
+  }
+});
+
 document.querySelectorAll('input[name=noProductType]').forEach((r) => r.addEventListener('change', (e) => {
-  const isPassport = e.target.value === 'passport-photo';
-  document.getElementById('noDocumentSection').classList.toggle('hidden', isPassport);
-  document.getElementById('noPassportSection').classList.toggle('hidden', !isPassport);
+  const v = e.target.value;
+  document.getElementById('noDocumentSection').classList.toggle('hidden', v !== 'document');
+  document.getElementById('noPassportSection').classList.toggle('hidden', v !== 'passport-photo');
+  document.getElementById('noStationerySection').classList.toggle('hidden', v !== 'stationery');
+  document.getElementById('noStampSection').classList.toggle('hidden', v !== 'stamp');
   recalcNoOrder();
 }));
 
@@ -5565,7 +5793,7 @@ function noQuickLineRowHtml(line, idx){
     '<td>' + (line.fileId
       ? escHtml(line.fileName || 'Attached')
       : '<button type="button" class="btn-file nq-attach" data-idx="' + idx + '">Attach</button>') + '</td>' +
-    '<td>₹' + noQuickLineAmount(line) + '</td>' +
+    '<td class="nq-amount">₹' + noQuickLineAmount(line) + '</td>' +
     '<td><button class="no-file-remove" type="button" data-remove="' + idx + '" title="Remove">✕</button></td>' +
   '</tr>';
 }
@@ -5614,6 +5842,19 @@ document.getElementById('noQuickTableBody').addEventListener('change', (e) => {
   if (e.target.classList.contains('nq-rate')) line.quickRateIdx = Number(e.target.value);
   if (e.target.classList.contains('nq-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
   renderNoQuickTable();
+  recalcNoOrder();
+});
+// Live total while typing a quantity — 'change' above only fires on blur,
+// which used to leave the amount looking stale until you clicked away. This
+// updates just the one cell (never the whole row) so an in-progress keystroke
+// never loses focus/cursor position the way a full re-render would.
+document.getElementById('noQuickTableBody').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('nq-qty')) return;
+  const row = e.target.closest('tr');
+  const line = noQuickLines[Number(row.dataset.idx)];
+  if (!line) return;
+  line.quantity = Number(e.target.value) || 0;
+  row.querySelector('.nq-amount').textContent = '₹' + noQuickLineAmount(line);
   recalcNoOrder();
 });
 
@@ -5740,9 +5981,13 @@ function recalcNoOrder(){
   let printCost = 0;
   if (productType === 'document') {
     noQuickLines.forEach((line) => { printCost += noQuickLineAmount(line); });
-  } else {
+  } else if (productType === 'passport-photo') {
     const tiers = (noPricingConfig.passportPhotos || {}).packPrices || [];
     noPassportItems.forEach((item) => { const t = tiers.find((p) => p.qty === item.packQty); printCost += t ? t.price : 0; });
+  } else if (productType === 'stationery') {
+    noStationeryLines.forEach((line) => { printCost += noStationeryLineAmount(line); });
+  } else if (productType === 'stamp') {
+    noStampLines.forEach((line) => { printCost += noStampLineAmount(line); });
   }
   printCost = Math.round(printCost);
   let servicesCost = 0;
@@ -5804,9 +6049,15 @@ async function openNewOrderModal(){
   renderNoQuickTable();
   noPassportItems = [];
   renderNoPassportTable();
+  noStationeryLines = [];
+  renderNoStationeryTable();
+  noStampLines = [];
+  renderNoStampList();
   document.querySelector('input[name=noProductType][value=document]').checked = true;
   document.getElementById('noDocumentSection').classList.remove('hidden');
   document.getElementById('noPassportSection').classList.add('hidden');
+  document.getElementById('noStationerySection').classList.add('hidden');
+  document.getElementById('noStampSection').classList.add('hidden');
   document.getElementById('noCustomerSearch').value = '';
   document.getElementById('noCustomerResults').classList.add('hidden');
   document.getElementById('noCustomerResults').innerHTML = '';
@@ -5847,6 +6098,13 @@ async function openNewOrderModal(){
   } catch (e) { /* keep the default option */ }
   noServiceLines = [];
   renderNoServiceTable();
+  // Best-effort, same as the customers-cache fetch below — a branch admin
+  // without Products-tab access just won't see any stationery options.
+  try {
+    const res = await adminFetch('/api/admin/products');
+    const data = await res.json();
+    noProductCatalog = (res.ok && Array.isArray(data.products) ? data.products : []).filter((p) => p.active);
+  } catch (e) { noProductCatalog = []; }
   recalcNoOrder();
   // Best-effort — a branch admin without Customers-tab access simply won't
   // get autofill, never blocks order creation either way.
@@ -5913,6 +6171,25 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     msg.className = 'save-message error'; msg.classList.remove('hidden');
     return;
   }
+  if (productType === 'stationery' && !noStationeryLines.length) {
+    msg.textContent = 'Add at least one stationery product.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  if (productType === 'stamp' && !noStampLines.length) {
+    msg.textContent = 'Add at least one stamp.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
+  // Same "text or your own design" rule as the customer wizard/server
+  // validation (see buildPricedOrderFiles's stamp branch) — staff can leave
+  // text blank only if they're going to attach artwork instead, which this
+  // condensed admin form doesn't offer, so text is effectively required here.
+  if (productType === 'stamp' && noStampLines.some((l) => !l.textLines.length)) {
+    msg.textContent = 'Every stamp needs at least one line of text.';
+    msg.className = 'save-message error'; msg.classList.remove('hidden');
+    return;
+  }
   const deliveryAddress = document.getElementById('noAddrLine').value.trim();
   const deliveryCity = document.getElementById('noAddrCity').value.trim();
   const deliveryState = document.getElementById('noAddrState').value.trim();
@@ -5937,21 +6214,36 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
     return;
   }
 
-  const baseFiles = productType === 'document'
-    ? noQuickLines.map((line) => {
-        const rate = noQuickRates[line.quickRateIdx];
-        return {
-          productType: 'document',
-          fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
-          pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
-          printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
-        };
-      })
-    : noPassportItems.map((item) => ({
-        productType: 'passport-photo',
-        fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
-        sizePresetId: item.sizePresetId, packQty: item.packQty
-      }));
+  let baseFiles = [];
+  if (productType === 'document') {
+    baseFiles = noQuickLines.map((line) => {
+      const rate = noQuickRates[line.quickRateIdx];
+      return {
+        productType: 'document',
+        fileId: line.fileId || undefined, fileName: line.fileName || rate.label, fileType: line.fileType || undefined, fileSize: line.fileSize || undefined,
+        pageCount: 1, colorPageCount: rate.printMode === 'color' ? 1 : 0,
+        printMode: rate.printMode, printSide: rate.printSide, pageSize: rate.pageSize, paperType: rate.paperType, copies: line.quantity
+      };
+    });
+  } else if (productType === 'passport-photo') {
+    baseFiles = noPassportItems.map((item) => ({
+      productType: 'passport-photo',
+      fileId: item.fileId, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize,
+      sizePresetId: item.sizePresetId, packQty: item.packQty
+    }));
+  } else if (productType === 'stationery') {
+    baseFiles = noStationeryLines.map((line) => {
+      const p = noProductCatalog[line.productIdx];
+      return { productType: 'stationery', productId: p ? p.id : undefined, quantity: line.quantity };
+    });
+  } else if (productType === 'stamp') {
+    baseFiles = noStampLines.map((line) => ({
+      productType: 'stamp',
+      stampTypeId: line.stampTypeId, stampSizeId: line.stampSizeId,
+      textLines: line.textLines, logoFileId: line.logoFileId || undefined,
+      quantity: line.quantity
+    }));
+  }
   const serviceFiles = noServiceLines.map((line) => {
     const svc = noServiceCatalog[line.serviceIdx];
     return { productType: 'service', serviceId: svc ? svc.id : undefined, quantity: line.quantity };
