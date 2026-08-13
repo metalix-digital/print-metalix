@@ -3492,7 +3492,15 @@ if (fs.existsSync(clientDist)) {
     },
   }))
   let clientIndexHtml = null
-  app.get('*', (req, res) => {
+  // Scoped to the exact /order path (query strings like ?coupon=X still match —
+  // Express ignores the query string when matching). This used to be a
+  // catch-all '*', which meant literally any unmatched URL — a typo'd link, a
+  // stray external URL missing its https:// prefix and resolved as a relative
+  // path, anything — served this same page with a 200 status instead of a
+  // real 404. That's a soft-404: search engines index every broken link on
+  // the internet pointing here as if it were real content. See the dedicated
+  // 404 handler below for what unmatched paths get instead.
+  app.get('/order', (req, res) => {
     if (!isShopOpen()) return res.sendFile(path.join(publicDir, 'closed.html'))
     const gtm = gtmSnippets(db.getSiteSettings())
     // Same reasoning as readPublicTemplate() above: this only changes on
@@ -3503,6 +3511,12 @@ if (fs.existsSync(clientDist)) {
     res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
   })
 }
+
+// Final fallback for any path that matched no route above — a real 404, not
+// the soft-404 the old catch-all produced (see comment above /order).
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+})
 
 // Seed the DB-backed admin credential once, from env, if it doesn't exist yet.
 // After this the login id / password are managed entirely from the web (change
