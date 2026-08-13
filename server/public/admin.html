@@ -4858,10 +4858,11 @@ async function loadSettings(){
       textFieldHtml('Shipping policy', 'legal.shippingPolicy', s.legal.shippingPolicy, true) +
     '</div>' +
     '<h2>Analytics & SEO</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting. For Search Console, paste just the <code>content</code> value from the verification meta tag Google gives you (not the whole tag).</p>' +
+    '<p class="detail" style="margin-bottom:12px;">Once set, Google Tag Manager loads automatically across the site (with a "purchase" event firing on every successful order) — configure GA4 and any other tags from within your GTM container, not here, to avoid double-counting. For Search Console, paste just the <code>content</code> value from the verification meta tag Google gives you (not the whole tag). For AdSense, paste the <code>client=ca-pub-…</code> ID from the code snippet AdSense shows you — it gets embedded in the &lt;head&gt; of every page, which is also how AdSense verifies site ownership.</p>' +
     '<div class="field-grid">' +
       textFieldHtml('Google Tag Manager Container ID', 'analytics.gtmContainerId', (s.analytics||{}).gtmContainerId || '') +
       textFieldHtml('Google Search Console verification code', 'analytics.searchConsoleVerification', (s.analytics||{}).searchConsoleVerification || '') +
+      textFieldHtml('Google AdSense Publisher ID (ca-pub-…)', 'analytics.adsensePublisherId', (s.analytics||{}).adsensePublisherId || '') +
     '</div>' +
     '<button class="save-btn" id="saveSettingsBtn">Save settings</button>' +
     '<div id="settingsMessage"></div>';

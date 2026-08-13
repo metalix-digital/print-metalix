@@ -889,7 +889,8 @@ const DEFAULT_SITE_SETTINGS = {
     // Google's side), not loaded directly here — avoids double-counting
     // pageviews/events between a direct gtag.js load and a GTM-managed one.
     gtmContainerId: '',
-    searchConsoleVerification: ''
+    searchConsoleVerification: '',
+    adsensePublisherId: ''
   }
 }
 
