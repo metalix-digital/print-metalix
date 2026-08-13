@@ -9,11 +9,11 @@ __GTM_HEAD__
 <link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
 <link rel="preconnect" href="/fonts">
 <style>
-@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Sora-700.woff2) format('woff2');}
-@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Sora-800.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Inter-400.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Inter-600.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Inter-700.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
 *{box-sizing:border-box;margin:0;padding:0;}
 /* Same token names/values as landing.html (the site's actual design system)
    rather than an approximated palette — see that file's own :root/
@@ -33,12 +33,12 @@ __GTM_HEAD__
   --orange-l:rgba(255,102,0,.16); --green-bg:rgba(22,163,74,.18);
   color-scheme:dark;
 }
-body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+body{font-family:'Roboto',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
 a{color:inherit;}
-h1,h2,h3{font-family:'Sora',sans-serif;}
+h1,h2,h3{font-family:'Roboto',sans-serif;}
 header{position:sticky;top:0;z-index:40;background:var(--paper);border-bottom:1px solid var(--line);}
 .header-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px;}
-.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Sora';font-weight:800;font-size:19px;color:var(--ink);flex-shrink:0;}
+.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Roboto';font-weight:800;font-size:19px;color:var(--ink);flex-shrink:0;}
 .h-logo img{height:30px;width:30px;}
 .h-logo .logo-sub{color:var(--orange);}
 nav.main-nav{display:flex;gap:4px;flex:1;flex-wrap:wrap;}

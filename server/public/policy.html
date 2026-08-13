@@ -20,14 +20,13 @@ __GTM_HEAD__
 <meta name="twitter:description" content="__META_DESCRIPTION__">
 <meta name="theme-color" content="#FF6600">
 <link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
-<link rel="preload" href="/fonts/Sora-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/fonts/Inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Roboto-variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Sora-700.woff2) format('woff2');}
-@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Sora-800.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Inter-400.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Inter-600.woff2) format('woff2');}
-@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Inter-700.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
+@font-face{font-family:'Roboto';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 :root{
@@ -48,14 +47,14 @@ html{scroll-behavior:smooth;}
   --header-bg:rgba(20,19,22,.88);
   color-scheme:dark;
 }
-body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;transition:background-color .25s ease,color .25s ease;}
+body{font-family:'Roboto',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;transition:background-color .25s ease,color .25s ease;}
 a{color:inherit;}
 
 header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);}
 .header-inner{max-width:900px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:8px;height:64px;}
 .h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;}
 .h-logo img{width:34px;height:34px;border-radius:50%;}
-.h-logo span{font-family:'Sora',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;}
+.h-logo span{font-family:'Roboto',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;}
 nav{display:flex;align-items:center;gap:2px;margin-left:32px;}
 nav a{font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;padding:8px 14px;border-radius:8px;transition:all .15s;}
 nav a:hover{color:var(--ink);background:var(--surface-hover);}
@@ -67,7 +66,7 @@ nav a.active{color:var(--orange-text);}
 
 .policy-wrap{max-width:800px;margin:0 auto;padding:56px 24px 90px;}
 .section-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--orange-text);background:var(--orange-l);border:1px solid var(--orange-border);padding:6px 12px;border-radius:999px;display:inline-block;margin-bottom:16px;}
-.policy-wrap h1{font-family:'Sora',sans-serif;font-weight:800;font-size:36px;letter-spacing:-.02em;margin-bottom:8px;}
+.policy-wrap h1{font-family:'Roboto',sans-serif;font-weight:800;font-size:36px;letter-spacing:-.02em;margin-bottom:8px;}
 .policy-wrap .meta{font-size:13px;color:var(--ink3);margin-bottom:40px;}
 .policy-wrap .meta a{color:var(--orange-text);font-weight:600;}
 .policy-tabs{display:flex;gap:0;border-bottom:2px solid var(--line);margin-bottom:36px;flex-wrap:wrap;}
@@ -75,11 +74,11 @@ nav a.active{color:var(--orange-text);}
   font-size:14px;font-weight:600;color:var(--ink3);background:none;border:none;
   display:inline-block;text-decoration:none;cursor:pointer;padding:12px 22px;
   border-bottom:2.5px solid transparent;margin-bottom:-2px;
-  transition:all .15s;font-family:'Inter',sans-serif;
+  transition:all .15s;font-family:'Roboto',sans-serif;
 }
 .ptab.active{color:var(--orange-text);border-bottom-color:var(--orange);}
 .ptab:hover:not(.active){color:var(--ink);}
-.policy-article h2{font-family:'Sora',sans-serif;font-size:22px;font-weight:700;margin:32px 0 12px;}
+.policy-article h2{font-family:'Roboto',sans-serif;font-size:22px;font-weight:700;margin:32px 0 12px;}
 .policy-article h2:first-child{margin-top:0;}
 .policy-article p{font-size:15px;color:var(--ink2);line-height:1.75;margin-bottom:14px;}
 .policy-article ul{padding-left:20px;margin:0 0 16px;}
