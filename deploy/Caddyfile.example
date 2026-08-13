@@ -9,6 +9,19 @@
 #   sudo systemctl reload caddy
 
 print.metalix.in {
+    # Unlike nginx, Caddy logs nothing by default — this was a blind spot for
+    # several days post-migration. /var/log/caddy/ is created (caddy:caddy) by
+    # the Debian/Ubuntu package, but if access.log doesn't already exist owned
+    # by that user, Caddy will fail to reload with "permission denied" until
+    # you `chown caddy:caddy` it first.
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10mb
+            roll_keep 14
+            roll_keep_for 336h
+        }
+    }
+
     # Compress text responses. woff2/png/jpg are already compressed, so they are
     # intentionally excluded (gzipping them wastes CPU for ~0 bytes saved).
     encode gzip
