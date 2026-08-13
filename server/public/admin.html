@@ -267,7 +267,8 @@ td{padding:15px 16px;border-bottom:1px solid var(--line2);}
 tr.order-row{transition:background .12s;}
 tr.order-row:hover{background:var(--paper);}
 tr.order-row.sel{background:var(--orange-soft);}
-.order-id{font-weight:700;font-size:13px;letter-spacing:-.01em;}
+.order-id{font-weight:700;font-size:13px;letter-spacing:-.01em;color:inherit;text-decoration:none;}
+.order-id:hover{color:var(--orange);text-decoration:underline;}
 .cust-name{font-weight:600;}
 .amt{font-weight:700;font-variant-numeric:tabular-nums;}
 .placed{color:var(--ink3);font-size:12.5px;white-space:nowrap;}
@@ -1880,7 +1881,7 @@ function renderOrders(orders){
   body.innerHTML = orders.map((o) => (
     '<tr class="order-row" data-toggle="' + o.id + '">' +
       '<td class="cbcol"><input type="checkbox" class="cb row-cb" data-order="' + escHtml(o.id) + '"></td>' +
-      '<td><span class="order-id">' + escHtml(o.id) + '</span></td>' +
+      '<td><a class="order-id" href="/track/' + encodeURIComponent(o.id) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + escHtml(o.id) + '</a></td>' +
       '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
       '<td class="branch-col"><span class="branch-chip">' + escHtml(o.location_name || '—') + '</span></td>' +
       '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
@@ -2915,7 +2916,7 @@ async function loadArchive(){
     body.innerHTML = orders.map((o) => {
       const daysLeft = Math.max(0, Math.ceil((o.archived_at + retentionDays * DAY - Date.now()) / DAY));
       return '<tr>' +
-        '<td><span class="order-id">' + escHtml(o.id) + '</span></td>' +
+        '<td><a class="order-id" href="/track/' + encodeURIComponent(o.id) + '" target="_blank" rel="noopener">' + escHtml(o.id) + '</a></td>' +
         '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
         '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
         '<td><span class="pay-badge ' + (String(o.order_status).toLowerCase().includes('complet') ? 'paid' : '') + '">' + escHtml(o.order_status || '—') + '</span></td>' +
@@ -2946,7 +2947,7 @@ async function loadFeedback(){
     body.innerHTML = feedback.map((f) => {
       const stars = '★'.repeat(f.rating) + '☆'.repeat(5 - f.rating);
       return '<tr>' +
-        '<td><span class="order-id">' + escHtml(f.order_id) + '</span></td>' +
+        '<td><a class="order-id" href="/track/' + encodeURIComponent(f.order_id) + '" target="_blank" rel="noopener">' + escHtml(f.order_id) + '</a></td>' +
         '<td><span class="cust-name">' + escHtml(f.customer_name || '—') + '</span><div class="subtle">' + escHtml(f.customer_mobile || '') + '</div></td>' +
         '<td style="color:var(--orange);letter-spacing:1px;">' + stars + '</td>' +
         '<td>' + escHtml(f.comment || '—') + '</td>' +
