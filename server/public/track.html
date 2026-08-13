@@ -246,6 +246,58 @@ function reviewFeedbackHtml(reviewUrl){
   '</div>';
 }
 
+// Custom-stamp proof review — shown only when GET /api/track/:id reports a
+// stamp item with itemStatus 'proof_sent' (data.stampProofItems). The image
+// itself streams from a public, order-ID-gated endpoint (same trust model as
+// the invoice PDF above) — no auth needed since the order ID is already the
+// only thing gating this whole page.
+function renderStampProofWidget(orderId, item){
+  const wrap = document.createElement('div');
+  wrap.className = 'card feedback';
+  const textLines = (item.textLines || []).join('<br>');
+  wrap.innerHTML =
+    '<h3>Review your stamp proof</h3>' +
+    '<p style="text-align:center;font-size:12.5px;color:var(--body);margin:0 0 14px;">Please check all spelling and details carefully before approving — production starts right after.</p>' +
+    '<img src="/api/track/' + encodeURIComponent(orderId) + '/items/' + encodeURIComponent(item.itemId) + '/stamp-proof/image" alt="Stamp proof" style="display:block;width:100%;max-width:320px;margin:0 auto 12px;border:1.5px solid var(--silver);border-radius:10px;" />' +
+    (textLines ? '<p style="text-align:center;font-size:12.5px;color:var(--muted);margin:0 0 14px;">' + textLines + '</p>' : '') +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="feedback-submit" id="proofApproveBtn" style="background:var(--green);">✓ Approve</button>' +
+      '<button class="feedback-submit" id="proofChangesBtn" style="background:var(--red);">Request Changes</button>' +
+    '</div>' +
+    '<textarea id="proofComment" placeholder="What needs to change? (required to request changes)" maxlength="1000" style="display:none;margin-top:10px;"></textarea>' +
+    '<div class="feedback-note" id="proofNote"></div>';
+
+  async function respond(approved){
+    const note = wrap.querySelector('#proofNote');
+    const comment = wrap.querySelector('#proofComment').value.trim();
+    if (!approved && !comment) {
+      wrap.querySelector('#proofComment').style.display = 'block';
+      note.textContent = 'Please describe what needs to change.';
+      return;
+    }
+    wrap.querySelector('#proofApproveBtn').disabled = true;
+    wrap.querySelector('#proofChangesBtn').disabled = true;
+    note.textContent = '';
+    try {
+      const res = await fetch('/api/track/' + encodeURIComponent(orderId) + '/items/' + encodeURIComponent(item.itemId) + '/stamp-proof/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, comment })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not submit your response.');
+      wrap.outerHTML = '<div class="card feedback-thanks">' + (approved ? 'Thanks — your stamp has been approved and will move to production. 🎉' : 'Thanks — we\'ll update the proof and send it back for your review.') + '</div>';
+    } catch (err) {
+      note.textContent = err.message || 'Could not submit — please try again.';
+      wrap.querySelector('#proofApproveBtn').disabled = false;
+      wrap.querySelector('#proofChangesBtn').disabled = false;
+    }
+  }
+  wrap.querySelector('#proofApproveBtn').addEventListener('click', () => respond(true));
+  wrap.querySelector('#proofChangesBtn').addEventListener('click', () => respond(false));
+  return wrap;
+}
+
 function renderFeedbackForm(orderId){
   const wrap = document.createElement('div');
   wrap.className = 'card feedback';
@@ -344,6 +396,13 @@ async function loadStatus(){
     if (!attention) html += renderTimeline(data.stages, data.stage_index, data.delivery_method);
 
     content.innerHTML = html;
+
+    // Stamp proof review — shown regardless of overall completion (a stamp
+    // order isn't done yet while waiting on this), one widget per item
+    // awaiting a response.
+    (data.stampProofItems || []).forEach((item) => {
+      content.appendChild(renderStampProofWidget(data.id, item));
+    });
 
     if (canPayNow) {
       const payBtn = document.getElementById('payNowBtn');

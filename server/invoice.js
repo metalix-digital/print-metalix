@@ -158,13 +158,17 @@ async function buildInvoicePdf(order) {
       colorPageCount: order.color_page_count,
     }]
   }
-  // Additional Services (spiral binding, photo editing, etc.) are a flat fee,
-  // not a print job — no page count, paper type, or copies — so they get
-  // their own spread below instead of sharing this page-oriented table,
-  // where they used to show a nonsense "N pg x 1" quantity borrowed from an
-  // unrelated leftover field on the order.
-  const printFiles = files.filter((f) => f.productType !== 'service')
+  // Additional Services (spiral binding, photo editing, etc.), Stationery
+  // (ready-made products — pens, Rent Receipt Booklets, ...), and Custom
+  // Stamps are all flat fee x quantity, not a print job — no page count,
+  // paper type, or copies — so they each get their own spread below instead
+  // of sharing this page-oriented table, where they'd otherwise show a
+  // nonsense "N pg x 1" quantity borrowed from an unrelated leftover field.
+  const NON_PRINT_TYPES = ['service', 'stationery', 'stamp']
+  const printFiles = files.filter((f) => !NON_PRINT_TYPES.includes(f.productType))
   const serviceFiles = files.filter((f) => f.productType === 'service')
+  const stationeryFiles = files.filter((f) => f.productType === 'stationery')
+  const stampFiles = files.filter((f) => f.productType === 'stamp')
 
   let pricingConfig = {}
   try { pricingConfig = db.getPricing() } catch (e) { pricingConfig = {} }
@@ -214,11 +218,65 @@ async function buildInvoicePdf(order) {
     y -= 22
   }
 
+  // Stationery gets its own mini-table too — same reasoning as Additional
+  // Services above (flat unit price x quantity, no page/paper columns).
+  if (stationeryFiles.length) {
+    page.drawRectangle({ x: M, y: y - 6, width: width - 2 * M, height: 22, color: SOFT })
+    text('STATIONERY', M + 8, y, 8.5, bold, MUTED)
+    right('QTY', width - M - 110, y, 8.5, bold, MUTED)
+    right('AMOUNT', width - M - 8, y, 8.5, bold, MUTED)
+    y -= 24
+    for (const f of stationeryFiles) {
+      const qty = f.quantity || 1
+      const { paperLabel, amount } = fileLineItem(f, 0, qty, [])
+      text(String(f.name || f.fileName || paperLabel || 'Product'), M + 8, y, 10, font)
+      right(qty + '×', width - M - 110, y, 10, font, MUTED)
+      right(money(amount), width - M - 8, y, 10, font)
+      y -= 19
+      if (y < 170) break
+    }
+    y -= 6
+    page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 1, color: LINE })
+    y -= 22
+  }
+
+  // Custom Stamps get their own mini-table too — same reasoning as
+  // Stationery/Additional Services above.
+  if (stampFiles.length) {
+    page.drawRectangle({ x: M, y: y - 6, width: width - 2 * M, height: 22, color: SOFT })
+    text('CUSTOM STAMPS', M + 8, y, 8.5, bold, MUTED)
+    right('QTY', width - M - 110, y, 8.5, bold, MUTED)
+    right('AMOUNT', width - M - 8, y, 8.5, bold, MUTED)
+    y -= 24
+    for (const f of stampFiles) {
+      const qty = f.quantity || 1
+      const { paperLabel, amount } = fileLineItem(f, 0, qty, [])
+      text(String(paperLabel || 'Custom Stamp'), M + 8, y, 10, font)
+      right(qty + '×', width - M - 110, y, 10, font, MUTED)
+      right(money(amount), width - M - 8, y, 10, font)
+      y -= 13
+      if (f.textLines && f.textLines.length) {
+        text(f.textLines.join(' / '), M + 8, y, 8.5, font, MUTED)
+        y -= 6
+      } else if (f.artworkFileId) {
+        text('Customer-supplied design', M + 8, y, 8.5, font, MUTED)
+        y -= 6
+      }
+      y -= 13
+      if (y < 170) break
+    }
+    y -= 6
+    page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 1, color: LINE })
+    y -= 22
+  }
+
   // Totals block (right-aligned)
   const labelX = width - M - 220
   const totalRow = (label, val, f = font, color = INK, size = 10) => { text(label, labelX, y, size, f, MUTED); right(money(val), width - M, y, size, f, color); y -= 17 }
   totalRow('Print cost', order.print_cost)
   if (order.services_cost) totalRow('Additional services', order.services_cost)
+  if (order.stationery_cost) totalRow('Stationery', order.stationery_cost)
+  if (order.stamp_cost) totalRow('Custom Stamps', order.stamp_cost)
   if (order.handling_charge) totalRow('Handling charge', order.handling_charge)
   // Keyed off delivery_method, not delivery_charge — a free-delivery order
   // (above the threshold) has delivery_charge: 0, and the old `if

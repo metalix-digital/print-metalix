@@ -70,6 +70,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);-webki
 .content{padding:28px;max-width:1140px;margin:0 auto;}
 .panel{display:none;}
 .panel.active{display:block;}
+/* Sub-nav inside the "Settings" umbrella tab — Pricing/Discounts/Locations/
+   Stages/Blog/Products/Inventory/Stamp Settings/Cross-Sell/Staff/Archive/
+   Feedback/General all live here instead of as their own top-level tabs.
+   Deliberately its own class (not .panel/.tab-btn) so the top-level tab
+   switcher never touches these — see showSettingsSection(). Higher
+   specificity than .panel{display:none} above, so no !important needed. */
+.settings-subnav{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 20px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+.settings-subnav-btn{background:var(--bg);border:1.5px solid var(--line2);border-radius:999px;padding:7px 16px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;font-family:'Inter',sans-serif;transition:.15s;}
+.settings-subnav-btn:hover{border-color:var(--orange);color:var(--orange);}
+.settings-subnav-btn.active{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d);}
+.settings-subpanel{display:none;}
+.settings-subpanel.active{display:block;}
 
 .filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
 .filters input, .filters select{border:1.5px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13.5px;font-family:'Inter',sans-serif;}
@@ -182,6 +194,10 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .coupon-table{table-layout:fixed;}
 .rate-remove{background:none;border:1.5px solid var(--line-strong,#C7C2B0);color:var(--ink3);border-radius:7px;width:30px;height:30px;font-size:15px;line-height:1;cursor:pointer;}
 .rate-remove:hover{border-color:#DC2626;color:#DC2626;}
+.st-thumb{position:relative;width:44px;height:44px;border-radius:8px;border:1.5px dashed var(--line-strong,#C7C2B0);background:var(--card-2,#F5F3EF);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0;}
+.st-thumb:hover{border-color:var(--orange,#FF6600);}
+.st-thumb-img{width:100%;height:100%;object-fit:cover;}
+.st-thumb-empty{font-size:16px;opacity:.55;}
 .rate-add{margin-top:14px;background:none;border:1.5px dashed var(--orange);color:var(--orange);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}
 .rate-add:hover{background:var(--orange);color:#fff;}
 /* Discounts tab's "+ Add coupon" and "Save coupons" sit directly adjacent
@@ -293,6 +309,7 @@ select.status-select:focus{outline:none;box-shadow:0 0 0 3px rgba(255,102,0,.18)
 .st-info{color:var(--info);background-color:var(--info-bg);border-color:transparent;}
 .st-active{color:var(--orange-d);background-color:var(--orange-soft);border-color:transparent;}
 .st-slate{color:var(--slate);background-color:var(--slate-bg);border-color:transparent;}
+.st-warn{color:var(--warn);background-color:var(--warn-bg);border-color:transparent;}
 
 /* payment badge */
 .pay-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;text-transform:capitalize;background:var(--slate-bg);color:var(--slate);}
@@ -470,6 +487,17 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .btn-file{background:none;border:1.5px solid var(--line);color:var(--ink2);border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
 .btn-file:hover{border-color:var(--orange);color:var(--orange-d);}
 .blog-cover-note{font-size:11.5px;color:var(--ink3);line-height:1.5;}
+.product-images-list{display:flex;flex-wrap:wrap;gap:8px;}
+.product-image-chip{position:relative;width:64px;height:64px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:var(--bg);flex-shrink:0;}
+.product-image-chip img{width:100%;height:100%;object-fit:cover;display:block;}
+.product-image-chip button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.product-card{display:flex;gap:12px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:8px;}
+.product-card-thumb{width:52px;height:52px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.product-card-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.product-card-main{flex:1;min-width:0;}
+.product-card-title{font-weight:700;color:var(--ink);}
+.product-card-meta{font-size:12px;color:var(--ink3);margin-top:2px;}
+.product-card-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;}
 .blog-seo-divider{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);border-top:1px solid var(--line);padding-top:16px;margin-bottom:16px;}
 .blog-seo-divider .opt{text-transform:none;font-weight:500;}
 .blog-publish-row{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;}
@@ -562,15 +590,11 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
-    <button class="tab-btn" data-tab="pricing" data-super-only>Pricing</button>
-    <button class="tab-btn" data-tab="discounts" data-super-only>Discounts</button>
-    <button class="tab-btn" data-tab="locations" data-super-only>Locations</button>
-    <button class="tab-btn" data-tab="stages" data-super-only>Stages</button>
-    <button class="tab-btn" data-tab="blog" data-super-only>Blog</button>
-    <button class="tab-btn" data-tab="archive">Archive</button>
-    <button class="tab-btn" data-tab="feedback">Feedback</button>
-    <button class="tab-btn" data-tab="staff" data-super-only>Staff</button>
-    <button class="tab-btn" data-tab="settings" data-super-only>Settings</button>
+    <!-- Everything else lives under this one umbrella tab now, as a sub-nav
+         inside panel-settingshub below — see showSettingsSection() and the
+         branch-admin visibility logic in showDash(). Not data-super-only:
+         branch admins still need this to reach Archive/Feedback. -->
+    <button class="tab-btn" data-tab="settingshub">Settings</button>
   </nav>
   <div class="content">
 
@@ -647,31 +671,48 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
     </div>
 
-    <div class="panel" id="panel-pricing">
+    <div class="panel" id="panel-settingshub">
+      <nav class="settings-subnav">
+        <button class="settings-subnav-btn active" data-settings-tab="settings" data-super-only>General</button>
+        <button class="settings-subnav-btn" data-settings-tab="pricing" data-super-only>Pricing</button>
+        <button class="settings-subnav-btn" data-settings-tab="discounts" data-super-only>Discounts</button>
+        <button class="settings-subnav-btn" data-settings-tab="locations" data-super-only>Locations</button>
+        <button class="settings-subnav-btn" data-settings-tab="stages" data-super-only>Stages</button>
+        <button class="settings-subnav-btn" data-settings-tab="blog" data-super-only>Blog</button>
+        <button class="settings-subnav-btn" data-settings-tab="products" data-super-only>Products</button>
+        <button class="settings-subnav-btn" data-settings-tab="inventory" data-super-only>Inventory</button>
+        <button class="settings-subnav-btn" data-settings-tab="stamps" data-super-only>Stamp Settings</button>
+        <button class="settings-subnav-btn" data-settings-tab="crosssell" data-super-only>Cross-Sell</button>
+        <button class="settings-subnav-btn" data-settings-tab="staff" data-super-only>Staff</button>
+        <button class="settings-subnav-btn" data-settings-tab="archive">Archive</button>
+        <button class="settings-subnav-btn" data-settings-tab="feedback">Feedback</button>
+      </nav>
+
+    <div class="settings-subpanel" id="panel-pricing">
       <div class="pricing-form" id="pricingForm">
         <div class="loading">Loading…</div>
       </div>
     </div>
 
-    <div class="panel" id="panel-discounts">
+    <div class="settings-subpanel" id="panel-discounts">
       <div class="pricing-form" id="discountsForm">
         <div class="loading">Loading…</div>
       </div>
     </div>
 
-    <div class="panel" id="panel-locations">
+    <div class="settings-subpanel" id="panel-locations">
       <div class="stages-wrap" id="locationsWrap">
         <div class="loading">Loading…</div>
       </div>
     </div>
 
-    <div class="panel" id="panel-stages">
+    <div class="settings-subpanel" id="panel-stages">
       <div class="stages-wrap" id="stagesWrap">
         <div class="loading">Loading…</div>
       </div>
     </div>
 
-    <div class="panel" id="panel-blog">
+    <div class="settings-subpanel" id="panel-blog">
       <div class="blog-toolbar">
         <input type="text" id="blogSearch" placeholder="Search posts…" />
         <div class="blog-filter-tabs">
@@ -684,7 +725,42 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div id="blogList"><div class="loading">Loading…</div></div>
     </div>
 
-    <div class="panel" id="panel-archive">
+    <div class="settings-subpanel" id="panel-products">
+      <div class="filters">
+        <input type="text" id="productSearch" placeholder="Search by name or SKU" />
+        <select id="productCategoryFilter"><option value="">All categories</option></select>
+        <button class="btn-file" id="manageCategoriesBtn" type="button">🗂 Categories</button>
+        <button class="btn-file" id="productBulkTemplateBtn" type="button">⬇ Download template</button>
+        <button class="btn-file" id="productBulkUploadBtn" type="button">⬆ Bulk upload</button>
+        <input type="file" id="productBulkFileInput" accept=".csv" class="hidden" />
+        <button class="save-btn" id="productNewBtn" type="button" style="margin-top:0;">+ New product</button>
+      </div>
+      <div id="productsList"><div class="loading">Loading…</div></div>
+    </div>
+
+    <div class="settings-subpanel" id="panel-inventory">
+      <p class="subtle" style="margin:0 2px 12px;">Stock levels across the stationery catalog. Adjust stock when new stock arrives or items are damaged — every change is logged.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Product</th><th>SKU</th><th>Stock</th><th>Threshold</th><th>Status</th><th></th></tr></thead>
+          <tbody id="inventoryBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="settings-subpanel" id="panel-stamps">
+      <div class="pricing-form" id="stampSettingsForm">
+        <p class="subtle">Stamp Settings — built in a later phase of this build.</p>
+      </div>
+    </div>
+
+    <div class="settings-subpanel" id="panel-crosssell">
+      <div class="stages-wrap" id="crossSellWrap">
+        <p class="subtle">Cross-Sell rules — built in a later phase of this build.</p>
+      </div>
+    </div>
+
+    <div class="settings-subpanel" id="panel-archive">
       <p class="subtle" style="margin:0 2px 12px;">Archived orders are hidden from Orders, Customers, and BigQuery. They're kept for 30 days, then permanently deleted. Restore anytime, or delete now.</p>
       <div class="table-scroll">
         <table>
@@ -694,7 +770,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
     </div>
 
-    <div class="panel" id="panel-feedback">
+    <div class="settings-subpanel" id="panel-feedback">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
         <p class="subtle" style="margin:0 2px;">Customers can leave a rating + comment on the order tracking page once their order is marked Completed. One submission per order.</p>
         <button type="button" class="btn-file" id="exportFeedbackBtn">⬇ Export CSV</button>
@@ -707,16 +783,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
     </div>
 
-    <div class="panel" id="panel-staff">
+    <div class="settings-subpanel" id="panel-staff">
       <div class="stages-wrap" id="staffWrap">
         <div class="loading">Loading…</div>
       </div>
     </div>
 
-    <div class="panel" id="panel-settings">
+    <div class="settings-subpanel active" id="panel-settings">
       <div class="settings-form" id="settingsForm">
         <div class="loading">Loading…</div>
       </div>
+    </div>
+
     </div>
 
   </div>
@@ -802,6 +880,154 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="modal-actions">
       <button class="modal-cancel" id="blogModalCancel" type="button">Cancel</button>
       <button class="modal-ok" id="blogModalSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="productModal">
+  <div class="modal-card blog-modal" role="dialog" aria-modal="true">
+    <div class="blog-modal-head">
+      <h3 class="modal-title" id="productModalTitle">New product</h3>
+      <button class="blog-modal-close" id="productModalClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="blog-modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="productName" placeholder="Blue Ball Pen" />
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>SKU</label>
+          <input type="text" id="productSku" placeholder="PEN-BLUE-01" />
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select id="productCategory"><option value="">— None —</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Description <span class="opt">(optional)</span></label>
+        <textarea id="productDescription" rows="2"></textarea>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Price (₹)</label>
+          <input type="number" id="productPrice" min="0" step="1" />
+        </div>
+        <div class="field">
+          <label>MRP (₹) <span class="opt">(optional)</span></label>
+          <input type="number" id="productMrp" min="0" step="1" />
+        </div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Cost price (₹) <span class="opt">(never shown to customers)</span></label>
+          <input type="number" id="productCostPrice" min="0" step="1" />
+        </div>
+        <div class="field">
+          <label>Low stock threshold</label>
+          <input type="number" id="productLowStockThreshold" min="0" step="1" value="5" />
+        </div>
+      </div>
+      <div class="field" id="productStockField">
+        <label>Stock quantity <span class="opt">(starting stock — use Inventory → Adjust Stock to change it later)</span></label>
+        <input type="number" id="productStockQty" min="0" step="1" value="0" />
+      </div>
+      <div class="field">
+        <label>Images</label>
+        <div class="blog-cover-row">
+          <div class="product-images-list" id="productImagesList"></div>
+          <div class="blog-cover-controls">
+            <div class="blog-cover-btns">
+              <button class="btn-file" id="productImageAddBtn" type="button">🖼 Add image</button>
+            </div>
+            <input type="file" id="productImageFile" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" />
+            <span class="blog-cover-note">JPEG/PNG/WebP/GIF, up to 5 MB each. First image is used as the primary photo.</span>
+          </div>
+        </div>
+      </div>
+      <div class="blog-seo-divider">SEO <span class="opt">(optional — falls back to name/description)</span></div>
+      <div class="field-grid">
+        <div class="field">
+          <label>Slug</label>
+          <input type="text" id="productSlug" placeholder="auto-generated-from-name" />
+        </div>
+        <div class="field">
+          <label>Meta title</label>
+          <input type="text" id="productMetaTitle" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Meta description</label>
+        <textarea id="productMetaDescription" rows="2"></textarea>
+      </div>
+      <label class="blog-publish-row">
+        <input type="checkbox" id="productActive" checked />
+        <span>Active <span class="opt">(visible to customers on /stationery)</span></span>
+      </label>
+      <div class="save-message hidden" id="productModalMsg"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="productModalCancel" type="button">Cancel</button>
+      <button class="modal-ok" id="productModalSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="bulkUploadResultModal">
+  <div class="modal-card" role="dialog" aria-modal="true" style="max-width:560px;">
+    <div class="blog-modal-head">
+      <h3 class="modal-title">Bulk upload results</h3>
+      <button class="blog-modal-close" id="bulkUploadResultClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="blog-modal-body" id="bulkUploadResultBody"></div>
+    <div class="modal-actions">
+      <button class="modal-ok" id="bulkUploadResultOk" type="button">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="categoriesModal">
+  <div class="modal-card" role="dialog" aria-modal="true" style="max-width:520px;">
+    <h3 class="modal-title">Manage categories</h3>
+    <div class="field-grid" style="margin-top:10px;">
+      <div class="field">
+        <input type="text" id="newCategoryName" placeholder="Category name, e.g. Writing" />
+      </div>
+      <button class="save-btn" id="addCategoryBtn" type="button" style="margin-top:0;height:40px;">+ Add</button>
+    </div>
+    <div id="categoriesListWrap" style="margin-top:14px;max-height:320px;overflow-y:auto;"></div>
+    <div class="save-message hidden" id="categoriesModalMsg"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="categoriesModalClose" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="adjustStockModal">
+  <div class="modal-card" role="dialog" aria-modal="true" style="max-width:460px;">
+    <h3 class="modal-title" id="adjustStockTitle">Adjust stock</h3>
+    <div class="field" style="margin-top:10px;">
+      <label>Adjustment <span class="opt">(use a negative number to reduce stock)</span></label>
+      <input type="number" id="adjustStockDelta" step="1" placeholder="e.g. 100 or -2" />
+    </div>
+    <div class="field">
+      <label>Reason</label>
+      <select id="adjustStockReason">
+        <option value="received">New stock received</option>
+        <option value="damaged">Damaged</option>
+        <option value="adjustment">Other adjustment</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Note <span class="opt">(optional)</span></label>
+      <input type="text" id="adjustStockNote" placeholder="e.g. Supplier delivery, invoice #123" />
+    </div>
+    <div id="stockHistoryWrap" style="margin-top:14px;"></div>
+    <div class="save-message hidden" id="adjustStockMsg"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="adjustStockCancel" type="button">Cancel</button>
+      <button class="modal-ok" id="adjustStockSave" type="button">Apply</button>
     </div>
   </div>
 </div>
@@ -1254,15 +1480,30 @@ async function showDash(){
   branchTag.classList.toggle('hidden', !isBranch);
   if (isBranch) branchTag.textContent = currentAdmin.locationName;
   document.querySelectorAll('.tab-btn[data-super-only]').forEach((btn) => btn.classList.toggle('hidden', isBranch));
+  // Same super-admin-only gating, one level deeper — General/Pricing/
+  // Discounts/Locations/Stages/Blog/Products/Inventory/Stamp Settings/
+  // Cross-Sell/Staff inside the Settings sub-nav (Archive/Feedback are the
+  // two BRANCH_TAB_KEYS-restrictable ones, handled below like before).
+  document.querySelectorAll('.settings-subnav-btn[data-super-only]').forEach((btn) => btn.classList.toggle('hidden', isBranch));
   // null allowedTabs = no restriction configured (this staff member sees
-  // every branch tab); an array hides whichever ones it omits.
+  // every branch tab); an array hides whichever ones it omits. Archive/
+  // Feedback moved from top-level .tab-btn into the Settings sub-nav, so
+  // this now checks both places for a given key.
   const allowedTabs = currentAdmin.allowedTabs;
   BRANCH_TAB_KEYS.forEach((key) => {
-    const btn = document.querySelector('.tab-btn[data-tab="' + key + '"]');
+    const btn = document.querySelector('.tab-btn[data-tab="' + key + '"]') || document.querySelector('.settings-subnav-btn[data-settings-tab="' + key + '"]');
     if (!btn) return;
     const restricted = isBranch && Array.isArray(allowedTabs) && !allowedTabs.includes(key);
     btn.classList.toggle('hidden', restricted);
   });
+  // A branch admin can never see the sub-nav's default ("General"), which is
+  // super-admin-only — point them at whichever of Archive/Feedback is
+  // actually visible to them instead, so opening Settings never lands on a
+  // blank sub-panel.
+  if (isBranch) {
+    const firstSettingsSub = document.querySelector('.settings-subnav-btn:not(.hidden)');
+    if (firstSettingsSub) showSettingsSection(firstSettingsSub.dataset.settingsTab);
+  }
   // If the active tab just got hidden (super-only fallback, or this staff
   // member's allowedTabs no longer includes it), fall back to the first tab
   // that's actually visible to them.
@@ -1298,6 +1539,9 @@ async function showDash(){
     loadStages();
     loadBlog();
     loadSettings();
+    loadProductCategories().then(loadProducts);
+    loadStampSettings();
+    loadCrossSellRules();
   }
 }
 
@@ -1400,6 +1644,19 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
   });
+});
+
+// Sub-nav inside the "Settings" umbrella tab (Pricing/Discounts/Locations/
+// Stages/Blog/Products/Inventory/Stamp Settings/Cross-Sell/Staff/Archive/
+// Feedback/General) — deliberately separate from the top-level .tab-btn
+// system above so switching Orders/Customers/Analytics/Settings never
+// resets which settings section was open (see .settings-subpanel in CSS).
+function showSettingsSection(key){
+  document.querySelectorAll('.settings-subnav-btn').forEach((b) => b.classList.toggle('active', b.dataset.settingsTab === key));
+  document.querySelectorAll('.settings-subpanel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + key));
+}
+document.querySelectorAll('.settings-subnav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => showSettingsSection(btn.dataset.settingsTab));
 });
 
 /* -- ORDERS -- */
@@ -1602,8 +1859,46 @@ let PAGE_SIZE_LABELS = { a4: 'A4', a3: 'A3', a5: 'A5', letter: 'Letter', legal: 
 // Passport photo size-preset id -> display label, same convention as
 // PAGE_SIZE_LABELS above — populated from live pricing once it loads.
 let PASSPORT_SIZE_LABELS = {};
+// Stamp type/size id -> display label, same convention as PASSPORT_SIZE_LABELS
+// above — populated from live pricing once it loads (see loadStampSettings).
+let STAMP_TYPE_LABELS = {};
+let STAMP_SIZE_LABELS = {};
 
-function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount, idx, removable){
+function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, orientation, copies, password, printSide, pageSize, paperType, fileType, productType, sizePresetId, packQty, amount, idx, removable, itemId, quantity, name, sku, itemStatus, stampTypeId, stampSizeId, textLines, logoFileId, artworkFileId){
+  if (productType === 'stamp') {
+    const type = (STAMP_TYPE_LABELS || {})[stampTypeId] || stampTypeId;
+    const size = (STAMP_SIZE_LABELS || {})[stampSizeId] || stampSizeId;
+    const textHtml = (textLines && textLines.length) ? textLines.map((l) => escHtml(l)).join('<br>') : (artworkFileId ? 'Customer-supplied design (see Artwork)' : '');
+    const status = itemStatus || 'pending';
+    const STAMP_STATUS_CHIP_CLASS = { pending: 'st-slate', proof_sent: 'st-info', approved: 'st-ok', changes_requested: 'st-err', in_production: 'st-warn', produced: 'st-ok' };
+    const statusChip = '<span class="blog-post-chip ' + (STAMP_STATUS_CHIP_CLASS[status] || 'st-slate') + '">' + escHtml(status.replace(/_/g, ' ')) + '</span>';
+    const logoLink = logoFileId ? ' <button class="dl-btn" data-order="' + orderId + '" data-file="' + escHtml(logoFileId) + '" data-name="stamp-logo">Logo</button>' : '';
+    const artworkLink = artworkFileId ? ' <button class="dl-btn" data-order="' + orderId + '" data-file="' + escHtml(artworkFileId) + '" data-name="stamp-artwork">Artwork</button>' : '';
+    let actionBtns = '';
+    if (status === 'pending' || status === 'changes_requested') {
+      actionBtns += ' <button class="edit-cust-btn upload-proof-btn" data-order="' + orderId + '" data-item="' + escHtml(itemId || '') + '" type="button">' + (status === 'changes_requested' ? 'Re-upload Proof' : 'Upload Proof') + '</button>';
+    }
+    if (['proof_sent', 'approved', 'changes_requested', 'in_production', 'produced'].includes(status)) {
+      actionBtns += ' <button class="dl-btn view-proof-btn" data-order="' + orderId + '" data-item="' + escHtml(itemId || '') + '" type="button">View Proof</button>';
+    }
+    if (status === 'approved' || status === 'pending') {
+      actionBtns += ' <button class="edit-cust-btn mark-produce-btn" data-order="' + orderId + '" data-item="' + escHtml(itemId || '') + '" data-status="in_production" type="button">Mark In Production</button>';
+    }
+    if (status === 'in_production') {
+      actionBtns += ' <button class="edit-cust-btn mark-produce-btn" data-order="' + orderId + '" data-item="' + escHtml(itemId || '') + '" data-status="produced" type="button">Mark Produced</button>';
+    }
+    return '<li><span>🔖 ' + (quantity || 1) + ' × ' + escHtml(type) + ' · ' + escHtml(size) + (amount != null ? ' — ₹' + amount : '') +
+      '<div class="subtle" style="margin-top:4px;">' + textHtml + '</div></span>' +
+      '<span class="file-actions">' + statusChip + logoLink + artworkLink + actionBtns + '</span></li>';
+  }
+  if (productType === 'stationery') {
+    const amountText = amount != null ? ' — ₹' + amount : '';
+    const skuText = sku ? ' <span class="subtle">(SKU ' + escHtml(sku) + ')</span>' : '';
+    const action = itemStatus === 'picked'
+      ? '<span class="blog-post-chip st-ok">Picked</span>'
+      : '<button class="edit-cust-btn mark-picked-btn" data-order="' + orderId + '" data-item="' + escHtml(itemId || '') + '" type="button">Mark Picked</button>';
+    return '<li><span>📦 ' + (quantity || 1) + ' × ' + escHtml(name || fileName || 'Product') + skuText + amountText + '</span> <span class="file-actions">' + action + '</span></li>';
+  }
   if (productType === 'service') {
     const amountText = amount != null ? ' — ₹' + amount : '';
     // Removing a service can only ever decrease total_amount, the same risk
@@ -1665,6 +1960,8 @@ function fileRowHtml(orderId, fileId, fileName, pageCount, printMode, deleted, o
 function orderBreakdownHtml(o){
   const rows = [['Print cost', o.print_cost || 0, false]];
   if (o.services_cost) rows.push(['Additional services', o.services_cost, false]);
+  if (o.stationery_cost) rows.push(['Stationery', o.stationery_cost, false]);
+  if (o.stamp_cost) rows.push(['Custom Stamps', o.stamp_cost, false]);
   if (o.handling_charge) rows.push(['Handling charge', o.handling_charge, false]);
   if (o.delivery_charge) rows.push(['Delivery charge', o.delivery_charge, false]);
   if (o.discount_amount) {
@@ -1694,7 +1991,7 @@ function filesDetailHtml(o){
   }
   const removable = !(o.payment_method === 'online' && String(o.payment_status).toLowerCase() === 'paid');
   return '<div><strong>Files (' + files.length + '):</strong></div><ul class="file-list">' +
-    files.map((f, idx) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType, f.productType || 'document', f.sizePresetId, f.packQty, f.amount, idx, removable)).join('') +
+    files.map((f, idx) => fileRowHtml(o.id, f.fileId, f.fileName, f.pageCount, f.printMode, !!o.files_deleted_at, f.orientation, f.copies, f.password, f.printSide, f.pageSize, f.paperType, f.fileType, f.productType || 'document', f.sizePresetId, f.packQty, f.amount, idx, removable, f.itemId, f.quantity, f.name, f.sku, f.itemStatus, f.stampTypeId, f.stampSizeId, f.textLines, f.logoFileId, f.artworkFileId)).join('') +
     '</ul>';
 }
 
@@ -1846,6 +2143,20 @@ async function removeService(orderId, idx){
   }
 }
 
+async function markItemStatus(orderId, itemId, status){
+  try {
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(orderId) + '/items/' + encodeURIComponent(itemId) + '/status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok){ alert(d.message || 'Could not update item status.'); return; }
+    await loadOrders();
+    showFlash(d.allItemsReady ? 'Item updated — all items ready!' : 'Item updated.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not update item status.');
+  }
+}
+
 // Lightweight OK/Cancel confirmation modal. Resolves true (confirm) or false.
 // confirmLabel + danger let destructive actions show a red "Delete" button.
 function showConfirmModal(innerHtml, confirmLabel, danger){
@@ -1881,7 +2192,9 @@ function renderOrders(orders){
   body.innerHTML = orders.map((o) => (
     '<tr class="order-row" data-toggle="' + o.id + '">' +
       '<td class="cbcol"><input type="checkbox" class="cb row-cb" data-order="' + escHtml(o.id) + '"></td>' +
-      '<td><a class="order-id" href="/track/' + encodeURIComponent(o.id) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + escHtml(o.id) + '</a></td>' +
+      '<td><a class="order-id" href="/track/' + encodeURIComponent(o.id) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + escHtml(o.id) + '</a>' +
+        (o.needs_attention ? ' <span class="blog-post-chip st-warn" title="' + escHtml(o.needs_attention_reason || 'Needs attention') + '">⚠ Attention</span>' : '') +
+      '</td>' +
       '<td><span class="cust-name">' + escHtml(o.customer_name || '—') + '</span><div class="subtle">' + escHtml(o.customer_mobile || '') + '</div></td>' +
       '<td class="branch-col"><span class="branch-chip">' + escHtml(o.location_name || '—') + '</span></td>' +
       '<td><span class="amt">₹' + escHtml(o.total_amount) + '</span></td>' +
@@ -1890,6 +2203,10 @@ function renderOrders(orders){
       '<td><span class="placed">' + (o.created_at ? escHtml(new Date(o.created_at).toLocaleString()) : '—') + '</span></td>' +
     '</tr>' +
     '<tr class="detail-row hidden" data-detail="' + o.id + '"><td colspan="8"><div class="detail">' +
+      (o.needs_attention ? '<div style="background:var(--warn-bg);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<span><strong>⚠ Needs attention:</strong> ' + escHtml(o.needs_attention_reason || '') + '</span>' +
+        '<button class="edit-cust-btn dismiss-attention-btn" data-order="' + escHtml(o.id) + '" type="button">Dismiss</button>' +
+      '</div>' : '') +
       (o.notes ? '<div style="background:var(--orange-soft);border:1px solid var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:10px;"><strong>📝 Customer notes:</strong> ' + escHtml(o.notes).replace(/\n/g, '<br>') + '</div>' : '') +
       filesDetailHtml(o) +
       // A passport-photo-only order has no document paper/mode/side to
@@ -2003,6 +2320,64 @@ function renderOrders(orders){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeService(btn.dataset.order, Number(btn.dataset.idx));
+    });
+  });
+  body.querySelectorAll('.mark-picked-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      markItemStatus(btn.dataset.order, btn.dataset.item, 'picked');
+    });
+  });
+  body.querySelectorAll('.dismiss-attention-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await adminFetch('/api/admin/orders/' + encodeURIComponent(btn.dataset.order), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ needs_attention: 0 })
+        });
+        await loadOrders();
+      } catch (err) { if (err.message !== 'unauthorized') alert('Could not dismiss.'); }
+    });
+  });
+  body.querySelectorAll('.upload-proof-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const orderId = btn.dataset.order, itemId = btn.dataset.item;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/webp,image/gif,application/pdf';
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(orderId) + '/items/' + encodeURIComponent(itemId) + '/stamp-proof', { method: 'POST', body: fd });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) { alert(d.message || 'Could not upload proof.'); return; }
+          await loadOrders();
+          showFlash('Proof uploaded — customer notified.');
+        } catch (err) { if (err.message !== 'unauthorized') alert('Could not upload proof.'); }
+      });
+      input.click();
+    });
+  });
+  body.querySelectorAll('.view-proof-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const orderId = btn.dataset.order, itemId = btn.dataset.item;
+      try {
+        const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(orderId) + '/items/' + encodeURIComponent(itemId) + '/stamp-proof');
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.proof) { alert('No proof found for this item.'); return; }
+        downloadOrderFile(orderId, d.proof.file_id, 'stamp-proof-' + itemId);
+      } catch (err) { if (err.message !== 'unauthorized') alert('Could not load proof.'); }
+    });
+  });
+  body.querySelectorAll('.mark-produce-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      markItemStatus(btn.dataset.order, btn.dataset.item, btn.dataset.status);
     });
   });
   body.querySelectorAll('.rollback-payment-btn').forEach((btn) => {
@@ -3619,16 +3994,23 @@ async function savePricing(){
     return;
   }
 
-  // Coupons live in this same settings blob but are now managed entirely
-  // from the Discounts tab — fetched fresh here (not from a form this tab no
-  // longer renders) so saving Pricing can never clobber whatever's currently
-  // set there, including anything changed after this tab was last loaded.
+  // Coupons and Stamp settings live in this same settings blob but are
+  // managed from their own tabs (Discounts, Stamp Settings) — fetched fresh
+  // here (not from a form this tab doesn't render) so saving Pricing can
+  // never clobber whatever's currently set there, including anything
+  // changed after this tab was last loaded. Without this, PUTting a pricing
+  // object with no `stamps` key would make db.setPricing() re-normalize it
+  // from empty, silently resetting every stamp type/size/price back to the
+  // seeded defaults on the next Pricing save — same class of bug this
+  // pattern already exists to prevent for coupons.
   let currentCoupons = [];
+  let currentStamps = null;
   try {
-    const couponsRes = await adminFetch('/api/admin/pricing');
-    const couponsCfg = await couponsRes.json();
-    currentCoupons = Array.isArray(couponsCfg.coupons) ? couponsCfg.coupons : [];
-  } catch (e) { /* best effort — worst case this save round-trips whatever coupons were last rendered here */ }
+    const freshRes = await adminFetch('/api/admin/pricing');
+    const freshCfg = await freshRes.json();
+    currentCoupons = Array.isArray(freshCfg.coupons) ? freshCfg.coupons : [];
+    currentStamps = freshCfg.stamps || null;
+  } catch (e) { /* best effort — worst case this save round-trips whatever coupons/stamps were last rendered here */ }
 
   const pricing = {
     pageSizes: collectPageSizesFromForm(),
@@ -3649,6 +4031,7 @@ async function savePricing(){
     // Same "always include" reasoning as passportPhotos above — freshly
     // fetched just above, not collected from this tab's own DOM.
     coupons: currentCoupons,
+    stamps: currentStamps,
     additionalServices: collectAdditionalServicesFromForm(),
     handlingCharge: numOrZero(document.querySelector('#pricingForm input[data-key="handlingCharge"]')),
     deliveryLocalPincode: document.querySelector('#pricingForm input[data-key="deliveryLocalPincode"]').value.trim(),
@@ -3683,6 +4066,311 @@ async function savePricing(){
   } finally {
     const b = document.getElementById('savePricingBtn');
     if (b){ b.disabled = false; b.textContent = 'Save pricing'; }
+  }
+}
+
+/* -- STAMP SETTINGS (Custom Stamp Printing catalog — its own tab, same
+   settings.pricing.stamps blob the Pricing tab's savePricing() now
+   carefully preserves rather than clobbers, see the "currentStamps" fetch
+   there) -- */
+function stampTypeRowHtml(row){
+  row = row || { id: '', label: '', basePrice: '', active: true, imageUrl: null };
+  const thumb = row.imageUrl
+    ? '<img src="' + escHtml(row.imageUrl) + '" alt="" class="st-thumb-img" />'
+    : '<span class="st-thumb-empty">📷</span>';
+  return '<tr class="stamp-type-row" data-id="' + escHtml(row.id || '') + '" data-image-url="' + escHtml(row.imageUrl || '') + '">' +
+    '<td><div class="st-thumb" title="Click to upload a reference photo">' + thumb + '<input type="file" class="st-image-input hidden" accept="image/png,image/jpeg,image/webp,image/gif" /></div></td>' +
+    '<td><input class="st-label" type="text" placeholder="e.g. Self-Inking Stamp" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="st-price" type="number" step="1" min="0" value="' + (row.basePrice != null ? row.basePrice : '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="st-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove stamp-type-remove" aria-label="Remove type">✕</button></td>' +
+  '</tr>';
+}
+function collectStampTypesFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#stampTypeRows .stamp-type-row').forEach((tr) => {
+    const label = tr.querySelector('.st-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'type';
+    let unique = id; let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    out.push({ id: unique, label, basePrice: Number(tr.querySelector('.st-price').value) || 0, active: tr.querySelector('.st-active').checked, imageUrl: tr.dataset.imageUrl || null });
+  });
+  return out;
+}
+function bindStampTypeRow(tr){
+  tr.querySelector('.stamp-type-remove').addEventListener('click', () => tr.remove());
+  const thumb = tr.querySelector('.st-thumb');
+  const input = tr.querySelector('.st-image-input');
+  thumb.addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      // Reuses the product-photo upload pipeline — a public, non-analyzed
+      // image upload with no product-row coupling, exactly what a stamp
+      // type's reference photo needs too (see db.js normalizeStampTypes).
+      const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      tr.dataset.imageUrl = data.url;
+      thumb.innerHTML = '<img src="' + data.url + '" alt="" class="st-thumb-img" />';
+      thumb.appendChild(input);
+    } catch (err) {
+      if (err.message !== 'unauthorized') alert(err.message || 'Could not upload image.');
+    }
+  });
+}
+
+function stampSizeRowHtml(row){
+  row = row || { id: '', label: '', widthMm: '', heightMm: '', priceModifier: '', active: true };
+  return '<tr class="stamp-size-row" data-id="' + escHtml(row.id || '') + '">' +
+    '<td><input class="ss-label" type="text" placeholder="e.g. Medium" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-width" type="number" step="0.1" min="0" value="' + (row.widthMm != null ? row.widthMm : '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-height" type="number" step="0.1" min="0" value="' + (row.heightMm != null ? row.heightMm : '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-modifier" type="number" step="1" value="' + (row.priceModifier != null ? row.priceModifier : '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="ss-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove stamp-size-remove" aria-label="Remove size">✕</button></td>' +
+  '</tr>';
+}
+function collectStampSizesFromForm(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#stampSizeRows .stamp-size-row').forEach((tr) => {
+    const label = tr.querySelector('.ss-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'size';
+    let unique = id; let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    out.push({
+      id: unique, label,
+      widthMm: Number(tr.querySelector('.ss-width').value) || 0,
+      heightMm: Number(tr.querySelector('.ss-height').value) || 0,
+      priceModifier: Number(tr.querySelector('.ss-modifier').value) || 0,
+      active: tr.querySelector('.ss-active').checked
+    });
+  });
+  return out;
+}
+function bindStampSizeRow(tr){ tr.querySelector('.stamp-size-remove').addEventListener('click', () => tr.remove()); }
+
+async function loadStampSettings(){
+  const form = document.getElementById('stampSettingsForm');
+  const res = await adminFetch('/api/admin/pricing');
+  const p = await res.json();
+  const stamps = p.stamps || {};
+  const types = Array.isArray(stamps.types) ? stamps.types : [];
+  const sizes = Array.isArray(stamps.sizes) ? stamps.sizes : [];
+  types.forEach((t) => { if (t.id) STAMP_TYPE_LABELS[t.id] = t.label; });
+  sizes.forEach((s) => { if (s.id) STAMP_SIZE_LABELS[s.id] = s.label; });
+
+  form.innerHTML =
+    '<h2>Stamp types</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">The base price for each stamp type customers can choose on /stamps. Deactivate a type to hide it from new orders without affecting past ones.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr><th>Image</th><th>Label</th><th>Base price (₹)</th><th>Active</th><th></th></tr></thead>' +
+      '<tbody id="stampTypeRows">' + types.map(stampTypeRowHtml).join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addStampType">+ Add type</button>' +
+    '<h2>Stamp sizes</h2>' +
+    '<p class="detail" style="margin-bottom:12px;">Size options and how much each adds to (or, if negative, subtracts from) the base price.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr><th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Price modifier (₹)</th><th>Active</th><th></th></tr></thead>' +
+      '<tbody id="stampSizeRows">' + sizes.map(stampSizeRowHtml).join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addStampSize">+ Add size</button>' +
+    '<h2>Other charges</h2>' +
+    '<div class="field-grid">' +
+      '<div class="field"><label>Logo surcharge (₹)</label><input type="number" step="1" min="0" id="stampLogoPrice" value="' + (stamps.logoPrice != null ? stamps.logoPrice : 100) + '" /></div>' +
+      '<div class="field"><label>Extra quantity price (₹ per unit beyond the first)</label><input type="number" step="1" min="0" id="stampExtraQtyPrice" value="' + (stamps.extraQuantityPrice != null ? stamps.extraQuantityPrice : 200) + '" /></div>' +
+    '</div>' +
+    '<label class="blog-publish-row" style="margin-top:14px;"><input type="checkbox" id="stampRequireProof"' + (stamps.requireProofApproval !== false ? ' checked' : '') + ' />' +
+      '<span>Require proof approval <span class="opt">(a stamp order waits for the customer to approve an uploaded proof before moving to production)</span></span></label>' +
+    '<div class="save-message hidden" id="stampSettingsMessage"></div>' +
+    '<button class="save-btn" type="button" id="saveStampSettingsBtn">Save stamp settings</button>';
+
+  document.getElementById('addStampType').addEventListener('click', () => {
+    document.getElementById('stampTypeRows').insertAdjacentHTML('beforeend', stampTypeRowHtml(null));
+    bindStampTypeRow(document.getElementById('stampTypeRows').lastElementChild);
+  });
+  document.getElementById('addStampSize').addEventListener('click', () => {
+    document.getElementById('stampSizeRows').insertAdjacentHTML('beforeend', stampSizeRowHtml(null));
+    bindStampSizeRow(document.getElementById('stampSizeRows').lastElementChild);
+  });
+  document.querySelectorAll('#stampTypeRows .stamp-type-row').forEach(bindStampTypeRow);
+  document.querySelectorAll('#stampSizeRows .stamp-size-row').forEach(bindStampSizeRow);
+  document.getElementById('saveStampSettingsBtn').addEventListener('click', saveStampSettings);
+}
+
+async function saveStampSettings(){
+  const btn = document.getElementById('saveStampSettingsBtn');
+  const msg = document.getElementById('stampSettingsMessage');
+  msg.classList.add('hidden');
+  const types = collectStampTypesFromForm();
+  if (!types.length) {
+    msg.textContent = 'Add at least one stamp type before saving.';
+    msg.className = 'save-message error';
+    msg.classList.remove('hidden');
+    return;
+  }
+  // Fetch fresh and only replace `stamps` — same "never clobber another
+  // tab's data" discipline savePricing() uses for coupons/stamps.
+  let fresh;
+  try {
+    const res = await adminFetch('/api/admin/pricing');
+    fresh = await res.json();
+  } catch (e) {
+    msg.textContent = 'Could not load current pricing to save against.';
+    msg.className = 'save-message error';
+    msg.classList.remove('hidden');
+    return;
+  }
+  fresh.stamps = {
+    types,
+    sizes: collectStampSizesFromForm(),
+    logoPrice: Number(document.getElementById('stampLogoPrice').value) || 0,
+    extraQuantityPrice: Number(document.getElementById('stampExtraQtyPrice').value) || 0,
+    requireProofApproval: document.getElementById('stampRequireProof').checked
+  };
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const res = await adminFetch('/api/admin/pricing', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fresh)
+    });
+    if (!res.ok) throw new Error('save_failed');
+    await loadStampSettings();
+    const m = document.getElementById('stampSettingsMessage');
+    if (m) { m.className = 'save-message'; m.textContent = 'Saved.'; m.classList.remove('hidden'); }
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      msg.textContent = 'Failed to save stamp settings.';
+      msg.className = 'save-message error';
+      msg.classList.remove('hidden');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save stamp settings';
+  }
+}
+
+/* -- CROSS-SELL (admin-configured "you may also need" recommendations) -- */
+const CROSS_SELL_TRIGGER_OPTIONS = [
+  { value: 'productType:document', label: 'Printing (any document added)' },
+  { value: 'productType:stationery', label: 'Stationery (any item added)' },
+  { value: 'productType:stamp', label: 'Custom Stamp (any stamp added)' }
+];
+let crossSellRulesList = [];
+
+function crossSellTriggerOptionsHtml(selected){
+  const opts = CROSS_SELL_TRIGGER_OPTIONS.concat(
+    productsList.map((p) => ({ value: 'product:' + p.id, label: 'When added: ' + p.name }))
+  );
+  return opts.map((o) => '<option value="' + escHtml(o.value) + '"' + (o.value === selected ? ' selected' : '') + '>' + escHtml(o.label) + '</option>').join('');
+}
+function crossSellProductOptionsHtml(selected){
+  return productsList.filter((p) => p.active).map((p) =>
+    '<option value="' + escHtml(p.id) + '"' + (p.id === selected ? ' selected' : '') + '>' + escHtml(p.name) + '</option>'
+  ).join('');
+}
+function crossSellRowHtml(rule){
+  rule = rule || { id: '', trigger_type: 'productType:document', recommended_product_id: '', sort_order: 0, active: true };
+  return '<tr class="crosssell-row" data-id="' + escHtml(rule.id || '') + '">' +
+    '<td><select class="cs-trigger">' + crossSellTriggerOptionsHtml(rule.trigger_type) + '</select></td>' +
+    '<td><select class="cs-product">' + crossSellProductOptionsHtml(rule.recommended_product_id) + '</select></td>' +
+    '<td class="col-rate"><input class="cs-sort" type="number" step="1" value="' + (rule.sort_order || 0) + '" style="width:70px;" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="cs-active"' + (rule.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove crosssell-remove" aria-label="Remove rule">✕</button></td>' +
+  '</tr>';
+}
+function crossSellPayloadFromRow(tr){
+  return {
+    triggerType: tr.querySelector('.cs-trigger').value,
+    recommendedProductId: tr.querySelector('.cs-product').value,
+    sortOrder: Number(tr.querySelector('.cs-sort').value) || 0,
+    active: tr.querySelector('.cs-active').checked
+  };
+}
+
+async function loadCrossSellRules(){
+  const wrap = document.getElementById('crossSellWrap');
+  try {
+    // Products must be loaded first — the trigger/product dropdowns are
+    // built from productsList (see crossSellTriggerOptionsHtml above).
+    if (!productsList.length) await loadProducts();
+    const res = await adminFetch('/api/admin/cross-sell-rules');
+    const data = await res.json();
+    crossSellRulesList = data.rules || [];
+    renderCrossSellTable();
+  } catch (err) {
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle">Could not load cross-sell rules.</p>';
+  }
+}
+
+function renderCrossSellTable(){
+  const wrap = document.getElementById('crossSellWrap');
+  if (!productsList.length) {
+    wrap.innerHTML = '<p class="subtle">Add at least one product in the Products tab before configuring cross-sell rules.</p>';
+    return;
+  }
+  wrap.innerHTML =
+    '<p class="detail" style="margin-bottom:12px;">Shown as a "Complete your order" strip right after a customer adds a matching item to their cart — e.g. suggest a Pen after any print job, or a File after a Rent Receipt Booklet.</p>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
+      '<th>When this happens</th><th>Recommend</th><th>Order</th><th>Active</th><th></th>' +
+    '</tr></thead><tbody id="crossSellRows">' + crossSellRulesList.map(crossSellRowHtml).join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add" id="addCrossSellRule">+ Add rule</button>' +
+    '<div class="save-message hidden" id="crossSellMessage"></div>' +
+    '<button class="save-btn" type="button" id="saveCrossSellBtn" style="margin-top:14px;">Save cross-sell rules</button>';
+
+  document.getElementById('addCrossSellRule').addEventListener('click', () => {
+    document.getElementById('crossSellRows').insertAdjacentHTML('beforeend', crossSellRowHtml(null));
+    bindCrossSellRowRemove(document.getElementById('crossSellRows').lastElementChild);
+  });
+  document.querySelectorAll('#crossSellRows .crosssell-row').forEach(bindCrossSellRowRemove);
+  document.getElementById('saveCrossSellBtn').addEventListener('click', saveCrossSellRules);
+}
+function bindCrossSellRowRemove(tr){
+  tr.querySelector('.crosssell-remove').addEventListener('click', () => tr.remove());
+}
+
+// Rules are saved individually (create new / update existing / delete
+// removed) rather than as one whole-blob PUT — cross_sell_rules is a real
+// table with its own ids, not a settings.pricing sub-object, so each row
+// maps directly to its own CRUD call.
+async function saveCrossSellRules(){
+  const btn = document.getElementById('saveCrossSellBtn');
+  const msg = document.getElementById('crossSellMessage');
+  msg.classList.add('hidden');
+  const rows = Array.from(document.querySelectorAll('#crossSellRows .crosssell-row'));
+  const currentIds = new Set(rows.map((tr) => tr.dataset.id).filter(Boolean));
+  const removedIds = crossSellRulesList.map((r) => r.id).filter((id) => !currentIds.has(id));
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    for (const id of removedIds) {
+      await adminFetch('/api/admin/cross-sell-rules/' + encodeURIComponent(id), { method: 'DELETE' });
+    }
+    for (const tr of rows) {
+      const payload = crossSellPayloadFromRow(tr);
+      if (!payload.recommendedProductId) continue;
+      const id = tr.dataset.id;
+      const url = id ? '/api/admin/cross-sell-rules/' + encodeURIComponent(id) : '/api/admin/cross-sell-rules';
+      const res = await adminFetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error('save_failed');
+    }
+    await loadCrossSellRules();
+    const m = document.getElementById('crossSellMessage');
+    if (m) { m.className = 'save-message'; m.textContent = 'Saved.'; m.classList.remove('hidden'); }
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      msg.textContent = 'Failed to save cross-sell rules.';
+      msg.className = 'save-message error';
+      msg.classList.remove('hidden');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save cross-sell rules';
   }
 }
 
@@ -4090,11 +4778,17 @@ async function loadSettings(){
   const res = await fetch('/api/settings');
   const s = await res.json();
   const shopOpen = s.shopOpen !== false;
+  const newVerticals = s.newVerticalsEnabled === true;
   form.innerHTML =
     '<div class="shop-toggle-box' + (shopOpen ? '' : ' closed') + '" id="shopToggleBox">' +
       '<div><div class="stb-label">Shop is ' + (shopOpen ? 'Open' : 'Closed') + '</div>' +
       '<div class="stb-sub">' + (shopOpen ? 'The full website is live for customers.' : 'Visitors see a "we\'re closed" page instead of the site.') + '</div></div>' +
       '<label class="shop-switch"><input type="checkbox" id="shopOpenToggle"' + (shopOpen ? ' checked' : '') + '><span class="slider"></span></label>' +
+    '</div>' +
+    '<div class="shop-toggle-box' + (newVerticals ? '' : ' closed') + '" id="newVerticalsToggleBox">' +
+      '<div><div class="stb-label">Stationery &amp; Stamps are ' + (newVerticals ? 'Live' : 'Hidden') + '</div>' +
+      '<div class="stb-sub">' + (newVerticals ? '/stationery, /stamps and /cart are live — customers can browse and buy.' : 'Customers get a real 404 on /stationery, /stamps, /cart and their APIs — fully invisible. Product/Inventory/Stamp Settings tabs stay usable so you can prepare everything first.') + '</div></div>' +
+      '<label class="shop-switch"><input type="checkbox" id="newVerticalsToggle"' + (newVerticals ? ' checked' : '') + '><span class="slider"></span></label>' +
     '</div>' +
     '<h2>Contact information</h2><div class="field-grid">' +
       textFieldHtml('Business name', 'businessName', s.businessName) +
@@ -4155,12 +4849,25 @@ async function loadSettings(){
       : 'Visitors see a "we\'re closed" page instead of the site.';
     saveSettings();
   });
+  document.getElementById('newVerticalsToggle').addEventListener('change', (e) => {
+    const box = document.getElementById('newVerticalsToggleBox');
+    box.classList.toggle('closed', !e.target.checked);
+    box.querySelector('.stb-label').textContent = 'Stationery & Stamps are ' + (e.target.checked ? 'Live' : 'Hidden');
+    box.querySelector('.stb-sub').textContent = e.target.checked
+      ? '/stationery, /stamps and /cart are live — customers can browse and buy.'
+      : 'Customers get a real 404 on /stationery, /stamps, /cart and their APIs — fully invisible. Product/Inventory/Stamp Settings tabs stay usable so you can prepare everything first.';
+    saveSettings();
+  });
 }
 
 async function saveSettings(){
   const btn = document.getElementById('saveSettingsBtn');
   const msg = document.getElementById('settingsMessage');
-  const settings = { legal: {}, social: {}, seo: {}, storeTimings: {}, analytics: {}, shopOpen: document.getElementById('shopOpenToggle').checked };
+  const settings = {
+    legal: {}, social: {}, seo: {}, storeTimings: {}, analytics: {},
+    shopOpen: document.getElementById('shopOpenToggle').checked,
+    newVerticalsEnabled: document.getElementById('newVerticalsToggle').checked
+  };
   document.querySelectorAll('#settingsForm input[data-key], #settingsForm textarea[data-key]').forEach((input) => {
     const path = input.dataset.key.split('.');
     let node = settings;
@@ -4189,6 +4896,476 @@ async function saveSettings(){
     btn.textContent = 'Save settings';
   }
 }
+
+/* -- PRODUCTS (stationery catalog) + INVENTORY -- */
+let productsList = [];
+let productCategoriesList = [];
+let productEditingId = null;
+let productImageUrls = [];
+let productSearchTerm = '';
+let productCategoryFilterId = '';
+let adjustStockProductId = null;
+
+function productSlugPreview(name){
+  return String(name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+function categoryNameById(id){
+  const c = productCategoriesList.find((c) => c.id === id);
+  return c ? c.name : '';
+}
+function stockStatus(product){
+  if (product.stock_qty <= 0) return { label: 'Out of stock', cls: 'st-err' };
+  if (product.stock_qty <= product.low_stock_threshold) return { label: 'Low stock', cls: 'st-warn' };
+  return { label: 'Healthy', cls: 'st-ok' };
+}
+
+async function loadProductCategories(){
+  try {
+    const res = await adminFetch('/api/admin/product-categories');
+    const data = await res.json();
+    productCategoriesList = data.categories || [];
+    const filterSel = document.getElementById('productCategoryFilter');
+    const modalSel = document.getElementById('productCategory');
+    const filterCurrent = filterSel.value;
+    filterSel.innerHTML = '<option value="">All categories</option>' +
+      productCategoriesList.map((c) => '<option value="' + escHtml(c.id) + '">' + escHtml(c.name) + '</option>').join('');
+    filterSel.value = filterCurrent;
+    modalSel.innerHTML = '<option value="">— None —</option>' +
+      productCategoriesList.filter((c) => c.active).map((c) => '<option value="' + escHtml(c.id) + '">' + escHtml(c.name) + '</option>').join('');
+    if (!document.getElementById('categoriesModal').classList.contains('hidden')) renderCategoriesModalList();
+  } catch (err) { /* non-fatal — product list still usable without categories */ }
+}
+
+async function loadProducts(){
+  const list = document.getElementById('productsList');
+  try {
+    const res = await adminFetch('/api/admin/products');
+    const data = await res.json();
+    productsList = data.products || [];
+    renderProductsList();
+    renderInventoryTable();
+  } catch (err) {
+    if (err.message !== 'unauthorized') list.innerHTML = '<div class="blog-empty">Could not load products.</div>';
+  }
+}
+
+function renderProductsList(){
+  const list = document.getElementById('productsList');
+  let products = productsList;
+  if (productCategoryFilterId) products = products.filter((p) => p.category_id === productCategoryFilterId);
+  if (productSearchTerm) {
+    const q = productSearchTerm.toLowerCase();
+    products = products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+  }
+  if (!products.length) {
+    list.innerHTML = '<div class="blog-empty">No products yet. Click "New product" to add your first stationery item.</div>';
+    return;
+  }
+  list.innerHTML = products.map((p) => {
+    const thumb = p.images && p.images[0] ? '<img src="' + escHtml(p.images[0]) + '" alt="" />' : '📦';
+    const st = stockStatus(p);
+    const catName = p.category_id ? categoryNameById(p.category_id) : '';
+    return (
+      '<div class="product-card" data-id="' + escHtml(p.id) + '">' +
+        '<div class="product-card-thumb">' + thumb + '</div>' +
+        '<div class="product-card-main">' +
+          '<div class="product-card-title">' + escHtml(p.name) + ' ' + (p.active ? '' : '<span class="blog-post-chip st-slate">Inactive</span>') + '</div>' +
+          '<div class="product-card-meta">SKU ' + escHtml(p.sku) + (catName ? ' · ' + escHtml(catName) : '') + ' · ₹' + p.price + ' · <span class="' + st.cls + '" style="padding:1px 8px;border-radius:999px;font-weight:600;">' + p.stock_qty + ' in stock</span></div>' +
+        '</div>' +
+        '<div class="product-card-actions">' +
+          '<label class="shop-switch" title="Active"><input type="checkbox" class="product-active-toggle" data-id="' + escHtml(p.id) + '" ' + (p.active ? 'checked' : '') + '><span class="slider"></span></label>' +
+          '<button class="blog-icon-btn" data-action="edit" data-id="' + escHtml(p.id) + '" type="button" title="Edit">✏️</button>' +
+          '<button class="blog-icon-btn danger" data-action="delete" data-id="' + escHtml(p.id) + '" type="button" title="Delete">🗑</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+}
+
+document.getElementById('productSearch').addEventListener('input', (e) => {
+  productSearchTerm = e.target.value.trim();
+  renderProductsList();
+});
+document.getElementById('productCategoryFilter').addEventListener('change', (e) => {
+  productCategoryFilterId = e.target.value;
+  renderProductsList();
+});
+
+document.getElementById('productsList').addEventListener('click', async (e) => {
+  const toggle = e.target.closest('.product-active-toggle');
+  if (toggle) {
+    const id = toggle.dataset.id;
+    try {
+      await adminFetch('/api/admin/products/' + encodeURIComponent(id) + '/' + (toggle.checked ? 'reactivate' : 'deactivate'), { method: 'POST' });
+      await loadProducts();
+    } catch (err) { if (err.message !== 'unauthorized') { toggle.checked = !toggle.checked; alert('Could not update product.'); } }
+    return;
+  }
+  const editBtn = e.target.closest('[data-action="edit"]');
+  if (editBtn) { openProductModal(productsList.find((p) => p.id === editBtn.dataset.id)); return; }
+  const delBtn = e.target.closest('[data-action="delete"]');
+  if (delBtn) {
+    const product = productsList.find((p) => p.id === delBtn.dataset.id);
+    const ok = await showConfirmModal('<h3>Delete product?</h3><p class="modal-sub">"' + escHtml(product.name) + '" will be permanently deleted. This can\'t be undone.</p>', 'Delete', true);
+    if (!ok) return;
+    try {
+      const res = await adminFetch('/api/admin/products/' + encodeURIComponent(product.id), { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.message || 'Could not delete product.'); return; }
+      await loadProducts();
+    } catch (err) { if (err.message !== 'unauthorized') alert('Could not delete product.'); }
+  }
+});
+
+const productModal = document.getElementById('productModal');
+function renderProductImages(){
+  document.getElementById('productImagesList').innerHTML = productImageUrls.map((url, i) => (
+    '<div class="product-image-chip"><img src="' + escHtml(url) + '" alt="" /><button type="button" data-i="' + i + '" title="Remove">✕</button></div>'
+  )).join('');
+}
+document.getElementById('productImagesList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-i]');
+  if (!btn) return;
+  productImageUrls.splice(Number(btn.dataset.i), 1);
+  renderProductImages();
+});
+
+function openProductModal(product){
+  productEditingId = product ? product.id : null;
+  productImageUrls = product ? (product.images || []).slice() : [];
+  document.getElementById('productModalTitle').textContent = product ? 'Edit product' : 'New product';
+  document.getElementById('productName').value = product ? product.name : '';
+  document.getElementById('productSku').value = product ? product.sku : '';
+  document.getElementById('productCategory').value = product ? (product.category_id || '') : '';
+  document.getElementById('productDescription').value = product ? (product.description || '') : '';
+  document.getElementById('productPrice').value = product ? product.price : '';
+  document.getElementById('productMrp').value = product && product.mrp != null ? product.mrp : '';
+  document.getElementById('productCostPrice').value = product && product.cost_price != null ? product.cost_price : '';
+  document.getElementById('productLowStockThreshold').value = product ? product.low_stock_threshold : 5;
+  document.getElementById('productStockQty').value = product ? product.stock_qty : 0;
+  document.getElementById('productStockField').classList.toggle('hidden', !!product);
+  document.getElementById('productSlug').value = product ? product.slug : '';
+  document.getElementById('productMetaTitle').value = product ? (product.meta_title || '') : '';
+  document.getElementById('productMetaDescription').value = product ? (product.meta_description || '') : '';
+  document.getElementById('productActive').checked = product ? !!product.active : true;
+  renderProductImages();
+  const msg = document.getElementById('productModalMsg');
+  msg.classList.add('hidden'); msg.textContent = '';
+  productModal.classList.remove('hidden');
+  productModal.classList.add('show');
+  document.getElementById('productName').focus();
+}
+function closeProductModal(){
+  productModal.classList.remove('show');
+  productModal.classList.add('hidden');
+}
+document.getElementById('productNewBtn').addEventListener('click', () => openProductModal(null));
+document.getElementById('productModalClose').addEventListener('click', closeProductModal);
+document.getElementById('productModalCancel').addEventListener('click', closeProductModal);
+productModal.addEventListener('click', (e) => { if (e.target === productModal) closeProductModal(); });
+
+async function downloadProductBulkTemplate(){
+  const btn = document.getElementById('productBulkTemplateBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const res = await adminFetch('/api/admin/products/bulk-template');
+    if (!res.ok) { alert('Could not download template.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'metalix-products-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not download template.');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+document.getElementById('productBulkTemplateBtn').addEventListener('click', downloadProductBulkTemplate);
+
+const bulkUploadResultModal = document.getElementById('bulkUploadResultModal');
+function closeBulkUploadResultModal(){
+  bulkUploadResultModal.classList.remove('show');
+  bulkUploadResultModal.classList.add('hidden');
+}
+document.getElementById('bulkUploadResultClose').addEventListener('click', closeBulkUploadResultModal);
+document.getElementById('bulkUploadResultOk').addEventListener('click', closeBulkUploadResultModal);
+bulkUploadResultModal.addEventListener('click', (e) => { if (e.target === bulkUploadResultModal) closeBulkUploadResultModal(); });
+
+function showBulkUploadResult(data){
+  const body = document.getElementById('bulkUploadResultBody');
+  let html = '<p><strong>' + data.created + '</strong> product' + (data.created === 1 ? '' : 's') + ' created, ' +
+    '<strong>' + data.updated + '</strong> updated' +
+    (data.skipped.length ? ', <strong>' + data.skipped.length + '</strong> skipped.' : '.') + '</p>';
+  if (data.skipped.length) {
+    html += '<table style="table-layout:fixed;margin-top:10px;"><thead><tr><th style="width:52px;">Row</th><th style="width:130px;">SKU</th><th>Reason</th></tr></thead><tbody>' +
+      data.skipped.map((s) => '<tr><td>' + s.row + '</td><td style="word-break:break-word;">' + escHtml(s.sku || '—') + '</td><td style="white-space:normal;">' + escHtml(s.reason) + '</td></tr>').join('') +
+      '</tbody></table>';
+  }
+  body.innerHTML = html;
+  bulkUploadResultModal.classList.remove('hidden');
+  bulkUploadResultModal.classList.add('show');
+}
+
+document.getElementById('productBulkUploadBtn').addEventListener('click', () => document.getElementById('productBulkFileInput').click());
+document.getElementById('productBulkFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const btn = document.getElementById('productBulkUploadBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await adminFetch('/api/admin/products/bulk-upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) { alert(data.message || 'Could not process that file.'); return; }
+    await loadProducts();
+    showBulkUploadResult(data);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not process that file.');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+    e.target.value = '';
+  }
+});
+document.getElementById('productName').addEventListener('input', (e) => {
+  const slugField = document.getElementById('productSlug');
+  if (!productEditingId && !slugField.dataset.touched) slugField.value = productSlugPreview(e.target.value);
+});
+document.getElementById('productSlug').addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+
+document.getElementById('productImageAddBtn').addEventListener('click', () => document.getElementById('productImageFile').click());
+document.getElementById('productImageFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('image', file);
+  const msg = document.getElementById('productModalMsg');
+  try {
+    const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Upload failed');
+    productImageUrls.push(data.url);
+    renderProductImages();
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message || 'Could not upload image.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  }
+  e.target.value = '';
+});
+
+document.getElementById('productModalSave').addEventListener('click', async () => {
+  const name = document.getElementById('productName').value.trim();
+  const sku = document.getElementById('productSku').value.trim();
+  const msg = document.getElementById('productModalMsg');
+  msg.classList.add('hidden');
+  if (!name) { msg.textContent = 'Name is required.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+  if (!sku) { msg.textContent = 'SKU is required.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+  const payload = {
+    name, sku,
+    slug: document.getElementById('productSlug').value.trim(),
+    categoryId: document.getElementById('productCategory').value || null,
+    description: document.getElementById('productDescription').value.trim(),
+    price: document.getElementById('productPrice').value,
+    mrp: document.getElementById('productMrp').value,
+    costPrice: document.getElementById('productCostPrice').value,
+    lowStockThreshold: document.getElementById('productLowStockThreshold').value,
+    images: productImageUrls,
+    metaTitle: document.getElementById('productMetaTitle').value.trim(),
+    metaDescription: document.getElementById('productMetaDescription').value.trim(),
+    active: document.getElementById('productActive').checked
+  };
+  if (!productEditingId) payload.stockQty = document.getElementById('productStockQty').value;
+  const saveBtn = document.getElementById('productModalSave');
+  saveBtn.disabled = true;
+  try {
+    const url = productEditingId ? '/api/admin/products/' + encodeURIComponent(productEditingId) : '/api/admin/products';
+    const res = await adminFetch(url, {
+      method: productEditingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Could not save product.');
+    closeProductModal();
+    await loadProducts();
+    showFlash(productEditingId ? 'Product updated.' : 'Product created.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+/* -- Categories modal -- */
+const categoriesModal = document.getElementById('categoriesModal');
+function renderCategoriesModalList(){
+  const wrap = document.getElementById('categoriesListWrap');
+  if (!productCategoriesList.length) { wrap.innerHTML = '<p class="subtle">No categories yet.</p>'; return; }
+  wrap.innerHTML = productCategoriesList.map((c) => (
+    '<div class="field-grid" style="grid-template-columns:1fr auto auto;align-items:center;gap:8px;margin-bottom:6px;" data-cat-id="' + escHtml(c.id) + '">' +
+      '<input type="text" class="cat-name-input" value="' + escHtml(c.name) + '" />' +
+      '<label class="shop-switch" title="Active"><input type="checkbox" class="cat-active-toggle" ' + (c.active ? 'checked' : '') + '><span class="slider"></span></label>' +
+      '<button class="blog-icon-btn danger" data-action="delete-cat" type="button" title="Delete">🗑</button>' +
+    '</div>'
+  )).join('');
+}
+document.getElementById('manageCategoriesBtn').addEventListener('click', () => {
+  renderCategoriesModalList();
+  categoriesModal.classList.remove('hidden');
+  categoriesModal.classList.add('show');
+});
+document.getElementById('categoriesModalClose').addEventListener('click', () => {
+  categoriesModal.classList.remove('show');
+  categoriesModal.classList.add('hidden');
+  loadProducts();
+});
+categoriesModal.addEventListener('click', (e) => { if (e.target === categoriesModal) document.getElementById('categoriesModalClose').click(); });
+
+document.getElementById('addCategoryBtn').addEventListener('click', async () => {
+  const input = document.getElementById('newCategoryName');
+  const name = input.value.trim();
+  const msg = document.getElementById('categoriesModalMsg');
+  if (!name) return;
+  try {
+    const res = await adminFetch('/api/admin/product-categories', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Could not add category.');
+    input.value = '';
+    await loadProductCategories();
+    renderCategoriesModalList();
+  } catch (err) { if (err.message !== 'unauthorized') { msg.textContent = err.message; msg.className = 'save-message error'; msg.classList.remove('hidden'); } }
+});
+
+document.getElementById('categoriesListWrap').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-cat-id]');
+  if (!row) return;
+  const id = row.dataset.catId;
+  if (e.target.closest('[data-action="delete-cat"]')) {
+    const cat = productCategoriesList.find((c) => c.id === id);
+    const ok = await showConfirmModal('<h3>Delete category?</h3><p class="modal-sub">Products in "' + escHtml(cat.name) + '" will become uncategorized, not deleted.</p>', 'Delete', true);
+    if (!ok) return;
+    await adminFetch('/api/admin/product-categories/' + encodeURIComponent(id), { method: 'DELETE' });
+    await loadProductCategories();
+    renderCategoriesModalList();
+  }
+});
+document.getElementById('categoriesListWrap').addEventListener('change', async (e) => {
+  const row = e.target.closest('[data-cat-id]');
+  if (!row || !e.target.classList.contains('cat-active-toggle')) return;
+  const id = row.dataset.catId;
+  const cat = productCategoriesList.find((c) => c.id === id);
+  await adminFetch('/api/admin/product-categories/' + encodeURIComponent(id), {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: cat.name, active: e.target.checked })
+  });
+  await loadProductCategories();
+});
+document.getElementById('categoriesListWrap').addEventListener('blur', async (e) => {
+  if (!e.target.classList || !e.target.classList.contains('cat-name-input')) return;
+  const row = e.target.closest('[data-cat-id]');
+  const id = row.dataset.catId;
+  const cat = productCategoriesList.find((c) => c.id === id);
+  const name = e.target.value.trim();
+  if (!name || name === cat.name) return;
+  await adminFetch('/api/admin/product-categories/' + encodeURIComponent(id), {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, active: cat.active })
+  });
+  await loadProductCategories();
+}, true);
+
+/* -- Inventory tab -- */
+function renderInventoryTable(){
+  const body = document.getElementById('inventoryBody');
+  if (!productsList.length) { body.innerHTML = '<tr><td colspan="6" class="empty">No products yet — add one from the Products tab.</td></tr>'; return; }
+  body.innerHTML = productsList.map((p) => {
+    const st = stockStatus(p);
+    return (
+      '<tr>' +
+        '<td>' + escHtml(p.name) + '</td>' +
+        '<td>' + escHtml(p.sku) + '</td>' +
+        '<td><b>' + p.stock_qty + '</b></td>' +
+        '<td>' + p.low_stock_threshold + '</td>' +
+        '<td><span class="blog-post-chip ' + st.cls + '">' + st.label + '</span></td>' +
+        '<td><button class="edit-cust-btn" data-action="adjust" data-id="' + escHtml(p.id) + '" type="button">Adjust stock</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+}
+document.getElementById('inventoryBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action="adjust"]');
+  if (!btn) return;
+  openAdjustStockModal(productsList.find((p) => p.id === btn.dataset.id));
+});
+
+const adjustStockModal = document.getElementById('adjustStockModal');
+async function openAdjustStockModal(product){
+  adjustStockProductId = product.id;
+  document.getElementById('adjustStockTitle').textContent = 'Adjust stock — ' + product.name + ' (currently ' + product.stock_qty + ')';
+  document.getElementById('adjustStockDelta').value = '';
+  document.getElementById('adjustStockReason').value = 'received';
+  document.getElementById('adjustStockNote').value = '';
+  const msg = document.getElementById('adjustStockMsg');
+  msg.classList.add('hidden'); msg.textContent = '';
+  const historyWrap = document.getElementById('stockHistoryWrap');
+  historyWrap.innerHTML = '<div class="loading">Loading history…</div>';
+  adjustStockModal.classList.remove('hidden');
+  adjustStockModal.classList.add('show');
+  document.getElementById('adjustStockDelta').focus();
+  try {
+    const res = await adminFetch('/api/admin/products/' + encodeURIComponent(product.id) + '/stock-ledger');
+    const data = await res.json();
+    const ledger = data.ledger || [];
+    historyWrap.innerHTML = '<label style="font-size:12.5px;font-weight:700;color:var(--ink2);">Recent history</label>' +
+      (ledger.length
+        ? '<div class="table-scroll" style="max-height:200px;overflow-y:auto;margin-top:6px;"><table><tbody>' +
+          ledger.slice(0, 30).map((l) => (
+            '<tr><td style="white-space:nowrap;font-size:12px;color:var(--ink3);">' + new Date(l.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + '</td>' +
+            '<td style="font-weight:700;color:' + (l.delta >= 0 ? 'var(--ok)' : 'var(--err)') + ';">' + (l.delta >= 0 ? '+' : '') + l.delta + '</td>' +
+            '<td style="font-size:12.5px;">' + escHtml(l.reason) + (l.note ? ' — ' + escHtml(l.note) : '') + (l.reference ? ' (' + escHtml(l.reference) + ')' : '') + '</td></tr>'
+          )).join('') + '</tbody></table></div>'
+        : '<p class="subtle" style="margin:6px 0 0;">No adjustments yet.</p>');
+  } catch (err) {
+    if (err.message !== 'unauthorized') historyWrap.innerHTML = '<p class="subtle">Could not load history.</p>';
+  }
+}
+function closeAdjustStockModal(){
+  adjustStockModal.classList.remove('show');
+  adjustStockModal.classList.add('hidden');
+}
+document.getElementById('adjustStockCancel').addEventListener('click', closeAdjustStockModal);
+adjustStockModal.addEventListener('click', (e) => { if (e.target === adjustStockModal) closeAdjustStockModal(); });
+document.getElementById('adjustStockSave').addEventListener('click', async () => {
+  const delta = Math.round(Number(document.getElementById('adjustStockDelta').value));
+  const msg = document.getElementById('adjustStockMsg');
+  msg.classList.add('hidden');
+  if (!delta) { msg.textContent = 'Enter a non-zero whole number.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+  const saveBtn = document.getElementById('adjustStockSave');
+  saveBtn.disabled = true;
+  try {
+    const res = await adminFetch('/api/admin/products/' + encodeURIComponent(adjustStockProductId) + '/adjust-stock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delta, reason: document.getElementById('adjustStockReason').value, note: document.getElementById('adjustStockNote').value.trim() })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Could not adjust stock.');
+    closeAdjustStockModal();
+    await loadProducts();
+    showFlash('Stock updated.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
 
 /* -- NEW ORDER (admin placing an order on behalf of a customer) -- */
 const newOrderModal = document.getElementById('newOrderModal');

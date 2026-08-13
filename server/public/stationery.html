@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no"/>
+__GTM_HEAD__
+<title>Stationery — Metalix Print</title>
+<meta name="description" content="Pens, staplers, files, envelopes, Rent Receipt Booklets and more — ready-made stationery, delivered or picked up alongside your prints.">
+<link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
+<link rel="preconnect" href="/fonts">
+<style>
+@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Sora-700.woff2) format('woff2');}
+@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Sora-800.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Inter-400.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Inter-600.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Inter-700.woff2) format('woff2');}
+*{box-sizing:border-box;margin:0;padding:0;}
+/* Same token names/values as landing.html (the site's actual design system)
+   rather than an approximated palette — see that file's own :root/
+   [data-theme=dark] blocks. color-scheme is required for native form
+   controls to render with correct dark-mode chrome. */
+:root{
+  --orange:#FF6600; --orange-d:#E05500; --orange-l:#FFF4EB;
+  --ink:#1C1917; --ink2:#44403C; --ink3:#78716C;
+  --paper:#FAFAF8; --card:#FFFFFF; --line:#E7E5E4; --line-strong:#C7C4C0;
+  --green:#16A34A; --green-bg:#E7F6EC; --red:#DC2626;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --ink:#F7F6F1; --ink2:#D9D4CC; --ink3:#ABA69C;
+  --paper:#141316; --card:#1F1D22; --line:#3A3630; --line-strong:#55504A;
+  --orange-l:rgba(255,102,0,.16); --green-bg:rgba(22,163,74,.18);
+  color-scheme:dark;
+}
+body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+a{color:inherit;}
+h1,h2,h3{font-family:'Sora',sans-serif;}
+header{position:sticky;top:0;z-index:40;background:var(--paper);border-bottom:1px solid var(--line);}
+.header-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px;}
+.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Sora';font-weight:800;font-size:19px;color:var(--ink);flex-shrink:0;}
+.h-logo img{height:30px;width:30px;}
+.h-logo .logo-sub{color:var(--orange);}
+nav.main-nav{display:flex;gap:4px;flex:1;flex-wrap:wrap;}
+nav.main-nav a{text-decoration:none;color:var(--ink2);font-weight:600;font-size:14.5px;padding:8px 12px;border-radius:8px;transition:.15s;}
+nav.main-nav a:hover{background:var(--orange-l);color:var(--orange-d);}
+nav.main-nav a.active{background:var(--orange-l);color:var(--orange-d);}
+.h-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cart-link{position:relative;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink);font-weight:700;font-size:14px;background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;padding:8px 14px;}
+.cart-badge{background:var(--orange);color:#fff;font-size:11px;font-weight:800;border-radius:999px;min-width:18px;height:18px;display:none;align-items:center;justify-content:center;padding:0 5px;}
+.theme-toggle{background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;}
+main{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
+.page-head{margin-bottom:22px;}
+.page-head h1{font-size:28px;font-weight:800;}
+.page-head p{color:var(--ink3);margin-top:6px;font-size:14.5px;}
+.cat-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;}
+.cat-chip{background:var(--card);border:1.5px solid var(--line-strong);border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;color:var(--ink2);}
+.cat-chip.active{background:var(--orange);border-color:var(--orange);color:#fff;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;}
+.p-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;}
+.p-thumb{aspect-ratio:1.3;background:var(--orange-l);display:flex;align-items:center;justify-content:center;font-size:44px;}
+.p-thumb img{width:100%;height:100%;object-fit:cover;}
+.p-body{padding:14px 14px 16px;display:flex;flex-direction:column;gap:6px;flex:1;}
+.p-cat{font-size:11px;font-weight:700;color:var(--orange-d);text-transform:uppercase;letter-spacing:.03em;}
+.p-name{font-weight:700;font-size:15px;}
+.p-desc{font-size:12.5px;color:var(--ink3);line-height:1.4;flex:1;}
+.p-price-row{display:flex;align-items:baseline;gap:8px;margin-top:2px;}
+.p-price{font-weight:800;font-size:17px;}
+.p-mrp{font-size:12.5px;color:var(--ink3);text-decoration:line-through;}
+.p-stock{font-size:11.5px;font-weight:600;}
+.p-stock.ok{color:var(--green);}
+.p-stock.out{color:var(--red);}
+.p-actions{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.qty-stepper{display:flex;align-items:center;border:1.5px solid var(--line-strong);border-radius:9px;overflow:hidden;}
+.qty-stepper button{background:var(--card);border:none;width:28px;height:32px;cursor:pointer;font-size:15px;color:var(--ink2);}
+.qty-stepper input{width:32px;border:none;text-align:center;font-size:13.5px;font-weight:700;background:var(--card);color:var(--ink);}
+.add-btn{flex:1;background:var(--orange);color:#fff;border:none;border-radius:9px;padding:9px 10px;font-weight:700;font-size:13.5px;cursor:pointer;transition:.15s;}
+.add-btn:hover{background:var(--orange-d);}
+.add-btn:disabled{background:var(--line-strong);color:var(--ink3);cursor:not-allowed;}
+.empty{text-align:center;padding:60px 20px;color:var(--ink3);}
+.cross-sell-strip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:16px;box-shadow:var(--shadow);}
+.cross-sell-title{font-weight:700;font-size:13.5px;margin-bottom:12px;}
+.cross-sell-items{display:flex;gap:12px;overflow-x:auto;padding-bottom:2px;}
+.cross-sell-item{flex:0 0 130px;text-align:center;}
+.cross-sell-thumb{width:100%;aspect-ratio:1;background:var(--orange-l);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:6px;overflow:hidden;}
+.cross-sell-thumb img{width:100%;height:100%;object-fit:cover;}
+.cross-sell-name{font-size:12px;font-weight:600;margin-bottom:2px;}
+.cross-sell-price{font-size:12px;color:var(--ink3);margin-bottom:6px;}
+.cross-sell-add{width:100%;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer;}
+.cross-sell-add:disabled{background:var(--green);cursor:default;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:12px 22px;border-radius:10px;font-weight:600;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:100;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media (max-width:640px){
+  nav.main-nav{order:3;width:100%;justify-content:space-between;}
+  .header-inner{flex-wrap:wrap;}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <a class="h-logo" href="/"><img src="/images/logo.svg" alt="Metalix Print"><span>Metalix<span class="logo-sub"> Print</span></span></a>
+    <nav class="main-nav">
+      <a href="/order">Print</a>
+      <a href="/stationery" class="active">Stationery</a>
+      <a href="/stamps">Stamps</a>
+      <a href="/orders">Orders</a>
+    </nav>
+    <div class="h-actions">
+      <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+      <a class="cart-link" href="/cart">🛒 Cart <span class="cart-badge" data-cart-badge>0</span></a>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="page-head">
+    <h1>Stationery</h1>
+    <p>Ready-made office &amp; writing essentials — add them alongside your print order or buy on their own.</p>
+  </div>
+  <div class="cat-chips" id="catChips"><button class="cat-chip active" data-cat="">All</button></div>
+  <div class="grid" id="productGrid"><div class="empty">Loading products…</div></div>
+  <div class="cross-sell-strip" id="crossSellStrip" style="display:none;"></div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/js/cart.js"></script>
+<script>
+(function(){
+  var THEME_KEY = 'metalix_theme';
+  function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); }
+  applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(cur); localStorage.setItem(THEME_KEY, cur);
+  });
+})();
+
+var allProducts = [];
+var allCategories = [];
+var activeCategory = '';
+
+function categoryNameById(id){
+  var c = allCategories.find(function(c){ return c.id === id; });
+  return c ? c.name : '';
+}
+
+function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+
+function showToast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+function renderGrid(){
+  var grid = document.getElementById('productGrid');
+  var list = activeCategory ? allProducts.filter(function(p){ return p.categoryId === activeCategory; }) : allProducts;
+  if (!list.length) { grid.innerHTML = '<div class="empty">No products in this category yet.</div>'; return; }
+  grid.innerHTML = list.map(function(p){
+    var thumb = (p.images && p.images[0]) ? '<img src="' + escHtml(p.images[0]) + '" alt="' + escHtml(p.name) + '">' : '📦';
+    var mrp = (p.mrp && p.mrp > p.price) ? '<span class="p-mrp">₹' + p.mrp + '</span>' : '';
+    var stock = p.inStock ? '<span class="p-stock ok">In stock</span>' : '<span class="p-stock out">Out of stock</span>';
+    var catName = categoryNameById(p.categoryId);
+    return (
+      '<div class="p-card" data-id="' + p.id + '">' +
+        '<div class="p-thumb">' + thumb + '</div>' +
+        '<div class="p-body">' +
+          (catName ? '<div class="p-cat">' + escHtml(catName) + '</div>' : '') +
+          '<div class="p-name">' + escHtml(p.name) + '</div>' +
+          '<div class="p-desc">' + escHtml(p.description || '') + '</div>' +
+          '<div class="p-price-row"><span class="p-price">₹' + p.price + '</span>' + mrp + '</div>' +
+          stock +
+          '<div class="p-actions">' +
+            '<div class="qty-stepper"><button type="button" data-step="-1">−</button><input type="text" value="1" inputmode="numeric" class="qty-input"><button type="button" data-step="1">+</button></div>' +
+            '<button class="add-btn" type="button"' + (p.inStock ? '' : ' disabled') + '>Add to Cart</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+}
+
+document.getElementById('productGrid').addEventListener('click', function(e){
+  var card = e.target.closest('.p-card');
+  if (!card) return;
+  var id = card.dataset.id;
+  var product = allProducts.find(function(p){ return p.id === id; });
+  var qtyInput = card.querySelector('.qty-input');
+  var step = e.target.closest('[data-step]');
+  if (step) {
+    var v = Math.max(1, Math.min(999, (parseInt(qtyInput.value, 10) || 1) + Number(step.dataset.step)));
+    qtyInput.value = v;
+    return;
+  }
+  if (e.target.closest('.add-btn') && product) {
+    var qty = Math.max(1, Math.min(999, parseInt(qtyInput.value, 10) || 1));
+    Cart.add({ productType: 'stationery', productId: product.id, name: product.name, sku: product.sku, unitPrice: product.price, image: (product.images && product.images[0]) || null, quantity: qty });
+    showToast(qty + ' × ' + product.name + ' added to cart');
+    Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stationery');
+    qtyInput.value = 1;
+  }
+});
+
+document.getElementById('catChips').addEventListener('click', function(e){
+  var chip = e.target.closest('.cat-chip');
+  if (!chip) return;
+  document.querySelectorAll('.cat-chip').forEach(function(c){ c.classList.remove('active'); });
+  chip.classList.add('active');
+  activeCategory = chip.dataset.cat;
+  renderGrid();
+});
+
+Promise.all([
+  fetch('/api/product-categories').then(function(r){ return r.json(); }),
+  fetch('/api/products').then(function(r){ return r.json(); })
+]).then(function(results){
+  var categories = results[0].categories || [];
+  allCategories = categories;
+  allProducts = results[1].products || [];
+  var chips = document.getElementById('catChips');
+  categories.forEach(function(c){
+    var btn = document.createElement('button');
+    btn.className = 'cat-chip';
+    btn.dataset.cat = c.id;
+    btn.textContent = c.name;
+    chips.appendChild(btn);
+  });
+  renderGrid();
+}).catch(function(){
+  document.getElementById('productGrid').innerHTML = '<div class="empty">Could not load products. Please refresh.</div>';
+});
+</script>
+</body>
+</html>

@@ -56,6 +56,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), (req, res) =
       })
       if (paidOrder) {
         printQueue.enqueue(order.id)
+        confirmStockForOrder(paidOrder)
         const fresh = db.getOrder(order.id)
         notify.sendOrderConfirmationSms(fresh)
         notify.sendOrderConfirmationEmail(fresh)
@@ -348,6 +349,79 @@ const blogImageUpload = multer({
 })
 app.use('/blog-uploads', express.static(blogUploadsDir, { maxAge: '30d' }))
 
+// Stationery product photos are public catalog images, same reasoning as
+// blog cover images — must NOT go through the private `upload`/`uploadsDir`
+// pipeline above (that's for customer print files, never express.static-
+// mounted). Separate dir/multer instance, same shape as blogImageUpload.
+const productUploadsDir = path.join(__dirname, 'public', 'product-uploads')
+if (!fs.existsSync(productUploadsDir)) fs.mkdirSync(productUploadsDir, { recursive: true })
+const productImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, productUploadsDir),
+    filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`)
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (BLOG_IMAGE_EXTENSIONS[ext]) return cb(null, true)
+    cb(Object.assign(new Error('unsupported_image_type'), { code: 'unsupported_image_type' }))
+  }
+})
+app.use('/product-uploads', express.static(productUploadsDir, { maxAge: '30d' }))
+
+// Bulk product CSV import — memory storage only, the file is parsed and
+// discarded, never written to disk. CSV (not xlsx) deliberately: the
+// npm-published xlsx/SheetJS package has unpatched high-severity Prototype
+// Pollution + ReDoS vulnerabilities, so this uses a small hand-rolled parser
+// below instead of adding that dependency. CSV opens/edits in Excel exactly
+// the same way.
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ext === '.csv') return cb(null, true)
+    cb(Object.assign(new Error('unsupported_file_type'), { code: 'unsupported_file_type' }))
+  }
+})
+
+// Minimal RFC4180 CSV parser: quoted fields, escaped "" quotes, commas/
+// newlines inside quotes. Only needs to handle the fixed-column product
+// template, not arbitrary CSVs.
+function parseCsv(text) {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+  const s = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++ } else inQuotes = false
+      } else field += c
+    } else if (c === '"') {
+      inQuotes = true
+    } else if (c === ',') {
+      row.push(field); field = ''
+    } else if (c === '\r') {
+      // no-op; \n below closes the row
+    } else if (c === '\n') {
+      row.push(field); field = ''
+      rows.push(row); row = []
+    } else {
+      field += c
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row) }
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ''))
+}
+
+function escapeCsvCell(v) {
+  const s = String(v == null ? '' : v)
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+}
+
 // Turns a title (or a user-typed slug) into a clean URL segment.
 function slugify(input) {
   return String(input || '')
@@ -411,6 +485,26 @@ app.post('/api/upload', (req, res) => {
   })
 })
 
+// Stamp logo / existing-artwork upload — the same private uploads/ pipeline
+// and extension whitelist as /api/upload above (reuses the exact same
+// `upload` multer middleware), but deliberately skips PDF conversion/
+// analysis entirely: those are print-job-specific (page count/colour
+// detection for per-page pricing), meaningless for a stamp's logo image, and
+// would force every image through an unnecessary LibreOffice+canvas round
+// trip just to get a fileId back. Public/no-auth, matching /api/upload's own
+// posture — the file is only ever attached to an order (and thus made
+// meaningful) once the order itself is created.
+app.post('/api/stamp-assets/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const code = err.code === 'unsupported_file_type' ? 'unsupported_file_type' : 'upload_failed'
+      return res.status(400).json({ error: code, message: err.message })
+    }
+    if (!req.file) return res.status(400).json({ error: 'no_file' })
+    return res.json({ fileId: req.file.filename, fileName: req.file.originalname, fileSize: req.file.size })
+  })
+})
+
 // Public — used by the customer order page's live estimate and the admin
 // New Order modal. Coupons are deliberately stripped here: unlike every
 // other field in this config, a coupon list is enumerable secret-ish data
@@ -422,6 +516,58 @@ app.post('/api/upload', (req, res) => {
 app.get('/api/pricing', (req, res) => {
   const { coupons, ...publicPricing } = db.getPricing()
   res.json(publicPricing)
+})
+
+// Public stationery catalog. Explicit safe DTO only — never forwards
+// cost_price (admin/reporting-only) or the raw stock_qty count (just whether
+// it's purchasable), matching the same "never expose cost prices" rule the
+// rest of the pricing config already follows (coupons stripped above).
+function publicProduct(p) {
+  return {
+    id: p.id, sku: p.sku, name: p.name, slug: p.slug, description: p.description,
+    categoryId: p.category_id, price: p.price, mrp: p.mrp, images: p.images,
+    inStock: p.stock_qty > 0
+  }
+}
+// All four routes below are gated by newVerticalsEnabled() — while off they
+// 404 exactly like the /stationery, /stamps, /cart pages themselves, so the
+// catalog can't be discovered by hitting the API directly even with the nav
+// links hidden. Admin's own catalog endpoints (/api/admin/products etc.) are
+// never gated — see newVerticalsEnabled()'s comment above.
+app.get('/api/product-categories', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  res.json({ categories: db.listProductCategories({ includeInactive: false }).map((c) => ({ id: c.id, name: c.name, slug: c.slug, description: c.description })) })
+})
+app.get('/api/products', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  // ?category is a slug (URL-friendly, matches the categories endpoint and
+  // the /:slug product route), resolved to an id server-side for filtering.
+  let categoryId
+  if (req.query.category) {
+    const cat = db.getProductCategoryBySlug(req.query.category)
+    categoryId = cat ? cat.id : '__none__' // unknown slug -> empty result, not "all products"
+  }
+  const products = db.listProducts({ includeInactive: false, categoryId })
+  res.json({ products: products.map(publicProduct) })
+})
+app.get('/api/products/:slug', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  const product = db.getProductBySlug(req.params.slug)
+  if (!product || !product.active) return res.status(404).json({ error: 'not_found' })
+  res.json({ product: publicProduct(product) })
+})
+
+// Public — "Complete your order" recommendations. ?trigger is either
+// 'productType:document'/'stationery'/'stamp' (fired from cart.js right
+// after Cart.add()) or 'product:<id>' for a rule scoped to one specific
+// product. Same safe DTO as the products list above — never cost_price/raw
+// stock_qty.
+app.get('/api/cross-sell', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  const trigger = String(req.query.trigger || '')
+  if (!trigger) return res.json({ products: [] })
+  const rows = db.listCrossSellRulesForTrigger(trigger)
+  res.json({ products: rows.map(publicProduct) })
 })
 
 // Public — surfaces at most one coupon (the first active, not-yet-expired
@@ -786,6 +932,338 @@ app.post('/api/admin/blog/upload-cover', requireSuperAdmin, (req, res) => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Stationery catalog admin: product categories, products, stock adjustments.
+// Super-admin-only, same as Pricing/Locations — see requireSuperAdmin.
+// ---------------------------------------------------------------------------
+
+app.get('/api/admin/product-categories', requireSuperAdmin, (req, res) => {
+  res.json({ categories: db.listProductCategories({ includeInactive: true }) })
+})
+
+app.post('/api/admin/product-categories', requireSuperAdmin, express.json(), (req, res) => {
+  const name = (req.body.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'name_required', message: 'Category name is required.' })
+  let slug = slugify(req.body.slug || name)
+  if (!slug) return res.status(400).json({ error: 'invalid_slug', message: 'Could not derive a URL slug from the name.' })
+  if (db.getProductCategoryBySlug(slug)) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
+  const category = db.createProductCategory({
+    id: crypto.randomUUID(), name, slug,
+    description: (req.body.description || '').trim() || null,
+    sort_order: Number(req.body.sortOrder) || 0,
+    active: req.body.active !== false
+  })
+  return res.json({ category })
+})
+
+app.put('/api/admin/product-categories/:id', requireSuperAdmin, express.json(), (req, res) => {
+  const existing = db.getProductCategoryById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  const name = (req.body.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'name_required', message: 'Category name is required.' })
+  let slug = req.body.slug !== undefined ? slugify(req.body.slug) : existing.slug
+  if (!slug) slug = existing.slug
+  const conflict = db.getProductCategoryBySlug(slug)
+  if (conflict && conflict.id !== existing.id) return res.status(409).json({ error: 'slug_taken', message: 'That URL slug is already used by another category.' })
+  const category = db.updateProductCategory(existing.id, {
+    name, slug,
+    description: (req.body.description || '').trim() || null,
+    sort_order: Number(req.body.sortOrder) || 0,
+    active: req.body.active !== false
+  })
+  return res.json({ category })
+})
+
+app.delete('/api/admin/product-categories/:id', requireSuperAdmin, (req, res) => {
+  const existing = db.getProductCategoryById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  db.deleteProductCategory(existing.id)
+  return res.json({ deleted: true })
+})
+
+app.get('/api/admin/products', requireSuperAdmin, (req, res) => {
+  res.json({ products: db.listProducts({ includeInactive: true }) })
+})
+
+function productFieldsFromBody(body) {
+  return {
+    name: (body.name || '').trim(),
+    description: (body.description || '').trim() || null,
+    category_id: body.categoryId || null,
+    price: Number(body.price) || 0,
+    mrp: body.mrp != null && body.mrp !== '' ? Number(body.mrp) : null,
+    cost_price: body.costPrice != null && body.costPrice !== '' ? Number(body.costPrice) : null,
+    stock_qty: Number(body.stockQty) || 0,
+    low_stock_threshold: body.lowStockThreshold != null && body.lowStockThreshold !== '' ? Number(body.lowStockThreshold) : 5,
+    images: Array.isArray(body.images) ? body.images : [],
+    active: body.active !== false,
+    meta_title: (body.metaTitle || '').trim() || null,
+    meta_description: (body.metaDescription || '').trim() || null
+  }
+}
+
+app.post('/api/admin/products', requireSuperAdmin, express.json(), (req, res) => {
+  const fields = productFieldsFromBody(req.body || {})
+  if (!fields.name) return res.status(400).json({ error: 'name_required', message: 'Product name is required.' })
+  const sku = (req.body.sku || '').trim().toUpperCase()
+  if (!sku) return res.status(400).json({ error: 'sku_required', message: 'SKU is required.' })
+  if (db.getProductBySku(sku)) return res.status(409).json({ error: 'sku_taken', message: 'That SKU is already in use.' })
+  let slug = slugify(req.body.slug || fields.name)
+  if (!slug) return res.status(400).json({ error: 'invalid_slug', message: 'Could not derive a URL slug from the name.' })
+  if (db.getProductBySlug(slug)) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
+  const product = db.createProduct({ id: crypto.randomUUID(), sku, slug, ...fields })
+  return res.json({ product })
+})
+
+app.put('/api/admin/products/:id', requireSuperAdmin, express.json(), (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  const fields = productFieldsFromBody(req.body || {})
+  if (!fields.name) return res.status(400).json({ error: 'name_required', message: 'Product name is required.' })
+  if (req.body.sku !== undefined) {
+    const sku = (req.body.sku || '').trim().toUpperCase()
+    if (!sku) return res.status(400).json({ error: 'sku_required', message: 'SKU is required.' })
+    const conflict = db.getProductBySku(sku)
+    if (conflict && conflict.id !== existing.id) return res.status(409).json({ error: 'sku_taken', message: 'That SKU is already in use.' })
+    fields.sku = sku
+  }
+  let slug = req.body.slug !== undefined ? slugify(req.body.slug) : existing.slug
+  if (!slug) slug = existing.slug
+  const slugConflict = db.getProductBySlug(slug)
+  if (slugConflict && slugConflict.id !== existing.id) return res.status(409).json({ error: 'slug_taken', message: 'That URL slug is already used by another product.' })
+  const product = db.updateProduct(existing.id, { slug, ...fields })
+  return res.json({ product })
+})
+
+app.post('/api/admin/products/:id/deactivate', requireSuperAdmin, (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  return res.json({ product: db.updateProduct(existing.id, { active: false }) })
+})
+
+app.post('/api/admin/products/:id/reactivate', requireSuperAdmin, (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  return res.json({ product: db.updateProduct(existing.id, { active: true }) })
+})
+
+app.delete('/api/admin/products/:id', requireSuperAdmin, (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  try {
+    db.deleteProductHardIfUnreferenced(existing.id)
+  } catch (err) {
+    if (err.code === 'product_referenced') return res.status(409).json({ error: err.code, message: err.message })
+    throw err
+  }
+  ;(existing.images || []).forEach((url) => {
+    if (url && url.startsWith('/product-uploads/')) fs.unlink(path.join(productUploadsDir, path.basename(url)), () => {})
+  })
+  return res.json({ deleted: true })
+})
+
+app.post('/api/admin/products/upload-image', requireSuperAdmin, (req, res) => {
+  productImageUpload.single('image')(req, res, (err) => {
+    if (err) {
+      const code = err.code === 'unsupported_image_type' ? 'unsupported_image_type' : 'upload_failed'
+      return res.status(400).json({ error: code, message: err.message })
+    }
+    if (!req.file) return res.status(400).json({ error: 'no_file' })
+    return res.json({ url: `/product-uploads/${req.file.filename}` })
+  })
+})
+
+// Downloadable CSV starter — header row + two filled-in sample products so
+// admins can see the exact expected shape before bulk-editing their own
+// catalog. Re-uploading it unedited would create those two sample SKUs,
+// same as any spreadsheet template (the user is expected to overwrite the
+// sample rows with real data).
+app.get('/api/admin/products/bulk-template', requireSuperAdmin, (req, res) => {
+  const categories = db.listProductCategories({ includeInactive: true })
+  const sampleCategory = categories[0] ? categories[0].name : 'Notebooks'
+  const rows = [
+    ['SKU', 'Name', 'Category', 'Description', 'Price', 'MRP', 'Cost Price', 'Stock Qty', 'Low Stock Threshold', 'Active', 'Meta Title', 'Meta Description'],
+    ['SAMPLE-NB-A5', 'A5 Ruled Notebook (200 pages)', sampleCategory, 'Hardbound A5 notebook, 200 ruled pages.', '120', '150', '70', '50', '10', 'yes', 'A5 Ruled Notebook | Metalix Print', 'Buy A5 ruled notebooks online with fast delivery.'],
+    ['SAMPLE-PEN-BL', 'Blue Ball Pen (Pack of 10)', sampleCategory, 'Smooth-write blue ball pens, pack of 10.', '80', '100', '45', '200', '20', 'yes', '', '']
+  ]
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', 'attachment; filename="metalix-products-template.csv"')
+  return res.send('\uFEFF' + csv)
+})
+
+// Matches an existing category by name (case-insensitive), or creates one —
+// lets a CSV author just type a category name without first visiting the
+// Categories manager, same convenience as the free-text Category field would
+// offer in a UI, without needing one.
+function resolveOrCreateCategoryId(name) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) return null
+  const existing = db.listProductCategories({ includeInactive: true })
+    .find((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+  if (existing) return existing.id
+  let slug = slugify(trimmed)
+  if (!slug) return null
+  if (db.getProductCategoryBySlug(slug)) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
+  return db.createProductCategory({ id: crypto.randomUUID(), name: trimmed, slug, description: null, sort_order: 0, active: true }).id
+}
+
+const CSV_BOOL_TRUE = new Set(['yes', 'y', 'true', '1', 'active'])
+const CSV_BOOL_FALSE = new Set(['no', 'n', 'false', '0', 'inactive'])
+const BULK_UPLOAD_COLUMNS = {
+  sku: 'sku', name: 'name', category: 'category', description: 'description',
+  price: 'price', mrp: 'mrp', costPrice: 'cost price', stockQty: 'stock qty',
+  lowStockThreshold: 'low stock threshold', active: 'active',
+  metaTitle: 'meta title', metaDescription: 'meta description'
+}
+
+// Bulk create/update via CSV, matched on SKU. A SKU already in the catalog
+// is updated in place (stock changes go through adjustStock so they're
+// ledgered like any other stock change — see adjust-stock above); an unknown
+// SKU is created fresh with the CSV's Stock Qty as its opening balance,
+// matching the no-ledger convention the "New product" form already uses for
+// a brand-new product's initial stock. Never touches product images/slug —
+// the CSV has no column for either, so both stay whatever they already are.
+app.post('/api/admin/products/bulk-upload', requireSuperAdmin, (req, res) => {
+  csvUpload.single('file')(req, res, (err) => {
+    if (err) {
+      const code = err.code === 'unsupported_file_type' ? 'unsupported_file_type' : 'upload_failed'
+      return res.status(400).json({ error: code, message: code === 'unsupported_file_type' ? 'Please upload a .csv file.' : err.message })
+    }
+    if (!req.file) return res.status(400).json({ error: 'no_file', message: 'Choose a CSV file to upload.' })
+
+    const rows = parseCsv(req.file.buffer.toString('utf8'))
+    if (!rows.length) return res.status(400).json({ error: 'empty_file', message: 'That file has no rows.' })
+
+    const header = rows[0].map((h) => h.trim().toLowerCase())
+    const idx = {}
+    Object.keys(BULK_UPLOAD_COLUMNS).forEach((key) => { idx[key] = header.indexOf(BULK_UPLOAD_COLUMNS[key]) })
+    if (idx.sku === -1 || idx.name === -1 || idx.price === -1) {
+      return res.status(400).json({ error: 'invalid_header', message: 'The CSV must have SKU, Name, and Price columns — download the template to see the exact format.' })
+    }
+
+    const results = { created: 0, updated: 0, skipped: [] }
+    rows.slice(1).forEach((r, i) => {
+      const rowNum = i + 2 // 1-indexed, plus the header row
+      const get = (key) => (idx[key] !== -1 ? (r[idx[key]] || '').trim() : '')
+      const sku = get('sku').toUpperCase()
+      const name = get('name')
+      const priceRaw = get('price')
+      if (!sku || !name || priceRaw === '') {
+        results.skipped.push({ row: rowNum, sku: sku || null, reason: 'Missing SKU, Name, or Price.' })
+        return
+      }
+      const price = Number(priceRaw)
+      if (!Number.isFinite(price) || price < 0) {
+        results.skipped.push({ row: rowNum, sku, reason: 'Price must be a non-negative number.' })
+        return
+      }
+      const activeRaw = get('active').toLowerCase()
+      const active = CSV_BOOL_FALSE.has(activeRaw) ? false : (activeRaw === '' || CSV_BOOL_TRUE.has(activeRaw))
+      const stockQtyRaw = get('stockQty')
+      const stockQty = stockQtyRaw === '' ? 0 : Math.max(0, Math.round(Number(stockQtyRaw)) || 0)
+      const fields = {
+        name,
+        description: get('description') || null,
+        category_id: resolveOrCreateCategoryId(get('category')),
+        price,
+        mrp: get('mrp') !== '' && Number.isFinite(Number(get('mrp'))) ? Number(get('mrp')) : null,
+        cost_price: get('costPrice') !== '' && Number.isFinite(Number(get('costPrice'))) ? Number(get('costPrice')) : null,
+        low_stock_threshold: get('lowStockThreshold') !== '' ? Math.max(0, Math.round(Number(get('lowStockThreshold'))) || 0) : 5,
+        active,
+        meta_title: get('metaTitle') || null,
+        meta_description: get('metaDescription') || null
+      }
+
+      try {
+        const existing = db.getProductBySku(sku)
+        if (existing) {
+          db.updateProduct(existing.id, fields)
+          if (stockQtyRaw !== '') {
+            const delta = stockQty - existing.stock_qty
+            if (delta !== 0) db.adjustStock(existing.id, delta, 'adjustment', req.admin.id, 'Bulk upload')
+          }
+          results.updated++
+        } else {
+          let slug = slugify(name) || sku.toLowerCase()
+          if (db.getProductBySlug(slug)) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`
+          db.createProduct({ id: crypto.randomUUID(), sku, slug, stock_qty: stockQty, images: [], ...fields })
+          results.created++
+        }
+      } catch (rowErr) {
+        results.skipped.push({ row: rowNum, sku, reason: rowErr.message || 'Could not save this row.' })
+      }
+    })
+
+    return res.json(results)
+  })
+})
+
+const STOCK_ADJUST_REASONS = ['received', 'damaged', 'adjustment']
+app.post('/api/admin/products/:id/adjust-stock', requireSuperAdmin, express.json(), (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  const delta = Math.round(Number(req.body.delta))
+  if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: 'invalid_delta', message: 'Enter a non-zero whole-number adjustment.' })
+  const reason = STOCK_ADJUST_REASONS.includes(req.body.reason) ? req.body.reason : null
+  if (!reason) return res.status(400).json({ error: 'invalid_reason', message: 'Reason must be received, damaged, or adjustment.' })
+  const result = db.adjustStock(existing.id, delta, reason, req.admin.id, (req.body.note || '').trim() || null)
+  return res.json(result)
+})
+
+app.get('/api/admin/products/:id/stock-ledger', requireSuperAdmin, (req, res) => {
+  const existing = db.getProductById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  return res.json({ ledger: db.listStockLedger(existing.id) })
+})
+
+// ---------------------------------------------------------------------------
+// Cross-sell rules admin (super-admin-only, same as Pricing/Locations).
+// ---------------------------------------------------------------------------
+
+const CROSS_SELL_TRIGGER_TYPES = ['productType:document', 'productType:stationery', 'productType:stamp']
+function isValidCrossSellTrigger(trigger) {
+  if (CROSS_SELL_TRIGGER_TYPES.includes(trigger)) return true
+  if (typeof trigger === 'string' && trigger.startsWith('product:')) return !!db.getProductById(trigger.slice('product:'.length))
+  return false
+}
+
+app.get('/api/admin/cross-sell-rules', requireSuperAdmin, (req, res) => {
+  res.json({ rules: db.listCrossSellRules({ includeInactive: true }) })
+})
+
+app.post('/api/admin/cross-sell-rules', requireSuperAdmin, express.json(), (req, res) => {
+  const { triggerType, recommendedProductId, sortOrder, active } = req.body || {}
+  if (!isValidCrossSellTrigger(triggerType)) return res.status(400).json({ error: 'invalid_trigger', message: 'Choose a valid trigger.' })
+  const product = db.getProductById(recommendedProductId)
+  if (!product) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product to recommend.' })
+  const rule = db.createCrossSellRule({
+    id: crypto.randomUUID(), trigger_type: triggerType, recommended_product_id: product.id,
+    sort_order: Number(sortOrder) || 0, active: active !== false
+  })
+  return res.json({ rule })
+})
+
+app.put('/api/admin/cross-sell-rules/:id', requireSuperAdmin, express.json(), (req, res) => {
+  const existing = db.getCrossSellRuleById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  const { triggerType, recommendedProductId, sortOrder, active } = req.body || {}
+  if (!isValidCrossSellTrigger(triggerType)) return res.status(400).json({ error: 'invalid_trigger', message: 'Choose a valid trigger.' })
+  const product = db.getProductById(recommendedProductId)
+  if (!product) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product to recommend.' })
+  const rule = db.updateCrossSellRule(existing.id, {
+    trigger_type: triggerType, recommended_product_id: product.id, sort_order: Number(sortOrder) || 0, active: active !== false
+  })
+  return res.json({ rule })
+})
+
+app.delete('/api/admin/cross-sell-rules/:id', requireSuperAdmin, (req, res) => {
+  const existing = db.getCrossSellRuleById(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  db.deleteCrossSellRule(existing.id)
+  return res.json({ deleted: true })
+})
+
 function publicUser(user) {
   return { id: user.id, name: user.name, email: user.email, mobile: user.mobile }
 }
@@ -1047,6 +1525,38 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
     // Page-embedding below stays sequential (it mutates the one shared
     // `merged` PDFDocument, and is CPU-bound/fast either way).
     const converted = await Promise.all(files.map(async (f) => {
+      // Stationery is a ready-made product picked from inventory, not
+      // printed — no file/conversion at all, just an instruction page (see
+      // the render loop below) telling staff what to pick and how many.
+      if (f.productType === 'stationery') return { f, isStationery: true }
+      // Custom stamps are manufactured, not printed — no LibreOffice
+      // conversion needed. The optional logo (if any) is read here so the
+      // render loop below can embed it straight onto the instruction page.
+      if (f.productType === 'stamp') {
+        const result = { f, isStamp: true }
+        if (f.logoFileId) {
+          const logoPath = path.join(uploadsDir, path.basename(String(f.logoFileId)))
+          if (fs.existsSync(logoPath)) {
+            try { result.imageBuffer = toCleanBuffer(fs.readFileSync(logoPath)) } catch (err) { /* unreadable — jobsheet notes this below */ }
+          }
+        }
+        // A customer-uploaded design (in place of typed text) can be an
+        // image or a PDF (see stamps.html's artwork upload accept list) — an
+        // image is embedded on the instruction page like a logo; a PDF's
+        // pages are appended after it in full, same as a document file, so
+        // staff always see the design at its original fidelity.
+        if (f.artworkFileId) {
+          const artworkPath = path.join(uploadsDir, path.basename(String(f.artworkFileId)))
+          if (fs.existsSync(artworkPath)) {
+            const ext = path.extname(f.artworkFileId).toLowerCase()
+            try {
+              if (ext === '.pdf') result.artworkPdfBuffer = fs.readFileSync(artworkPath)
+              else result.artworkImageBuffer = toCleanBuffer(fs.readFileSync(artworkPath))
+            } catch (err) { /* unreadable — jobsheet notes this below */ }
+          }
+        }
+        return result
+      }
       // Passport-photo items are raster images, not documents — no
       // LibreOffice conversion needed. A missing fileId here is expected
       // (admin-created orders can have a photo-less pack, see
@@ -1074,7 +1584,93 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
       }
     }))
 
-    for (const { f, safeFileId, pdfBuffer, convertError, skip, isPassport, imageBuffer } of converted) {
+    for (const { f, safeFileId, pdfBuffer, convertError, skip, isPassport, isStationery, isStamp, imageBuffer, artworkImageBuffer, artworkPdfBuffer } of converted) {
+      if (isStamp) {
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        page.drawText('PRODUCE THIS STAMP', { x: 50, y: A4_PT.height - 90, size: 20, font, color: rgb(1, 0.4, 0) })
+        const type = ((pricingConfig.stamps || {}).types || []).find((t) => t.id === f.stampTypeId)
+        const size = ((pricingConfig.stamps || {}).sizes || []).find((s) => s.id === f.stampSizeId)
+        const qty = f.quantity || 1
+        page.drawText(sanitizeForFont(`${qty} × ${type ? type.label : (f.stampTypeId || 'Stamp')}`, font), { x: 50, y: A4_PT.height - 140, size: 15, font, color: rgb(0.1, 0.13, 0.2) })
+        if (size) page.drawText(sanitizeForFont(`Size: ${size.label}`, font), { x: 50, y: A4_PT.height - 165, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+        let ty = A4_PT.height - 200
+        if (f.textLines && f.textLines.length) {
+          page.drawText('Text:', { x: 50, y: ty, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+          ty -= 18
+          f.textLines.forEach((line) => {
+            page.drawText(sanitizeForFont(line, font), { x: 50, y: ty, size: 14, font, color: rgb(0.1, 0.13, 0.2) })
+            ty -= 20
+          })
+        } else if (f.artworkFileId) {
+          page.drawText('Customer supplied their own design — see below' + (artworkPdfBuffer ? '/next page' : '') + '.', { x: 50, y: ty, size: 12, font, color: rgb(0.1, 0.13, 0.2) })
+          ty -= 24
+        }
+        if (imageBuffer) {
+          try {
+            const ext = path.extname(f.logoFileId || '').toLowerCase()
+            const img = ext === '.png' ? await merged.embedPng(imageBuffer) : await merged.embedJpg(imageBuffer)
+            const maxW = 180, maxH = 180
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1)
+            page.drawText('Logo:', { x: 50, y: ty - 20, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+            page.drawImage(img, { x: 50, y: ty - 30 - img.height * scale, width: img.width * scale, height: img.height * scale })
+            ty = ty - 40 - img.height * scale
+          } catch (err) { /* logo embed failed — stamp text above still lets staff produce it */ }
+        } else if (f.logoFileId) {
+          page.drawText('Logo attached but could not be loaded — check the original upload.', { x: 50, y: ty - 20, size: 10, font, color: rgb(0.7, 0.2, 0.2) })
+          ty -= 30
+        }
+        if (artworkImageBuffer) {
+          try {
+            const ext = path.extname(f.artworkFileId || '').toLowerCase()
+            const img = ext === '.png' ? await merged.embedPng(artworkImageBuffer) : await merged.embedJpg(artworkImageBuffer)
+            const maxW = 300, maxH = 260
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1)
+            page.drawText('Uploaded design:', { x: 50, y: ty - 20, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+            page.drawImage(img, { x: 50, y: ty - 30 - img.height * scale, width: img.width * scale, height: img.height * scale })
+          } catch (err) {
+            page.drawText('Design attached but could not be loaded — check the original upload.', { x: 50, y: ty - 20, size: 10, font, color: rgb(0.7, 0.2, 0.2) })
+          }
+        } else if (f.artworkFileId && !artworkPdfBuffer) {
+          page.drawText('Design attached but could not be loaded — check the original upload.', { x: 50, y: ty - 20, size: 10, font, color: rgb(0.7, 0.2, 0.2) })
+        }
+        // A PDF design is appended as its own full-fidelity page(s) right
+        // after the instruction page, same embed-and-fit approach as a
+        // regular document file below — never rasterized, so staff see
+        // exactly what the customer supplied.
+        if (artworkPdfBuffer) {
+          try {
+            const srcDoc = await PDFDocument.load(artworkPdfBuffer, { ignoreEncryption: true })
+            for (const idx of srcDoc.getPageIndices()) {
+              let hasContents = false
+              try { hasContents = !!srcDoc.getPage(idx).node.Contents() } catch (e) { hasContents = false }
+              if (!hasContents) continue
+              try {
+                const [ep] = await merged.embedPdf(srcDoc, [idx])
+                const pw = ep.width, ph = ep.height
+                const landscape = pw > ph
+                const pageW = landscape ? A4_PT.height : A4_PT.width
+                const pageH = landscape ? A4_PT.width : A4_PT.height
+                const scale = Math.min(pageW / pw, pageH / ph)
+                const w = pw * scale, h = ph * scale
+                const artPage = merged.addPage([pageW, pageH])
+                artPage.drawText('UPLOADED STAMP DESIGN', { x: 30, y: pageH - 30, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+                artPage.drawPage(ep, { x: (pageW - w) / 2, y: (pageH - h) / 2 - 10, width: w, height: h })
+              } catch (pageErr) { /* one page failed — instruction page above still lets staff produce it */ }
+            }
+          } catch (err) { /* whole PDF failed to load — instruction page above still notes it was supplied */ }
+        }
+        continue
+      }
+      if (isStationery) {
+        const page = merged.addPage([A4_PT.width, A4_PT.height])
+        page.drawText('PICK FROM INVENTORY', { x: 50, y: A4_PT.height - 90, size: 20, font, color: rgb(1, 0.4, 0) })
+        const qty = f.quantity || 1
+        const label = sanitizeForFont(`${qty} × ${f.name || f.fileName || 'Product'}`, font)
+        page.drawText(label, { x: 50, y: A4_PT.height - 140, size: 16, font, color: rgb(0.1, 0.13, 0.2) })
+        if (f.sku) page.drawText(sanitizeForFont(`SKU: ${f.sku}`, font), { x: 50, y: A4_PT.height - 168, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+        page.drawText(sanitizeForFont(`Rs. ${formatRupees(f.amount || 0)}`, font), { x: 50, y: A4_PT.height - 190, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
+        continue
+      }
       if (isPassport) {
         // Helvetica (WinAnsi) can't render ₹ — same "Rs." convention as invoice.js.
         const label = sanitizeForFont(`Passport Photo Pack — ${f.paperLabel || f.sizePresetId || 'Passport Photo'} · ${f.colorLabel || ((f.packQty || 0) + '-pack')} · Rs. ${formatRupees(f.amount || 0)}`, font)
@@ -1211,7 +1807,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     customer_name, customer_mobile, customer_email,
     delivery_method, delivery_address, delivery_city, delivery_state, delivery_pincode,
     files,
-    location_id, notes,
+    location_id, notes, needs_attention,
     discountType, discountValue, discountCode, discountReason
   } = req.body || {}
   if (order_status === 'Completed' && order.payment_method === 'cod' && order.payment_status !== 'paid') {
@@ -1298,6 +1894,11 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   // Pure bookkeeping (staff-facing instructions, never affects money), so —
   // like location_id below — it's allowed even on a paid order.
   if (notes !== undefined) updates.notes = String(notes || '').trim().slice(0, 500) || null
+  // Staff dismissing the stock-shortfall warning banner (see
+  // confirmStockForOrder) — pure bookkeeping, allowed even on a paid order.
+  // Only ever settable to 0 here (clearing it); it's set to 1 only by the
+  // system itself, never by a client request.
+  if (needs_attention !== undefined) updates.needs_attention = needs_attention ? 1 : 0
   // Pure bookkeeping (which branch fulfilled it) — never touches money, so
   // it's allowed even on a paid order, unlike the content edits above.
   if (location_id !== undefined) {
@@ -1329,25 +1930,38 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
     const passportPackQtys = ((paperTypeConfig.passportPhotos || {}).packPrices || []).map((p) => p.qty)
     const VALID_MODES = ['auto', 'color', 'bw']
     const VALID_SIDES = ['single', 'double']
-    const overridesById = new Map((files || []).map((f) => [f.fileId, f]))
+    // Keyed by itemId (assigned to every files_json line item at order
+    // creation, all productTypes) falling back to fileId only for legacy
+    // rows that predate itemId — fileId is null/non-unique for stationery,
+    // service, and photo-less passport-photo lines, so keying by it alone
+    // means multiple such lines in one order collide on the same `null` key
+    // and only the last override survives, silently discarding edits to the
+    // others. itemId fixes that for every productType at once.
+    const overridesById = new Map((files || []).map((f) => [f.itemId || f.fileId, f]))
 
     // Branch per-item on productType — an order can mix Documents, Passport
-    // Photos, and Additional Services, and each has completely disjoint
-    // editable fields. A passport-photo or service entry must NEVER fall
-    // through to the document branch below: neither has pageSize/paperType,
-    // so it would otherwise silently get rewritten to pageSize:'a4'/
-    // paperType:'normal' and reprice as a near-zero document. Services are
-    // add-only here (see POST .../add-service) — this general edit flow just
-    // passes an existing one through unchanged, same as it can't touch a
-    // passport pack's size/qty either.
+    // Photos, Additional Services, and Stationery, and each has completely
+    // disjoint editable fields. A passport-photo, service, or stationery
+    // entry must NEVER fall through to the document branch below: none of
+    // them have pageSize/paperType, so it would otherwise silently get
+    // rewritten to pageSize:'a4'/paperType:'normal' and reprice as a
+    // near-zero document. Services are add-only here (see POST
+    // .../add-service) — this general edit flow just passes an existing one
+    // through unchanged, same as it can't touch a passport pack's size/qty.
     const mergedFiles = currentFiles.map((f) => {
       if (f.productType === 'service') return f
+      // Stamps aren't editable via this general flow (same as services) —
+      // re-configuring a custom stamp's type/size/text/artwork after order
+      // creation isn't supported in this phase; pass the line through
+      // unchanged so it still reprices correctly via toPricingFile.
+      if (f.productType === 'stamp') return f
+      if (f.productType === 'stationery') {
+        const o = overridesById.get(f.itemId || f.fileId) || {}
+        const quantity = o.quantity !== undefined ? Math.max(1, Math.min(999, Math.round(Number(o.quantity)) || 1)) : f.quantity
+        return { ...f, productType: 'stationery', quantity }
+      }
       if ((f.productType || 'document') === 'passport-photo') {
-        // Matched by fileId, same convention as the document branch below —
-        // note this can't disambiguate between multiple photo-less (fileId:
-        // null) items in one order, but no admin UI in this phase edits
-        // passport items after order creation, so it's not yet reachable.
-        const o = overridesById.get(f.fileId) || {}
+        const o = overridesById.get(f.itemId || f.fileId) || {}
         const sizePresetId = passportPresetIds.includes(o.sizePresetId) ? o.sizePresetId : f.sizePresetId
         const packQty = passportPackQtys.includes(Number(o.packQty)) ? Number(o.packQty) : f.packQty
         // Lets staff attach a photo after the fact (e.g. it arrives over
@@ -1363,7 +1977,7 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
         }
         return { ...f, ...fileOverride, productType: 'passport-photo', sizePresetId, packQty }
       }
-      const o = overridesById.get(f.fileId) || {}
+      const o = overridesById.get(f.itemId || f.fileId) || {}
       const printMode = VALID_MODES.includes(o.printMode) ? o.printMode : f.printMode
       const printSide = printMode === 'color' ? 'single' : (VALID_SIDES.includes(o.printSide) ? o.printSide : f.printSide)
       // Page size is resolved before paper type since which paper types are
@@ -1376,6 +1990,27 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       const copies = o.copies !== undefined ? Math.max(1, Math.min(999, Math.round(Number(o.copies)) || 1)) : f.copies
       return { ...f, productType: 'document', printMode, printSide, pageSize, paperType, copies }
     })
+
+    // Aggregate stock re-check on edit, same reasoning as buildPricedOrderFiles's
+    // pre-scan — two stationery lines for the same product must be checked
+    // together, not independently. Unreachable once a captured online
+    // payment exists (the order_already_paid guard above already blocks any
+    // content edit at that point), so this only ever runs pre-payment.
+    const editedStationeryQtyByProduct = new Map()
+    mergedFiles.forEach((f) => {
+      if (f.productType === 'stationery' && f.productId) {
+        editedStationeryQtyByProduct.set(f.productId, (editedStationeryQtyByProduct.get(f.productId) || 0) + (Number(f.quantity) || 0))
+      }
+    })
+    for (const [productId, qty] of editedStationeryQtyByProduct) {
+      const product = db.getProductById(productId)
+      if (!product || qty > product.stock_qty) {
+        return res.status(400).json({
+          error: 'insufficient_stock',
+          message: product ? `Only ${product.stock_qty} left in stock for "${product.name}".` : 'One of the stationery items is no longer available.'
+        })
+      }
+    }
 
     const pricingFiles = mergedFiles.map(toPricingFile)
 
@@ -1410,6 +2045,8 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
       mergedFiles.filter((f) => f.productType === 'passport-photo').reduce((sum, f) => sum + (f.packQty || 0), 0)
     updates.print_cost = calc.printCost
     updates.services_cost = calc.servicesCost
+    updates.stationery_cost = calc.stationeryCost
+    updates.stamp_cost = calc.stampCost
     updates.delivery_charge = calc.deliveryCharge
     updates.handling_charge = calc.handlingCharge
     updates.gst_amount = calc.gstAmount
@@ -1429,6 +2066,13 @@ app.patch('/api/admin/orders/:id', requireAdmin, requireTab('orders'), express.j
   // admin's update.
   if (order.order_status !== updated.order_status) {
     printQueue.syncPrintJobStatus(updated.id, updated.order_status)
+    // A genuine transition INTO a cancelled/refunded status restores any
+    // stationery stock this order had decremented — checked against the OLD
+    // status too, so re-saving an already-cancelled order (e.g. editing its
+    // notes) can't double-credit stock on every subsequent PATCH.
+    if (printQueue.isCancelledOrRefundedStatus(updated.order_status) && !printQueue.isCancelledOrRefundedStatus(order.order_status)) {
+      db.restoreStockForOrder(updated)
+    }
     const base = `${req.protocol}://${req.get('host')}`
     emailStatusChange(updated, base)
     smsCompletedNotification(updated, base)
@@ -1510,6 +2154,9 @@ app.post('/api/admin/orders/bulk-status', requireAdmin, requireTab('orders'), ex
     const u = db.updateOrder(id, { order_status })
     updated++
     printQueue.syncPrintJobStatus(u.id, u.order_status)
+    if (printQueue.isCancelledOrRefundedStatus(u.order_status) && !printQueue.isCancelledOrRefundedStatus(order.order_status)) {
+      db.restoreStockForOrder(u)
+    }
     if (u.customer_email && willEmailOnStatus(u.order_status)) {
       emailed++
       emailStatusChange(u, base)
@@ -1576,6 +2223,8 @@ app.post('/api/admin/orders/:id/add-service', requireAdmin, requireTab('orders')
     product_type: productTypesPresent.size === 1 ? newFiles[0].productType : 'mixed',
     print_cost: calc.printCost,
     services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
@@ -1621,12 +2270,110 @@ app.post('/api/admin/orders/:id/remove-service', requireAdmin, requireTab('order
     product_type: productTypesPresent.size === 1 ? newFiles[0].productType : (productTypesPresent.size ? 'mixed' : 'document'),
     print_cost: calc.printCost,
     services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
     total_amount: calc.totalAmount
   })
   return res.json({ order: updated })
+})
+
+// Per-line-item fulfillment status — what PRINT/PICK/PRODUCE actually means
+// operationally for a mixed order. print_jobs (see printQueue.js) is
+// order-level only and can't represent "the pen is picked but the stamp
+// isn't produced yet"; item-level status instead lives inline on each
+// files_json entry (itemStatus, plus role-specific timestamps), matching how
+// files_json already is the source of truth for everything else about a
+// line item. Each productType has its own status vocabulary.
+const ITEM_STATUS_VOCAB = {
+  stationery: ['pending', 'picked'],
+  stamp: ['pending', 'proof_sent', 'approved', 'changes_requested', 'in_production', 'produced']
+}
+// A stamp's proof_sent/approved/changes_requested statuses are only ever set
+// as a side effect of the dedicated proof-upload / customer-respond
+// endpoints below (each does more than just flip a field — it writes a
+// stamp_proofs row, and proof_sent sends an email) — never directly through
+// this generic endpoint.
+const STAMP_DEDICATED_STATUSES = ['proof_sent', 'approved', 'changes_requested']
+app.post('/api/admin/orders/:id/items/:itemId/status', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  const item = files.find((f) => f.itemId === req.params.itemId)
+  if (!item) return res.status(404).json({ error: 'item_not_found' })
+  const vocab = ITEM_STATUS_VOCAB[item.productType]
+  if (!vocab) return res.status(400).json({ error: 'unsupported_item_type', message: 'This item type does not support status updates here.' })
+  const status = req.body && req.body.status
+  if (!vocab.includes(status)) return res.status(400).json({ error: 'invalid_status', message: `Status must be one of: ${vocab.join(', ')}.` })
+  if (item.productType === 'stamp' && STAMP_DEDICATED_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'use_dedicated_endpoint', message: 'Upload a proof, or use the customer approval flow, to set this status.' })
+  }
+  if (item.productType === 'stamp' && status === 'in_production') {
+    const stampConfig = db.getPricing().stamps || {}
+    if (stampConfig.requireProofApproval !== false && item.itemStatus !== 'approved') {
+      return res.status(400).json({ error: 'proof_not_approved', message: 'This stamp needs customer approval before production — upload a proof first (or turn off "Require proof approval" in Stamp Settings).' })
+    }
+  }
+  item.itemStatus = status
+  if (item.productType === 'stationery' && status === 'picked') item.pickedAt = Date.now()
+  if (item.productType === 'stamp' && status === 'produced') item.producedAt = Date.now()
+  const updated = db.updateOrder(order.id, { files_json: JSON.stringify(files) })
+  // "All items ready" = every item this feature knows how to track is in its
+  // terminal state — document/passport-photo/service items aren't tracked
+  // here (they're covered by the order-level print_jobs status instead), so
+  // only items with a recognized vocabulary count toward this.
+  const trackedItems = files.filter((f) => ITEM_STATUS_VOCAB[f.productType])
+  const allItemsReady = trackedItems.length > 0 && trackedItems.every((f) => {
+    const v = ITEM_STATUS_VOCAB[f.productType]
+    return f.itemStatus === v[v.length - 1]
+  })
+  return res.json({ order: updated, allItemsReady })
+})
+
+// Admin uploads a stamp proof (an image/PDF, same private uploads/ pipeline
+// and extension whitelist as any customer print file — reuses the `upload`
+// middleware directly, never the public product-image pipeline). Creates a
+// stamp_proofs row, moves the item to 'proof_sent', and emails the customer
+// a link to review it on their tracking page — the one place a customer
+// interacts with an in-progress order beyond just viewing status.
+app.post('/api/admin/orders/:id/items/:itemId/stamp-proof', requireAdmin, requireTab('orders'), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const code = err.code === 'unsupported_file_type' ? 'unsupported_file_type' : 'upload_failed'
+      return res.status(400).json({ error: code, message: err.message })
+    }
+    if (!req.file) return res.status(400).json({ error: 'no_file' })
+    let files = []
+    try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (e) { files = [] }
+    const item = files.find((f) => f.itemId === req.params.itemId && f.productType === 'stamp')
+    if (!item) {
+      fs.unlink(path.join(uploadsDir, req.file.filename), () => {})
+      return res.status(404).json({ error: 'item_not_found' })
+    }
+    db.createStampProof({ order_id: order.id, item_id: item.itemId, file_id: req.file.filename, uploaded_by_admin_id: req.admin.id })
+    item.itemStatus = 'proof_sent'
+    const updated = db.updateOrder(order.id, { files_json: JSON.stringify(files) })
+    const base = `${req.protocol}://${req.get('host')}`
+    const trackUrl = `${base}/track/${encodeURIComponent(order.id)}`
+    mailer.sendStampProofReadyEmail(updated, trackUrl).catch((mailErr) => console.error(`[mailer] stamp proof email failed for ${order.id}:`, mailErr.message))
+    return res.json({ order: updated })
+  })
+})
+
+// Admin downloads/previews the latest proof for one stamp item — same
+// ownership gate as everything else here, distinct from the customer-facing
+// image URL below (which is unauthenticated and order-ID-gated instead).
+app.get('/api/admin/orders/:id/items/:itemId/stamp-proof', requireAdmin, requireTab('orders'), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  const proof = db.getLatestStampProofForItem(order.id, req.params.itemId)
+  if (!proof) return res.status(404).json({ error: 'not_found' })
+  return res.json({ proof })
 })
 
 app.post('/api/admin/orders/:id/collect-payment', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
@@ -1755,6 +2502,7 @@ app.post('/api/admin/orders/:id/recheck-payment', requireAdmin, requireTab('orde
   const paidOrder = db.markOrderPaid(order.id, { cashfree_payment_id: status.cf_payment_id, order_status: 'Payment Successful' })
   if (paidOrder) {
     printQueue.enqueue(order.id)
+    confirmStockForOrder(paidOrder)
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
     notify.sendOrderConfirmationEmail(fresh)
@@ -2016,8 +2764,19 @@ app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab
   let files = []
   try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
   let fileName = null
-  if (files.some((f) => f.fileId === safeFileId)) {
-    fileName = files.find((f) => f.fileId === safeFileId).fileName
+  // A stamp's logo/existing-artwork uploads are stored under logoFileId/
+  // artworkFileId rather than fileId (that field is reserved for the
+  // print-file/passport-photo shape) — checked here too so this same
+  // ownership-gated download endpoint also serves them.
+  const byFileId = files.find((f) => f.fileId === safeFileId)
+  const byLogo = files.find((f) => f.logoFileId === safeFileId)
+  const byArtwork = files.find((f) => f.artworkFileId === safeFileId)
+  if (byFileId) {
+    fileName = byFileId.fileName
+  } else if (byLogo) {
+    fileName = 'stamp-logo' + path.extname(safeFileId)
+  } else if (byArtwork) {
+    fileName = 'stamp-artwork' + path.extname(safeFileId)
   } else if (order.file_path === safeFileId) {
     fileName = order.file_name
   } else {
@@ -2105,8 +2864,37 @@ function toPricingFile(f) {
   if (f.productType === 'passport-photo') {
     return { productType: 'passport-photo', sizePresetId: f.sizePresetId, packQty: f.packQty }
   }
+  if (f.productType === 'stationery') {
+    return { productType: 'stationery', productId: f.productId, name: f.name, unitPrice: f.unitPrice, quantity: f.quantity }
+  }
+  if (f.productType === 'stamp') {
+    return { productType: 'stamp', stampTypeId: f.stampTypeId, stampSizeId: f.stampSizeId, hasLogo: !!f.logoFileId, quantity: f.quantity }
+  }
   const { colorPages, bwPages } = pricing.resolveFileColorPages({ pageCount: f.pageCount, colorCount: f.colorPageCount }, f.printMode)
   return { colorPages, bwPages, copies: f.copies, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType }
+}
+
+// Decrements stock for any stationery items in a newly-confirmed order.
+// Called from every "order just got confirmed" call site, immediately after
+// printQueue.enqueue() — COD-at-creation, admin walk-in creation,
+// verify-payment, recheck-payment, and the webhook's confirmPaid — the exact
+// same set of places, since those are all "this order is now real" moments.
+// A shortfall (see db.decrementStockForOrder) never blocks or unwinds an
+// already-captured payment — it flags the order so staff notice and can
+// resolve it manually (contact the customer, restock, or refund).
+function confirmStockForOrder(order) {
+  try {
+    const { shortfalls } = db.decrementStockForOrder(order)
+    if (shortfalls.length) {
+      const detail = shortfalls.map((s) => `${s.name || s.productId} (needed ${s.requested}, only ${s.decremented} available)`).join('; ')
+      db.updateOrder(order.id, {
+        needs_attention: 1,
+        needs_attention_reason: `Stock shortfall at confirmation: ${detail}`
+      })
+    }
+  } catch (err) {
+    console.error(`[inventory] stock decrement failed for order ${order.id}:`, err.message)
+  }
 }
 
 function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode, deliveryTiming, scheduledAt, allowMissingFile, discount }) {
@@ -2127,11 +2915,25 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   const pricingFiles = []
   const serviceCatalog = (paperTypeConfig.additionalServices || []).filter((s) => s.active)
   const serviceIds = serviceCatalog.map((s) => s.id)
-  // An order can mix Documents, Passport Photos, and Additional Services, so
-  // branching happens per-item (on each file's own productType) rather than
-  // for the whole order.
+  // Pre-scan: aggregate requested stationery quantity per productId across
+  // the WHOLE cart before the per-item loop below prices anything. Two
+  // separate cart lines for the same product (e.g. added at different times)
+  // must not each independently pass a stock check and jointly oversell —
+  // the actual check runs once, after the loop, against this aggregate (see
+  // below). Never deducts stock here — that only happens once the order is
+  // actually confirmed (paid online, or COD at creation), in decrementStockForOrder.
+  const stationeryQtyByProduct = new Map()
   for (const f of files) {
-    const productType = f.productType === 'passport-photo' ? 'passport-photo' : (f.productType === 'service' ? 'service' : 'document')
+    if (f.productType === 'stationery' && f.productId) {
+      const qty = Math.max(1, Math.min(999, Math.round(Number(f.quantity)) || 1))
+      stationeryQtyByProduct.set(f.productId, (stationeryQtyByProduct.get(f.productId) || 0) + qty)
+    }
+  }
+  // An order can mix Documents, Passport Photos, Additional Services, and
+  // Stationery, so branching happens per-item (on each file's own
+  // productType) rather than for the whole order.
+  for (const f of files) {
+    const productType = f.productType === 'passport-photo' ? 'passport-photo' : (f.productType === 'service' ? 'service' : (f.productType === 'stationery' ? 'stationery' : (f.productType === 'stamp' ? 'stamp' : 'document')))
 
     if (productType === 'service') {
       if (!serviceIds.includes(f.serviceId)) {
@@ -2140,6 +2942,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
       const service = serviceCatalog.find((s) => s.id === f.serviceId)
       const quantity = Math.max(1, Math.min(999, Math.round(Number(f.quantity)) || 1))
       const fileData = {
+        itemId: crypto.randomUUID().slice(0, 8),
         productType: 'service',
         fileId: null,
         fileName: service.label,
@@ -2149,6 +2952,101 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
         quantity
       }
       pricingFiles.push({ productType: 'service', serviceId: service.id, quantity })
+      safeFiles.push(fileData)
+      continue
+    }
+
+    // Ready-made stationery (pens, staplers, Rent Receipt Booklets, ...) —
+    // a real inventory-tracked product, not a print job. name/unitPrice are
+    // snapshotted from the product row now so a later price change never
+    // retroactively rewrites what an already-placed order was charged (same
+    // reasoning as fileBreakdown's baked-in amounts). The actual stock
+    // availability check runs once below, after this loop, against the
+    // pre-scanned aggregate — never per-line, so multiple lines of the same
+    // product can't each pass an independent check and jointly oversell.
+    if (productType === 'stationery') {
+      const product = f.productId ? db.getProductById(f.productId) : null
+      if (!product || !product.active) {
+        return { error: 'invalid_product', message: 'One of the stationery items in your cart is no longer available.' }
+      }
+      const quantity = Math.max(1, Math.min(999, Math.round(Number(f.quantity)) || 1))
+      const fileData = {
+        itemId: crypto.randomUUID().slice(0, 8),
+        productType: 'stationery',
+        fileId: null,
+        fileName: product.name,
+        fileType: null,
+        fileSize: 0,
+        productId: product.id,
+        sku: product.sku,
+        name: product.name,
+        unitPrice: product.price,
+        quantity,
+        itemStatus: 'pending'
+      }
+      pricingFiles.push({ productType: 'stationery', productId: product.id, name: product.name, unitPrice: product.price, quantity })
+      safeFiles.push(fileData)
+      continue
+    }
+
+    // Custom Stamp Printing — type/size validated against the ACTIVE admin
+    // config (settings.pricing.stamps), same "must be currently offered"
+    // rule as page size/paper type below. Logo/existing-artwork uploads
+    // reuse the exact same private uploads/ pipeline and path.basename +
+    // fs.existsSync guard as a document file, since they're genuinely the
+    // same kind of thing (a customer-supplied file attached to an order
+    // item) — never the public product-photo pipeline. itemId + itemStatus
+    // give this line the same PICK/PRODUCE-style tracking stationery has
+    // (see the item-status endpoint) — the proof-approval lifecycle itself
+    // is built in a later phase.
+    if (productType === 'stamp') {
+      const stampConfig = paperTypeConfig.stamps || {}
+      const stampTypes = (stampConfig.types || []).filter((t) => t.active)
+      const stampSizes = (stampConfig.sizes || []).filter((s) => s.active)
+      if (!stampTypes.some((t) => t.id === f.stampTypeId)) {
+        return { error: 'missing_stamp_type', message: 'Select a stamp type.' }
+      }
+      if (!stampSizes.some((s) => s.id === f.stampSizeId)) {
+        return { error: 'missing_stamp_size', message: 'Select a stamp size.' }
+      }
+      const textLines = (Array.isArray(f.textLines) ? f.textLines : [])
+        .map((l) => String(l || '').trim().slice(0, 60))
+        .filter(Boolean)
+        .slice(0, 6)
+      let artworkFileId = null
+      if (f.artworkFileId) {
+        const safeArtworkId = path.basename(String(f.artworkFileId))
+        if (safeArtworkId && fs.existsSync(path.join(uploadsDir, safeArtworkId))) artworkFileId = safeArtworkId
+      }
+      // A customer with their own ready-made design uploads artwork instead
+      // of typing text (see stamps.html's design-mode choice) — only reject
+      // when NEITHER is present, so that path isn't blocked by a text
+      // requirement it was explicitly meant to replace.
+      if (!textLines.length && !artworkFileId) {
+        return { error: 'missing_stamp_text', message: 'Enter the text for your stamp, or upload your own design.' }
+      }
+      let logoFileId = null
+      if (f.logoFileId) {
+        const safeLogoId = path.basename(String(f.logoFileId))
+        if (safeLogoId && fs.existsSync(path.join(uploadsDir, safeLogoId))) logoFileId = safeLogoId
+      }
+      const quantity = Math.max(1, Math.min(999, Math.round(Number(f.quantity)) || 1))
+      const fileData = {
+        itemId: crypto.randomUUID().slice(0, 8),
+        productType: 'stamp',
+        fileId: null,
+        fileName: 'Custom Stamp',
+        fileType: null,
+        fileSize: 0,
+        stampTypeId: f.stampTypeId,
+        stampSizeId: f.stampSizeId,
+        textLines,
+        logoFileId,
+        artworkFileId,
+        quantity,
+        itemStatus: 'pending'
+      }
+      pricingFiles.push({ productType: 'stamp', stampTypeId: f.stampTypeId, stampSizeId: f.stampSizeId, hasLogo: !!logoFileId, quantity })
       safeFiles.push(fileData)
       continue
     }
@@ -2175,6 +3073,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
         return { error: 'file_not_found', message: 'Upload a photo for every passport photo item.' }
       }
       const fileData = {
+        itemId: crypto.randomUUID().slice(0, 8),
         productType: 'passport-photo',
         fileId: safeFileId,
         fileName: f.fileName || (safeFileId || 'Passport photo'),
@@ -2220,6 +3119,7 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     const fileCopies = Math.max(1, Math.min(999, Math.round(Number(f.copies)) || 1))
     const filePassword = String(f.password || '').trim().slice(0, 200) || null
     const fileData = {
+      itemId: crypto.randomUUID().slice(0, 8),
       productType: 'document',
       fileId: safeFileId,
       fileName: f.fileName || safeFileId || 'Document',
@@ -2245,6 +3145,22 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
   }
   if (totalFileSize > MAX_TOTAL_UPLOAD_BYTES) {
     return { error: 'files_too_large', message: 'Total upload size exceeds 100 MB.' }
+  }
+  // Aggregate stock check — see the pre-scan above. This is a point-in-time
+  // check only (never allow stock to become negative is enforced for real at
+  // confirmation time in decrementStockForOrder); its job here is just to
+  // reject an order up front when it's obviously asking for more than exists,
+  // rather than letting the customer pay first and find out never.
+  for (const [productId, qty] of stationeryQtyByProduct) {
+    const product = db.getProductById(productId)
+    if (!product || qty > product.stock_qty) {
+      return {
+        error: 'insufficient_stock',
+        message: product
+          ? `Only ${product.stock_qty} left in stock for "${product.name}" — please reduce the quantity.`
+          : 'One of the stationery items in your cart is no longer available.'
+      }
+    }
   }
   if (deliveryMethod === 'delivery' && (!deliveryAddress || !deliveryCity || !deliveryState || !deliveryPincode)) {
     return { error: 'missing_delivery_address' }
@@ -2406,6 +3322,8 @@ app.post('/api/orders', express.json(), async (req, res) => {
     payment_method: isCod ? 'cod' : 'online',
     print_cost: calc.printCost,
     services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
@@ -2429,6 +3347,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
   // just like a paid online order does after verify-payment.
   if (isCod) {
     printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
+    confirmStockForOrder(order)
     const fresh = db.getOrder(order.id)
     notify.sendOrderConfirmationSms(fresh)
     notify.sendOrderConfirmationEmail(fresh)
@@ -2540,6 +3459,8 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
     payment_method: wantsPaymentLink ? 'online' : 'cod',
     print_cost: calc.printCost,
     services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
     delivery_charge: calc.deliveryCharge,
     handling_charge: calc.handlingCharge,
     gst_amount: calc.gstAmount,
@@ -2589,6 +3510,7 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
   }
 
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
+  confirmStockForOrder(order)
   const fresh = db.getOrder(order.id)
   notify.sendOrderConfirmationSms(fresh)
   notify.sendOrderConfirmationEmail(fresh)
@@ -2671,7 +3593,17 @@ app.get('/api/track/:id', (req, res) => {
     payment_method: order.payment_method,
     delivery_method: order.delivery_method,
     page_count: order.page_count,
-    total_amount: order.total_amount
+    total_amount: order.total_amount,
+    // Any stamp item currently awaiting the customer's proof approval — the
+    // tracking page renders its review widget only when this is non-empty,
+    // never for a plain document/stationery order.
+    stampProofItems: (() => {
+      let files = []
+      try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (e) { files = [] }
+      return files
+        .filter((f) => f.productType === 'stamp' && f.itemStatus === 'proof_sent')
+        .map((f) => ({ itemId: f.itemId, stampTypeId: f.stampTypeId, textLines: f.textLines }))
+    })()
   })
 })
 
@@ -2732,6 +3664,45 @@ app.post('/api/track/:id/pay', express.json(), async (req, res) => {
   }
 })
 
+// Public — the tracking page's proof-review widget points its <img> straight
+// at this URL. Same order-ID-as-credential trust model as the public invoice
+// PDF (GET /api/orders/:id/invoice.pdf) below — a stamp proof image is no
+// more sensitive than the order's own tracking status, already public this
+// same way.
+app.get('/api/track/:id/items/:itemId/stamp-proof/image', (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
+  const proof = db.getLatestStampProofForItem(order.id, req.params.itemId)
+  if (!proof) return res.status(404).json({ error: 'not_found' })
+  const filePath = path.join(uploadsDir, path.basename(proof.file_id))
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'file_not_found' })
+  return res.sendFile(filePath)
+})
+
+// Public — customer approves or requests changes to a stamp proof from their
+// tracking page. Same isConfirmedOrder gate as feedback/pay above. Only
+// meaningful while the item is actually awaiting a response (proof_sent) —
+// stops a stale/replayed request from re-approving (or un-approving) an item
+// that's already moved past that point.
+app.post('/api/track/:id/items/:itemId/stamp-proof/respond', express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!isConfirmedOrder(order)) return res.status(404).json({ error: 'not_found' })
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (e) { files = [] }
+  const item = files.find((f) => f.itemId === req.params.itemId && f.productType === 'stamp')
+  if (!item) return res.status(404).json({ error: 'item_not_found' })
+  if (item.itemStatus !== 'proof_sent') {
+    return res.status(400).json({ error: 'no_pending_proof', message: 'There is no proof awaiting your response for this item.' })
+  }
+  const approved = !!(req.body && req.body.approved)
+  const comment = String((req.body && req.body.comment) || '').trim().slice(0, 1000)
+  const proof = db.getLatestStampProofForItem(order.id, item.itemId)
+  if (proof) db.updateStampProof(proof.id, { status: approved ? 'approved' : 'changes_requested', customer_comment: comment || null, resolved_at: Date.now() })
+  item.itemStatus = approved ? 'approved' : 'changes_requested'
+  const updated = db.updateOrder(order.id, { files_json: JSON.stringify(files) })
+  return res.json({ order: updated, status: item.itemStatus })
+})
+
 // Confirms payment for the regular checkout flow. Unlike the old Razorpay
 // integration, there's no client-supplied signature to check — Cashfree's
 // client SDK gives the browser no cryptographically verifiable proof of its
@@ -2768,6 +3739,7 @@ app.post('/api/orders/:id/verify-payment', express.json(), async (req, res) => {
   const paidOrder = db.markOrderPaid(order.id, { cashfree_payment_id: status.cf_payment_id })
   if (!paidOrder) return res.json({ order: db.getOrder(order.id) }) // lost the race — already confirmed elsewhere
   printQueue.enqueue(order.id) // stamps order_status: 'Queued For Printing'
+  confirmStockForOrder(paidOrder)
   const fresh = db.getOrder(order.id)
   notify.sendOrderConfirmationSms(fresh)
   notify.sendOrderConfirmationEmail(fresh)
@@ -2861,6 +3833,17 @@ const analyticsJsVersion = fs.existsSync(analyticsJsPath)
 // saved by any install) means open, so this never needs a DB migration.
 function isShopOpen() {
   return db.getSiteSettings().shopOpen !== false
+}
+
+// Soft-launch gate for Stationery/Stamps/Cart (see DEFAULT_SITE_SETTINGS in
+// db.js) — explicit opt-in, checked at the /stationery, /stamps, /cart
+// routes and their public catalog/cross-sell APIs (all return a real 404
+// while off, same as newVerticalsEnabled() === false being indistinguishable
+// from the route never having existed). Admin endpoints are never gated by
+// this — Products/Inventory/Stamp Settings/walk-in order creation must stay
+// usable so the catalog can be fully prepared before flipping this on.
+function newVerticalsEnabled() {
+  return db.getSiteSettings().newVerticalsEnabled === true
 }
 
 // Kept in sync by hand with the <details class="faq-item"> markup in
@@ -3459,6 +4442,29 @@ app.get('/admin', (req, res) => {
 // never billed to the customer (separate from order pricing/page counts).
 app.get('/jobsheet.html', (req, res) => {
   res.sendFile(path.join(publicDir, 'jobsheet.html'))
+})
+
+// Stationery catalog (browse + add to cart) and the cart itself — both
+// static templates, product/cart data fetched client-side (see
+// stationery.html / cart.html), same GTM-substitution pattern as every
+// other public page here.
+app.get('/stationery', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = readPublicTemplate('stationery.html')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
+})
+app.get('/cart', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = readPublicTemplate('cart.html')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
+})
+app.get('/stamps', (req, res) => {
+  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  const gtm = gtmSnippets(db.getSiteSettings())
+  const template = readPublicTemplate('stamps.html')
+  res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 
 // Public scan-to-track page linked from the job sheet's QR code.

@@ -142,13 +142,16 @@ header{
 .h-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex-shrink:0;}
 .h-logo img{width:34px;height:34px;border-radius:50%;}
 .h-logo span{font-family:'Sora','Sora Fallback',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;white-space:nowrap;}
-nav{display:flex;align-items:center;gap:2px;margin-left:32px;flex-shrink:0;}
+nav{display:flex;align-items:center;gap:2px;margin-left:24px;flex-shrink:0;}
 nav a{
-  font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;
-  padding:8px 14px;border-radius:8px;transition:all .15s;cursor:pointer;
+  font-size:13.5px;font-weight:600;color:var(--ink2);text-decoration:none;
+  padding:8px 10px;border-radius:8px;transition:all .15s;cursor:pointer;white-space:nowrap;
 }
 nav a:hover{color:var(--ink);background:var(--surface-hover);}
 nav a.active{color:var(--orange-text);}
+.cart-link-header{position:relative;text-decoration:none;font-size:17px;display:flex;align-items:center;padding:6px;border-radius:8px;flex-shrink:0;}
+.cart-link-header:hover{background:var(--surface-hover);}
+.cart-badge-header{position:absolute;top:-2px;right:-2px;background:var(--orange);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:15px;height:15px;display:none;align-items:center;justify-content:center;padding:0 3px;line-height:1;}
 .h-space{flex:1;}
 .h-actions{display:flex;align-items:center;gap:10px;}
 .btn-ghost-sm{
@@ -174,6 +177,11 @@ nav a.active{color:var(--orange-text);}
 @media(max-width:1200px){
   nav{display:none;}
   .h-actions{display:none;}
+  /* Same reasoning as nav above — the mobile menu's own cart link (with its
+     own badge) takes over below this breakpoint, so the header's icon-only
+     cart link would just be a redundant, cramped addition to the hamburger/
+     branch-picker/theme-toggle row that's already tight on space here. */
+  .cart-link-header{display:none;}
   .hamburger{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:36px;height:36px;flex-shrink:0;}
   .hamburger span{display:block;width:22px;height:2px;background:var(--ink);border-radius:2px;flex-shrink:0;transition:transform .2s,opacity .2s;}
   .mobile-menu{
@@ -588,6 +596,7 @@ footer{background:var(--ink-fixed);color:#fff;padding:64px 0 0;}
   }catch(e){}
 })();
 </script>
+<script src="/js/cart.js" defer></script>
 <script src="/js/analytics.js" defer></script>
 </head>
 <body>
@@ -636,12 +645,14 @@ __GTM_NOSCRIPT__
     </a>
     <nav>
       <a href="/" onclick="showPage('home'); return false;" class="active" id="nav-home">Home</a>
-      <a href="/#services" onclick="showPage('home'); scrollToSection('services'); return false;" id="nav-services">Services</a>
+      <a href="/order" id="nav-print">Print</a>
+      <a href="/stationery" id="nav-stationery">Stationery</a>
+      <a href="/stamps" id="nav-stamps">Stamps</a>
       <a href="/#pricing" onclick="showPage('home'); scrollToSection('pricing'); return false;" id="nav-pricing">Pricing</a>
-      <a href="/#contact" onclick="showPage('home'); scrollToSection('contact'); return false;" id="nav-contact">Contact</a>
       <a href="/blog" id="nav-blog">Blog</a>
       <a href="/policies" id="nav-policy">Policies</a>
     </nav>
+    <a class="cart-link-header" href="/cart" title="Cart">🛒<span class="cart-badge-header" data-cart-badge>0</span></a>
     <div class="h-space"></div>
     <div class="branch-picker" id="branchPicker">
       <button class="branch-btn unset" id="branchBtn" type="button" onclick="toggleBranchMenu(event)" aria-haspopup="listbox" aria-label="Select branch">
@@ -666,9 +677,11 @@ __GTM_NOSCRIPT__
   <div class="mobile-menu" id="mobileMenu">
     <div class="mobile-menu-inner">
       <a href="/" onclick="mmNavigate('home'); return false;" id="mnav-home">Home</a>
-      <a href="/#services" onclick="mmNavigate('home','services'); return false;" id="mnav-services">Services</a>
+      <a href="/order" id="mnav-print">Print</a>
+      <a href="/stationery" id="mnav-stationery">Stationery</a>
+      <a href="/stamps" id="mnav-stamps">Stamps</a>
+      <a href="/cart" id="mnav-cart">Cart <span class="cart-badge-header" data-cart-badge style="position:static;display:inline-flex;margin-left:6px;"></span></a>
       <a href="/#pricing" onclick="mmNavigate('home','pricing'); return false;" id="mnav-pricing">Pricing</a>
-      <a href="/#contact" onclick="mmNavigate('home','contact'); return false;" id="mnav-contact">Contact</a>
       <a href="/blog" id="mnav-blog">Blog</a>
       <a href="/policies" id="mnav-policy">Policies</a>
       <div class="mm-actions" id="mmLoggedOutActions">
@@ -1197,6 +1210,24 @@ fetch('/api/coupons/featured').then(function(r){ return r.ok ? r.json() : null; 
   link.href = '/order?coupon=' + encodeURIComponent(c.code);
   bar.classList.remove('hidden');
 }).catch(function(){ /* no active coupon, or offline — banner just stays hidden */ });
+</script>
+
+<script>
+// Stationery/Stamps/Cart are soft-launch-gated (see newVerticalsEnabled() in
+// server.js — the routes/APIs themselves 404 while off) — these nav links
+// are hidden in lockstep so a visitor never sees a dead link. Fail-open on a
+// fetch error would risk exposing hidden links, so this fails CLOSED
+// (assumes disabled) unless the fetch actually confirms it's on.
+function hideNewVerticalsNav(){
+  ['nav-stationery', 'nav-stamps', 'mnav-stationery', 'mnav-stamps', 'mnav-cart'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.querySelectorAll('.cart-link-header').forEach(function(el){ el.style.display = 'none'; });
+}
+fetch('/api/settings').then(function(r){ return r.json(); }).then(function(s){
+  if (!s || s.newVerticalsEnabled !== true) hideNewVerticalsNav();
+}).catch(hideNewVerticalsNav);
 </script>
 
 <script>

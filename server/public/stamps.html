@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no"/>
+__GTM_HEAD__
+<title>Create Your Stamp — Metalix Print</title>
+<meta name="description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text, add a logo, and order online.">
+<link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
+<style>
+@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Sora-700.woff2) format('woff2');}
+@font-face{font-family:'Sora';font-style:normal;font-weight:800;font-display:swap;src:url(/fonts/Sora-800.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Inter-400.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Inter-600.woff2) format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/Inter-700.woff2) format('woff2');}
+*{box-sizing:border-box;margin:0;padding:0;}
+/* Same token names/values as landing.html (the site's actual design system —
+   see its own :root/[data-theme=dark] blocks) rather than an approximated
+   palette, so this page genuinely matches the rest of the site instead of
+   just resembling it. color-scheme is what makes native form controls
+   (input/select) render with correct dark-mode chrome instead of defaulting
+   to light — omitting it is what caused black-on-dark text before this fix. */
+:root{
+  --orange:#FF6600; --orange-d:#E05500; --orange-l:#FFF4EB;
+  --ink:#1C1917; --ink2:#44403C; --ink3:#78716C;
+  --paper:#FAFAF8; --card:#FFFFFF; --line:#E7E5E4; --line-strong:#C7C4C0;
+  --green:#16A34A; --green-bg:#E7F6EC; --red:#DC2626; --warn:#B45309; --warn-bg:#FFF1E6;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --ink:#F7F6F1; --ink2:#D9D4CC; --ink3:#ABA69C;
+  --paper:#141316; --card:#1F1D22; --line:#3A3630; --line-strong:#55504A;
+  --orange-l:rgba(255,102,0,.16); --green-bg:rgba(22,163,74,.18); --warn-bg:rgba(180,83,9,.22);
+  color-scheme:dark;
+}
+body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;}
+a{color:inherit;}
+h1,h2,h3{font-family:'Sora',sans-serif;}
+header{position:sticky;top:0;z-index:40;background:var(--paper);border-bottom:1px solid var(--line);}
+.header-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px;}
+.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Sora';font-weight:800;font-size:19px;color:var(--ink);flex-shrink:0;}
+.h-logo img{height:30px;width:30px;}
+.h-logo .logo-sub{color:var(--orange);}
+nav.main-nav{display:flex;gap:4px;flex:1;flex-wrap:wrap;}
+nav.main-nav a{text-decoration:none;color:var(--ink2);font-weight:600;font-size:14.5px;padding:8px 12px;border-radius:8px;transition:.15s;}
+nav.main-nav a:hover{background:var(--orange-l);color:var(--orange-d);}
+nav.main-nav a.active{background:var(--orange-l);color:var(--orange-d);}
+.h-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cart-link{position:relative;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink);font-weight:700;font-size:14px;background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;padding:8px 14px;}
+.cart-badge{background:var(--orange);color:#fff;font-size:11px;font-weight:800;border-radius:999px;min-width:18px;height:18px;display:none;align-items:center;justify-content:center;padding:0 5px;}
+.theme-toggle{background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;}
+main{max-width:760px;margin:0 auto;padding:28px 20px 100px;}
+.page-head{margin-bottom:8px;}
+.page-head h1{font-size:26px;font-weight:800;}
+.step-progress{display:flex;gap:6px;margin:18px 0 26px;}
+.step-dot{flex:1;height:5px;border-radius:999px;background:var(--line-strong);}
+.step-dot.done, .step-dot.active{background:var(--orange);}
+.step-label{font-size:12.5px;color:var(--ink3);font-weight:600;margin-bottom:18px;}
+.wizard-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:var(--shadow);}
+.wizard-card h2{font-size:19px;margin-bottom:6px;}
+.wizard-sub{font-size:13px;color:var(--ink3);margin-bottom:18px;}
+.choice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;}
+.choice-card{border:1.5px solid var(--line-strong);border-radius:12px;padding:14px;cursor:pointer;text-align:left;background:var(--card);}
+.choice-card.selected{border-color:var(--orange);background:var(--orange-l);}
+.choice-card .cc-label{font-weight:700;font-size:14.5px;}
+.choice-card .cc-meta{font-size:12px;color:var(--ink3);margin-top:4px;}
+.choice-card .cc-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;margin-bottom:10px;background:var(--orange-l);}
+.text-lines{display:flex;flex-direction:column;gap:8px;}
+.text-line-row{display:flex;gap:8px;}
+.text-line-row input{flex:1;padding:10px 12px;border:1.5px solid var(--line-strong);border-radius:9px;font-size:14px;background:var(--card);color:var(--ink);}
+.text-line-row button{background:none;border:none;color:var(--ink3);font-size:16px;cursor:pointer;padding:4px 8px;}
+.add-line-btn{margin-top:10px;background:none;border:1.5px dashed var(--line-strong);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;}
+.upload-zone{border:1.5px dashed var(--line-strong);border-radius:12px;padding:24px;text-align:center;cursor:pointer;}
+.upload-zone:hover{border-color:var(--orange);}
+.upload-preview{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line-strong);border-radius:12px;padding:12px;}
+.upload-preview img{width:56px;height:56px;object-fit:contain;border-radius:8px;background:var(--orange-l);}
+.qty-stepper-lg{display:flex;align-items:center;gap:16px;}
+.qty-stepper-lg button{width:44px;height:44px;border-radius:10px;border:1.5px solid var(--line-strong);background:var(--card);font-size:19px;cursor:pointer;color:var(--ink2);}
+.qty-stepper-lg input{width:60px;text-align:center;font-size:20px;font-weight:800;border:none;background:transparent;color:var(--ink);}
+.preview-canvas-wrap{display:flex;justify-content:center;margin-bottom:16px;}
+canvas#stampCanvas{border-radius:10px;background:#FFF4EB;box-shadow:0 0 0 1px rgba(0,0,0,.08);}
+.warning-note{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;font-size:12.5px;font-weight:600;margin-bottom:16px;}
+.price-summary{background:var(--orange-l);border-radius:10px;padding:14px 16px;margin-bottom:18px;}
+.price-row{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);padding:2px 0;}
+.price-row.total{font-weight:800;font-size:16px;color:var(--ink);border-top:1px solid var(--line-strong);margin-top:6px;padding-top:8px;}
+.wizard-actions{display:flex;justify-content:space-between;gap:10px;margin-top:22px;}
+.btn-primary{background:var(--orange);color:#fff;border:none;border-radius:10px;padding:12px 26px;font-weight:800;font-size:14.5px;cursor:pointer;}
+.btn-primary:hover{background:var(--orange-d);}
+.btn-primary:disabled{background:var(--line-strong);color:var(--ink3);cursor:not-allowed;}
+.btn-ghost{background:none;border:1.5px solid var(--line-strong);border-radius:10px;padding:12px 22px;font-weight:700;font-size:14.5px;cursor:pointer;color:var(--ink2);}
+.btn-ghost:disabled{opacity:.4;cursor:not-allowed;}
+.field-error{color:var(--red);font-size:12.5px;margin-top:6px;display:none;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:12px 22px;border-radius:10px;font-weight:600;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:100;}
+.cross-sell-strip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:20px;box-shadow:var(--shadow);}
+.cross-sell-title{font-weight:700;font-size:13.5px;margin-bottom:12px;}
+.cross-sell-items{display:flex;gap:12px;overflow-x:auto;padding-bottom:2px;}
+.cross-sell-item{flex:0 0 130px;text-align:center;}
+.cross-sell-thumb{width:100%;aspect-ratio:1;background:var(--orange-l);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:6px;overflow:hidden;}
+.cross-sell-thumb img{width:100%;height:100%;object-fit:cover;}
+.cross-sell-name{font-size:12px;font-weight:600;margin-bottom:2px;}
+.cross-sell-price{font-size:12px;color:var(--ink3);margin-bottom:6px;}
+.cross-sell-add{width:100%;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:6px;font-size:12px;font-weight:700;cursor:pointer;}
+.cross-sell-add:disabled{background:var(--green);cursor:default;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media (max-width:640px){ .wizard-card{padding:18px;} nav.main-nav{order:3;width:100%;} .header-inner{flex-wrap:wrap;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <a class="h-logo" href="/"><img src="/images/logo.svg" alt="Metalix Print"><span>Metalix<span class="logo-sub"> Print</span></span></a>
+    <nav class="main-nav">
+      <a href="/order">Print</a>
+      <a href="/stationery">Stationery</a>
+      <a href="/stamps" class="active">Stamps</a>
+      <a href="/orders">Orders</a>
+    </nav>
+    <div class="h-actions">
+      <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+      <a class="cart-link" href="/cart">🛒 Cart <span class="cart-badge" data-cart-badge>0</span></a>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="page-head"><h1>Create Your Stamp</h1></div>
+  <div class="step-progress" id="stepProgress"></div>
+  <div class="step-label" id="stepLabel"></div>
+  <div class="wizard-card" id="wizardCard"><div class="wizard-sub">Loading…</div></div>
+  <div class="cross-sell-strip" id="crossSellStrip" style="display:none;"></div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/js/cart.js"></script>
+<script>
+(function(){
+  var THEME_KEY = 'metalix_theme';
+  function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); }
+  applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(cur); localStorage.setItem(THEME_KEY, cur);
+  });
+})();
+
+function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+function showToast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._timer); t._timer = setTimeout(function(){ t.classList.remove('show'); }, 2400);
+}
+
+// Steps are addressed by key, not position, because 'text'+'logo' vs
+// 'artwork' are mutually exclusive branches picked at the 'designMode' step —
+// a customer with their own ready-made design skips straight to uploading it
+// instead of being forced through text entry first. currentSequence() below
+// computes the actual step order/count for whichever branch is active.
+var STEP_LABELS = { type: 'Stamp type', size: 'Size', designMode: 'Your design', text: 'Your text', logo: 'Logo (optional)', artwork: 'Upload your design', quantity: 'Quantity', preview: 'Preview & add to cart' };
+
+function currentSequence(){
+  var seq = ['type', 'size', 'designMode'];
+  if (state.designMode === 'upload') seq.push('artwork');
+  else seq.push('text', 'logo'); // default branch, also used for step-count display before a choice is made
+  seq.push('quantity', 'preview');
+  return seq;
+}
+
+var stampConfig = null;
+var state = {
+  step: 'type',
+  stampTypeId: null,
+  stampSizeId: null,
+  designMode: null, // 'text' | 'upload'
+  textLines: [''],
+  logoFileId: null, logoFileName: null, logoObjectUrl: null, logoUploading: false,
+  artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false,
+  quantity: 1
+};
+
+function activeTypes(){ return (stampConfig && stampConfig.types || []).filter(function(t){ return t.active; }); }
+function activeSizes(){ return (stampConfig && stampConfig.sizes || []).filter(function(s){ return s.active; }); }
+function selectedType(){ return activeTypes().find(function(t){ return t.id === state.stampTypeId; }); }
+function selectedSize(){ return activeSizes().find(function(s){ return s.id === state.stampSizeId; }); }
+
+function computePrice(){
+  var type = selectedType(), size = selectedSize();
+  var base = type ? type.basePrice : 0;
+  var sizeMod = size ? size.priceModifier : 0;
+  var logoPrice = state.logoFileId ? (stampConfig.logoPrice || 0) : 0;
+  var extraQty = (stampConfig ? (stampConfig.extraQuantityPrice || 0) : 0) * Math.max(0, state.quantity - 1);
+  return { base: base, sizeMod: sizeMod, logoPrice: logoPrice, extraQty: extraQty, total: base + sizeMod + logoPrice + extraQty };
+}
+
+function renderStepProgress(){
+  var seq = currentSequence();
+  var idx = seq.indexOf(state.step);
+  var wrap = document.getElementById('stepProgress');
+  wrap.innerHTML = '';
+  for (var i = 0; i < seq.length; i++) {
+    var dot = document.createElement('div');
+    dot.className = 'step-dot' + (i < idx ? ' done' : (i === idx ? ' active' : ''));
+    wrap.appendChild(dot);
+  }
+  document.getElementById('stepLabel').textContent = 'Step ' + (idx + 1) + ' of ' + seq.length + ' — ' + STEP_LABELS[state.step];
+}
+
+function canAdvance(){
+  if (state.step === 'type') return !!state.stampTypeId;
+  if (state.step === 'size') return !!state.stampSizeId;
+  if (state.step === 'designMode') return state.designMode === 'text' || state.designMode === 'upload';
+  if (state.step === 'text') return state.textLines.some(function(l){ return l.trim(); });
+  if (state.step === 'logo') return !state.logoUploading;
+  if (state.step === 'artwork') return !!state.artworkFileId && !state.artworkUploading;
+  return true;
+}
+
+function goNext(){
+  var seq = currentSequence();
+  var idx = seq.indexOf(state.step);
+  if (idx < seq.length - 1) { state.step = seq[idx + 1]; render(); }
+}
+function goBack(){
+  var seq = currentSequence();
+  var idx = seq.indexOf(state.step);
+  if (idx > 0) { state.step = seq[idx - 1]; render(); }
+}
+
+function stepBodyHtml(){
+  if (state.step === 'type') {
+    return '<h2>Choose your stamp type</h2><div class="wizard-sub">Admin-configured types and base prices.</div>' +
+      '<div class="choice-grid" id="typeGrid">' + activeTypes().map(function(t){
+        return '<button type="button" class="choice-card' + (t.id === state.stampTypeId ? ' selected' : '') + '" data-type="' + escHtml(t.id) + '">' +
+          (t.imageUrl ? '<img class="cc-img" src="' + escHtml(t.imageUrl) + '" alt="' + escHtml(t.label) + '" />' : '') +
+          '<div class="cc-label">' + escHtml(t.label) + '</div><div class="cc-meta">From ₹' + t.basePrice + '</div></button>';
+      }).join('') + '</div>';
+  }
+  if (state.step === 'size') {
+    return '<h2>Choose a size</h2><div class="wizard-sub">Larger sizes fit more text but cost a little more.</div>' +
+      '<div class="choice-grid" id="sizeGrid">' + activeSizes().map(function(s){
+        var mod = s.priceModifier > 0 ? ' (+₹' + s.priceModifier + ')' : (s.priceModifier < 0 ? ' (−₹' + Math.abs(s.priceModifier) + ')' : '');
+        return '<button type="button" class="choice-card' + (s.id === state.stampSizeId ? ' selected' : '') + '" data-size="' + escHtml(s.id) + '">' +
+          '<div class="cc-label">' + escHtml(s.label) + '</div><div class="cc-meta">' + s.widthMm + '×' + s.heightMm + 'mm' + mod + '</div></button>';
+      }).join('') + '</div>';
+  }
+  if (state.step === 'designMode') {
+    return '<h2>How would you like to design your stamp?</h2><div class="wizard-sub">If you already have your own artwork ready, upload it directly — no need to retype anything.</div>' +
+      '<div class="choice-grid" id="designModeGrid">' +
+        '<button type="button" class="choice-card' + (state.designMode === 'text' ? ' selected' : '') + '" data-mode="text">' +
+          '<div class="cc-label">✍️ Type my own text</div><div class="cc-meta">Company name, address, GSTIN, etc.</div></button>' +
+        '<button type="button" class="choice-card' + (state.designMode === 'upload' ? ' selected' : '') + '" data-mode="upload">' +
+          '<div class="cc-label">📎 Upload my own design</div><div class="cc-meta">Have exact artwork ready? Skip straight to uploading it.</div></button>' +
+      '</div>';
+  }
+  if (state.step === 'text') {
+    return '<h2>Enter your stamp text</h2><div class="wizard-sub">e.g. company name, address, GSTIN — one line at a time (up to 6 lines).</div>' +
+      '<div class="text-lines" id="textLines">' + state.textLines.map(function(l, i){
+        return '<div class="text-line-row"><input type="text" maxlength="60" data-line="' + i + '" value="' + escHtml(l) + '" placeholder="Line ' + (i + 1) + '" />' +
+          (state.textLines.length > 1 ? '<button type="button" class="remove-line-btn" data-line="' + i + '">✕</button>' : '') + '</div>';
+      }).join('') + '</div>' +
+      (state.textLines.length < 6 ? '<button type="button" class="add-line-btn" id="addLineBtn">+ Add line</button>' : '');
+  }
+  if (state.step === 'logo') {
+    return '<h2>Add a logo</h2><div class="wizard-sub">Optional — adds ₹' + ((stampConfig && stampConfig.logoPrice) || 0) + ' to the price.</div>' +
+      (state.logoFileId
+        ? '<div class="upload-preview"><img src="' + state.logoObjectUrl + '" alt="Logo" /><div style="flex:1;"><div style="font-weight:700;font-size:13.5px;">' + escHtml(state.logoFileName) + '</div></div><button type="button" class="btn-ghost" id="removeLogoBtn" style="padding:6px 12px;">Remove</button></div>'
+        : '<div class="upload-zone" id="logoZone">' + (state.logoUploading ? 'Uploading…' : '📎 Click to upload a logo image') + '<input type="file" id="logoInput" accept="image/png,image/jpeg,image/webp" style="display:none;" /></div>');
+  }
+  if (state.step === 'artwork') {
+    return '<h2>Upload your design</h2><div class="wizard-sub">Image or PDF — this is exactly what we\'ll produce, so make sure it\'s the final version.</div>' +
+      (state.artworkFileId
+        ? '<div class="upload-preview"><img src="' + (state.artworkObjectUrl || '') + '" alt="Artwork" onerror="this.style.display=\'none\'" /><div style="flex:1;"><div style="font-weight:700;font-size:13.5px;">' + escHtml(state.artworkFileName) + '</div></div><button type="button" class="btn-ghost" id="removeArtworkBtn" style="padding:6px 12px;">Remove</button></div>'
+        : '<div class="upload-zone" id="artworkZone">' + (state.artworkUploading ? 'Uploading…' : '📎 Click to upload your design (image or PDF)') + '<input type="file" id="artworkInput" accept="image/png,image/jpeg,image/webp,application/pdf" style="display:none;" /></div>');
+  }
+  if (state.step === 'quantity') {
+    return '<h2>Quantity</h2><div class="wizard-sub">Extra copies of the same stamp cost less than a separate order.</div>' +
+      '<div class="qty-stepper-lg"><button type="button" data-qstep="-1">−</button><input type="text" id="qtyInput" value="' + state.quantity + '" inputmode="numeric" /><button type="button" data-qstep="1">+</button></div>';
+  }
+  // step === 'preview'
+  var price = computePrice();
+  return '<h2>Preview &amp; confirm</h2>' +
+    '<div class="preview-canvas-wrap"><canvas id="stampCanvas" width="280" height="180"></canvas></div>' +
+    '<div class="warning-note">⚠ Please check all spelling and details carefully before placing your order — stamps are custom-made and can\'t be modified once approved for production.</div>' +
+    '<div class="price-summary">' +
+      '<div class="price-row"><span>' + escHtml(selectedType() ? selectedType().label : '') + '</span><span>₹' + price.base + '</span></div>' +
+      (price.sizeMod ? '<div class="price-row"><span>' + escHtml(selectedSize() ? selectedSize().label : '') + '</span><span>' + (price.sizeMod > 0 ? '+' : '') + '₹' + price.sizeMod + '</span></div>' : '') +
+      (price.logoPrice ? '<div class="price-row"><span>Logo</span><span>+₹' + price.logoPrice + '</span></div>' : '') +
+      (price.extraQty ? '<div class="price-row"><span>Extra quantity (×' + (state.quantity - 1) + ')</span><span>+₹' + price.extraQty + '</span></div>' : '') +
+      '<div class="price-row total"><span>Total (' + state.quantity + '×)</span><span>₹' + (price.total) + '</span></div>' +
+    '</div>';
+}
+
+function drawStampPreview(){
+  var canvas = document.getElementById('stampCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  // Always rendered as an ink-on-paper impression (light background, dark
+  // ink) regardless of site theme — this is a preview of a physical stamp,
+  // not a themed UI element, so it should always look like what actually
+  // gets stamped. Dark ink on the site's own dark-mode card background was
+  // the exact "font is black" bug this fixes.
+  ctx.fillStyle = '#FFF4EB';
+  ctx.fillRect(0, 0, W, H);
+  var size = selectedSize();
+  var aspect = size ? (size.widthMm / size.heightMm) : 2;
+  var boxW = Math.min(W - 24, (H - 24) * aspect);
+  var boxH = boxW / aspect;
+  var x = (W - boxW) / 2, y = (H - boxH) / 2;
+  ctx.strokeStyle = '#FF6600';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, boxW, boxH);
+  ctx.fillStyle = '#1C1917';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // A customer who uploaded their own design has no text/logo to render —
+  // show their actual artwork in the box instead (or a fallback note for a
+  // PDF, which a canvas Image element can't decode for preview purposes;
+  // the real file is still what staff produce from, see the jobsheet).
+  if (state.designMode === 'upload') {
+    var fallback = function(){
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.fillText('📄 Your uploaded design', x + boxW / 2, y + boxH / 2 - 8);
+      ctx.font = '400 10px Inter, sans-serif';
+      ctx.fillStyle = '#78716C';
+      ctx.fillText('(preview unavailable for this file type)', x + boxW / 2, y + boxH / 2 + 10);
+    };
+    if (state.artworkObjectUrl) {
+      var artImg = new Image();
+      artImg.onload = function(){
+        var scale = Math.min((boxW - 16) / artImg.width, (boxH - 16) / artImg.height);
+        var w = artImg.width * scale, h = artImg.height * scale;
+        ctx.drawImage(artImg, x + (boxW - w) / 2, y + (boxH - h) / 2, w, h);
+      };
+      artImg.onerror = fallback;
+      artImg.src = state.artworkObjectUrl;
+    } else {
+      fallback();
+    }
+    return;
+  }
+
+  var lines = state.textLines.filter(function(l){ return l.trim(); });
+  var logoImg = null;
+  var drawText = function(){
+    var fontSize = Math.max(9, Math.min(15, (boxH - 16) / Math.max(1, lines.length) - 4));
+    ctx.font = '700 ' + fontSize + 'px Inter, sans-serif';
+    var startY = y + boxH / 2 - ((lines.length - 1) * (fontSize + 3)) / 2;
+    var textX = x + boxW / 2 + (logoImg ? 14 : 0);
+    lines.forEach(function(line, i){
+      ctx.fillText(line.toUpperCase(), textX, startY + i * (fontSize + 3));
+    });
+  };
+  if (state.logoObjectUrl) {
+    logoImg = new Image();
+    logoImg.onload = function(){
+      var logoSize = Math.min(boxH - 16, 40);
+      ctx.drawImage(logoImg, x + 10, y + boxH / 2 - logoSize / 2, logoSize, logoSize);
+      drawText();
+    };
+    logoImg.onerror = drawText;
+    logoImg.src = state.logoObjectUrl;
+  } else {
+    drawText();
+  }
+}
+
+function render(){
+  renderStepProgress();
+  var seq = currentSequence();
+  var isLast = state.step === seq[seq.length - 1];
+  document.getElementById('wizardCard').innerHTML = stepBodyHtml() +
+    '<div class="wizard-actions">' +
+      '<button type="button" class="btn-ghost" id="backBtn"' + (state.step === seq[0] ? ' disabled' : '') + '>← Back</button>' +
+      (isLast
+        ? '<button type="button" class="btn-primary" id="addToCartBtn">Add to Cart →</button>'
+        : '<button type="button" class="btn-primary" id="nextBtn"' + (canAdvance() ? '' : ' disabled') + '>Next →</button>') +
+    '</div>';
+  bindStepEvents();
+  if (isLast) drawStampPreview();
+}
+
+function bindStepEvents(){
+  var backBtn = document.getElementById('backBtn');
+  if (backBtn) backBtn.addEventListener('click', goBack);
+  var nextBtn = document.getElementById('nextBtn');
+  if (nextBtn) nextBtn.addEventListener('click', function(){ if (canAdvance()) goNext(); });
+  var addBtn = document.getElementById('addToCartBtn');
+  if (addBtn) addBtn.addEventListener('click', addToCart);
+
+  if (state.step === 'type') {
+    document.querySelectorAll('#typeGrid [data-type]').forEach(function(btn){
+      btn.addEventListener('click', function(){ state.stampTypeId = btn.dataset.type; render(); });
+    });
+  }
+  if (state.step === 'size') {
+    document.querySelectorAll('#sizeGrid [data-size]').forEach(function(btn){
+      btn.addEventListener('click', function(){ state.stampSizeId = btn.dataset.size; render(); });
+    });
+  }
+  if (state.step === 'designMode') {
+    document.querySelectorAll('#designModeGrid [data-mode]').forEach(function(btn){
+      btn.addEventListener('click', function(){ state.designMode = btn.dataset.mode; render(); });
+    });
+  }
+  if (state.step === 'text') {
+    document.querySelectorAll('#textLines input').forEach(function(input){
+      input.addEventListener('input', function(){ state.textLines[Number(input.dataset.line)] = input.value; document.getElementById('nextBtn').disabled = !canAdvance(); });
+    });
+    document.querySelectorAll('.remove-line-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ state.textLines.splice(Number(btn.dataset.line), 1); render(); });
+    });
+    var addLineBtn = document.getElementById('addLineBtn');
+    if (addLineBtn) addLineBtn.addEventListener('click', function(){ state.textLines.push(''); render(); });
+  }
+  if (state.step === 'logo') {
+    var logoZone = document.getElementById('logoZone');
+    if (logoZone) logoZone.addEventListener('click', function(){ document.getElementById('logoInput').click(); });
+    var logoInput = document.getElementById('logoInput');
+    if (logoInput) logoInput.addEventListener('change', function(){ uploadAsset(logoInput.files[0], 'logo'); });
+    var removeLogoBtn = document.getElementById('removeLogoBtn');
+    if (removeLogoBtn) removeLogoBtn.addEventListener('click', function(){ state.logoFileId = null; state.logoFileName = null; state.logoObjectUrl = null; render(); });
+  }
+  if (state.step === 'artwork') {
+    var artworkZone = document.getElementById('artworkZone');
+    if (artworkZone) artworkZone.addEventListener('click', function(){ document.getElementById('artworkInput').click(); });
+    var artworkInput = document.getElementById('artworkInput');
+    if (artworkInput) artworkInput.addEventListener('change', function(){ uploadAsset(artworkInput.files[0], 'artwork'); });
+    var removeArtworkBtn = document.getElementById('removeArtworkBtn');
+    if (removeArtworkBtn) removeArtworkBtn.addEventListener('click', function(){ state.artworkFileId = null; state.artworkFileName = null; state.artworkObjectUrl = null; render(); });
+  }
+  if (state.step === 'quantity') {
+    var qtyInput = document.getElementById('qtyInput');
+    document.querySelectorAll('[data-qstep]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        state.quantity = Math.max(1, Math.min(999, state.quantity + Number(btn.dataset.qstep)));
+        qtyInput.value = state.quantity;
+      });
+    });
+    qtyInput.addEventListener('input', function(){
+      state.quantity = Math.max(1, Math.min(999, parseInt(qtyInput.value, 10) || 1));
+    });
+  }
+}
+
+function uploadAsset(file, kind){
+  if (!file) return;
+  var objectUrl = URL.createObjectURL(file);
+  if (kind === 'logo') { state.logoUploading = true; } else { state.artworkUploading = true; }
+  render();
+  var fd = new FormData();
+  fd.append('file', file);
+  fetch('/api/stamp-assets/upload', { method: 'POST', body: fd })
+    .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+    .then(function(res){
+      if (!res.ok) { showToast(res.data.message || 'Upload failed'); if (kind === 'logo') state.logoUploading = false; else state.artworkUploading = false; render(); return; }
+      if (kind === 'logo') {
+        state.logoFileId = res.data.fileId; state.logoFileName = res.data.fileName; state.logoObjectUrl = objectUrl; state.logoUploading = false;
+      } else {
+        state.artworkFileId = res.data.fileId; state.artworkFileName = res.data.fileName; state.artworkObjectUrl = objectUrl; state.artworkUploading = false;
+      }
+      render();
+    })
+    .catch(function(){
+      showToast('Upload failed — please try again.');
+      if (kind === 'logo') state.logoUploading = false; else state.artworkUploading = false;
+      render();
+    });
+}
+
+function addToCart(){
+  var type = selectedType(), size = selectedSize();
+  var price = computePrice();
+  Cart.add({
+    productType: 'stamp',
+    name: (type ? type.label : 'Custom Stamp') + ' · ' + (size ? size.label : ''),
+    stampTypeId: state.stampTypeId,
+    stampTypeLabel: type ? type.label : '',
+    stampSizeId: state.stampSizeId,
+    stampSizeLabel: size ? size.label : '',
+    textLines: state.textLines.filter(function(l){ return l.trim(); }),
+    logoFileId: state.logoFileId,
+    artworkFileId: state.artworkFileId,
+    unitPrice: price.total,
+    quantity: state.quantity
+  });
+  showToast('Added to cart — configure another or head to checkout.');
+  Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stamp');
+  state = { step: 'type', stampTypeId: null, stampSizeId: null, designMode: null, textLines: [''], logoFileId: null, logoFileName: null, logoObjectUrl: null, logoUploading: false, artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false, quantity: 1 };
+  render();
+}
+
+fetch('/api/pricing').then(function(r){ return r.json(); }).then(function(p){
+  stampConfig = p.stamps || { types: [], sizes: [], logoPrice: 0, extraQuantityPrice: 0 };
+  render();
+}).catch(function(){
+  document.getElementById('wizardCard').innerHTML = '<div class="wizard-sub">Could not load stamp options. Please refresh.</div>';
+});
+</script>
+</body>
+</html>

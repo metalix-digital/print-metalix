@@ -34,4 +34,17 @@ function syncPrintJobStatus(orderId, orderStatus) {
   db.updatePrintJob(job.id, { status: target })
 }
 
-module.exports = { enqueue, syncPrintJobStatus }
+// Same keyword-heuristic style as jobStatusForOrderStatus above — order_status
+// is admin-editable free text (custom stage names included), so "is this a
+// cancellation/refund" can't be a strict enum match. Used by server.js to
+// decide when a status transition should restore stationery stock (see
+// db.restoreStockForOrder) — checked against both the old and new status on a
+// transition, so it only fires once per genuine cancel (old status not
+// already cancelled-shaped, new one is), never on every subsequent edit to an
+// already-cancelled order.
+function isCancelledOrRefundedStatus(orderStatus) {
+  const s = String(orderStatus || '').toLowerCase()
+  return s.includes('cancel') || s.includes('refund')
+}
+
+module.exports = { enqueue, syncPrintJobStatus, isCancelledOrRefundedStatus }

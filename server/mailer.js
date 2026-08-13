@@ -422,4 +422,35 @@ async function sendInvoiceEmail(order, invoiceBuffer) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text, attachments })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail, sendInvoiceEmail }
+// ---- Custom Stamp proof-approval ----------------------------------------
+
+function stampProofReadyTemplate(order, trackUrl) {
+  const name = order.customer_name || 'there'
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:36px 40px 8px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 style="margin:0 0 14px 0;font-size:24px;line-height:1.25;color:${BRAND.ink};font-weight:800;letter-spacing:-.01em;">Your stamp proof is ready</h1>
+      <p style="margin:0 0 26px 0;font-size:15px;line-height:1.65;color:${BRAND.body};">Hi ${name}, we've uploaded a proof for the custom stamp in order ${order.id}. Please review it carefully and approve it, or let us know if anything needs to change — production only starts once you approve.</p>
+    </td></tr>
+    <tr><td style="padding:0 40px 8px 40px;">${button('Review your stamp proof', trackUrl)}</td></tr>
+    <tr><td style="padding:18px 40px 36px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <p style="margin:0;font-size:13px;line-height:1.6;color:${BRAND.muted};">Please check the spelling and every detail carefully before approving — once production starts, changes may not be possible.</p>
+    </td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0;font-size:12px;line-height:1.6;color:${BRAND.muted};">Questions about your order? Contact Metalix Print support.</p>`
+  const html = renderEmailShell({ preheader: `Review your stamp proof for order ${order.id}`, badge: 'Action needed', cardHtml, footerHtml })
+  const text = ['Your stamp proof is ready', '', `Hi ${name}, please review the proof for order ${order.id}:`, trackUrl, '', 'Check spelling and every detail carefully before approving.', "\nThis is an automated message from Metalix Print — please don't reply."].join('\n')
+  return { html, text, subject: `Action needed — Review your stamp proof (Order ${order.id})` }
+}
+
+async function sendStampProofReadyEmail(order, trackUrl) {
+  if (!order || !order.customer_email) return
+  const { html, text, subject } = stampProofReadyTemplate(order, trackUrl)
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${order.customer_email}: ${subject}`)
+    return
+  }
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text })
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail, sendInvoiceEmail, sendStampProofReadyEmail }

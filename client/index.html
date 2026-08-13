@@ -40,6 +40,10 @@ __GTM_HEAD__
   .badge-row{margin-left:auto; display:flex; gap:10px;}
   .badge{font-family:'IBM Plex Mono', monospace; font-size:11.5px; font-weight:500; color:var(--ink-soft); background:var(--surface); border:1px solid var(--line); padding:7px 12px; border-radius:999px; display:flex; align-items:center; gap:6px; transition: border-color .2s ease, transform .2s ease;}
   .badge:hover{border-color:var(--line-strong); transform:translateY(-1px);}
+  .shop-nav{display:flex; gap:8px; align-items:center;}
+  a.badge{text-decoration:none; cursor:pointer;}
+  .cart-badge-inline{background:var(--orange); color:#fff; font-size:10px; font-weight:800; border-radius:999px; min-width:15px; height:15px; display:none; align-items:center; justify-content:center; padding:0 3px; line-height:1;}
+  @media (max-width:860px){ .shop-nav{order:3; width:100%; margin-top:6px; justify-content:flex-start;} }
   .badge .pulse{width:6px;height:6px;border-radius:50%;background:var(--green); position:relative;}
   .badge .pulse::after{content:''; position:absolute; inset:-3px; border-radius:50%; border:1px solid var(--green); animation:pulse 2s ease-out infinite;}
   @keyframes pulse{0%{transform:scale(.6);opacity:.8;}100%{transform:scale(1.8);opacity:0;}}
@@ -178,6 +182,13 @@ __GTM_HEAD__
   .ordering-as .oa-change:hover{ background:var(--surface); }
   .opt-label{ font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.09em; margin-bottom:12px; display:block; }
   .opt-label.center{ text-align:center; }
+  .print-job-toggle{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface); border:1.5px dashed var(--line-strong); border-radius:12px; padding:13px 16px; margin-top:18px; font-family:'Inter',sans-serif; font-size:14px; font-weight:700; color:var(--ink); cursor:pointer; transition:border-color .15s ease; }
+  .print-job-toggle:hover{ border-color:var(--orange); }
+  .print-job-toggle .opt-sub{ font-weight:500; color:var(--ink-soft); font-size:12.5px; text-transform:none; letter-spacing:normal; }
+  .print-job-toggle .pjt-chevron{ transition:transform .2s ease; color:var(--ink-soft); }
+  .print-job-toggle.expanded .pjt-chevron{ transform:rotate(180deg); }
+  #printJobWrap{ display:none; }
+  #printJobWrap.expanded{ display:block; }
   .field{margin-top:12px;}
   .field label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; display:block; }
   .field input, .field textarea{ width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface); transition:border-color .15s ease; }
@@ -288,6 +299,16 @@ __GTM_HEAD__
   .cart-row-name{ font-size:13px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cart-row-meta{ font-size:11px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-top:1px; }
   .cart-row-price{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:13px; color:var(--orange-deep); flex-shrink:0; }
+  .cross-sell-strip{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:4px; }
+  .cross-sell-title{ font-size:12px; font-weight:700; color:var(--ink-soft); margin-bottom:10px; }
+  .cross-sell-items{ display:flex; gap:10px; overflow-x:auto; padding-bottom:2px; }
+  .cross-sell-item{ flex:0 0 110px; text-align:center; }
+  .cross-sell-thumb{ width:100%; aspect-ratio:1; background:var(--paper-dim); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:5px; overflow:hidden; }
+  .cross-sell-thumb img{ width:100%; height:100%; object-fit:cover; }
+  .cross-sell-name{ font-size:11px; font-weight:600; margin-bottom:2px; color:var(--ink); }
+  .cross-sell-price{ font-size:11px; color:var(--ink-soft); margin-bottom:5px; font-family:'IBM Plex Mono',monospace; }
+  .cross-sell-add{ width:100%; background:var(--orange); color:#fff; border:none; border-radius:7px; padding:5px; font-size:11px; font-weight:700; cursor:pointer; }
+  .cross-sell-add:disabled{ background:var(--green); cursor:default; }
 
   /* Collapsed "submitted" row for file-cards and passport-photo cards — only
      one item's full settings panel is open at a time (see renderFileList()/
@@ -326,6 +347,7 @@ __GTM_HEAD__
   }catch(e){}
 })();
 </script>
+<script src="/js/cart.js" defer></script>
 <script src="/js/analytics.js" defer></script>
 </head>
 <body>
@@ -342,6 +364,11 @@ __GTM_NOSCRIPT__
       <div class="badge"><span class="pulse"></span> Shop open</div>
       <div class="badge">⚡ Ready instantly</div>
     </div>
+    <nav class="shop-nav">
+      <a class="badge" href="/stationery">🖊 Stationery</a>
+      <a class="badge" href="/stamps">🔖 Stamps</a>
+      <a class="badge" href="/cart">🛒 Cart <span class="cart-badge-inline" data-cart-badge>0</span></a>
+    </nav>
     <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button>
     <div class="header-actions profile-wrap hidden" id="headerActions" style="display:none; align-items:center; gap:8px;">
       <button class="btn btn-ghost profile-trigger" type="button" id="profileTrigger" aria-haspopup="true" aria-expanded="false" style="padding:9px 14px; font-size:13px;">
@@ -390,6 +417,26 @@ __GTM_NOSCRIPT__
         </div>
       </div>
 
+      <div class="opt-group" id="cartGroup" style="display:none;">
+        <span class="opt-label">Your order <span id="cartCount"></span></span>
+        <div class="cart-list" id="cartList"></div>
+        <div class="cross-sell-strip" id="crossSellStrip" style="display:none;"></div>
+      </div>
+
+      <!-- Printing is one of three things a customer can add to this order
+           (alongside stationery/stamps carried in from /stationery or
+           /stamps), not necessarily the reason they're on this page — a
+           customer who arrived with an existing cart shouldn't be met with a
+           full-size "upload your document" tray before they've even seen
+           their own cart. Collapsed by default in that case (see
+           updatePrintJobToggle below); expanded automatically the moment
+           there's a document/photo to show, so nothing here changes for a
+           customer who came here to print, same as before this toggle existed. -->
+      <button type="button" class="print-job-toggle" id="printJobToggle">
+        <span>🖨️ Add a print job <span class="opt-sub">(documents or photos)</span></span>
+        <span class="pjt-chevron" id="pjtChevron">▾</span>
+      </button>
+      <div id="printJobWrap">
       <div class="opt-group">
         <span class="opt-label">What are you printing?</span>
         <div class="seg" id="printTypeToggle">
@@ -398,11 +445,6 @@ __GTM_NOSCRIPT__
           <label><input type="radio" name="printType" value="passport-photo"><span class="pill">Passport Photos</span></label>
         </div>
         <div class="delivery-note">You can add all three to the same order — this just switches which uploader is shown.</div>
-      </div>
-
-      <div class="opt-group" id="cartGroup" style="display:none;">
-        <span class="opt-label">Your order <span id="cartCount"></span></span>
-        <div class="cart-list" id="cartList"></div>
       </div>
 
       <div class="opt-group" id="documentSection">
@@ -458,6 +500,7 @@ __GTM_NOSCRIPT__
         </div>
         <div class="passport-list" id="passportList"></div>
       </div>
+      </div><!-- /#printJobWrap -->
 
       <div class="opt-group">
         <span class="opt-label">Delivery</span>
@@ -561,6 +604,8 @@ __GTM_NOSCRIPT__
         <div class="coupon-msg" id="couponMsg" style="display:none;"></div>
 
         <div class="rline"><span>Print cost</span><b class="num-tick" id="rPrintCost">₹0</b></div>
+        <div class="rline" id="rStationeryRow" style="display:none;"><span>Stationery</span><b class="num-tick" id="rStationery">₹0</b></div>
+        <div class="rline" id="rStampRow" style="display:none;"><span>Custom Stamps</span><b class="num-tick" id="rStamp">₹0</b></div>
         <div class="rline"><span>Handling charge</span><b class="num-tick" id="rHandling">₹0</b></div>
         <div class="rline"><span>Delivery charge</span><b class="num-tick" id="rDelivery">₹0</b></div>
         <div id="rDeliveryHint" style="font-size:11px;margin:-2px 0 6px;display:none;"></div>
@@ -792,6 +837,10 @@ const rPaperTypeRow = document.getElementById('rPaperTypeRow');
 const rSide = document.getElementById('rSide');
 const rCopies = document.getElementById('rCopies');
 const rPrintCost = document.getElementById('rPrintCost');
+const rStationeryRow = document.getElementById('rStationeryRow');
+const rStationery = document.getElementById('rStationery');
+const rStampRow = document.getElementById('rStampRow');
+const rStamp = document.getElementById('rStamp');
 const rHandling = document.getElementById('rHandling');
 const rDelivery = document.getElementById('rDelivery');
 const rDeliveryHint = document.getElementById('rDeliveryHint');
@@ -982,6 +1031,31 @@ function fetchPricing(){
 }
 fetchPricing();
 
+// Stationery/Stamps/Cart are soft-launch-gated (see newVerticalsEnabled() in
+// server.js — /stationery, /stamps, /cart and their APIs 404 while off) —
+// this page's own nav links to them are hidden in lockstep. Fails CLOSED
+// (hides the nav) on a fetch error, same reasoning as landing.html's copy of
+// this check: never risk exposing a dead link.
+(function(){
+  const shopNav = document.querySelector('.shop-nav');
+  if (!shopNav) return;
+  fetch('/api/settings').then(r => r.json()).then(s => {
+    if (!s || s.newVerticalsEnabled !== true) shopNav.style.display = 'none';
+  }).catch(() => { shopNav.style.display = 'none'; });
+})();
+
+// Printing is one of several things a customer can add on this page, same
+// standing as Stationery/Stamps — collapsed by default for every visitor
+// (the base CSS/markup already starts in the collapsed state, no JS needed
+// to set that), only expanding on an explicit click.
+const printJobToggle = document.getElementById('printJobToggle');
+const printJobWrap = document.getElementById('printJobWrap');
+function setPrintJobExpanded(expanded){
+  printJobToggle.classList.toggle('expanded', expanded);
+  printJobWrap.classList.toggle('expanded', expanded);
+}
+printJobToggle.addEventListener('click', () => setPrintJobExpanded(!printJobWrap.classList.contains('expanded')));
+
 // Resolves a single file's color/bw page split given its own print mode —
 // mirrors server/pricing.js's resolveFileColorPages so client estimate and
 // server authoritative total always agree.
@@ -1055,8 +1129,16 @@ function calcDiscountAmount(subtotal, coupon){
 }
 
 function calcEstimate(){
-  if(!pricingConfig || (!state.files.length && !state.passportItems.length)){
-    return { colorPages: 0, bwPages: 0, printCost: 0, handlingCharge: 0, deliveryCharge: 0, discountAmount: 0, gstAmount: 0, totalAmount: 0 };
+  // Stationery and stamp items live in the shared cross-page cart (see
+  // renderCartList's comment above) — they must count toward "is there
+  // anything to estimate" just like documents/passport photos, or a cart
+  // with only one of these in it would short-circuit here and show an
+  // incorrect ₹0 estimate.
+  const cartItems = window.Cart ? Cart.getAll() : [];
+  const stationeryItems = cartItems.filter((it) => it.productType === 'stationery');
+  const stampItems = cartItems.filter((it) => it.productType === 'stamp');
+  if(!pricingConfig || (!state.files.length && !state.passportItems.length && !stationeryItems.length && !stampItems.length)){
+    return { colorPages: 0, bwPages: 0, printCost: 0, stationeryCost: 0, stampCost: 0, handlingCharge: 0, deliveryCharge: 0, discountAmount: 0, gstAmount: 0, totalAmount: 0 };
   }
   let colorPages = 0, bwPages = 0, printCost = 0;
   state.files.forEach((f) => {
@@ -1070,16 +1152,23 @@ function calcEstimate(){
   // page/color math, just the chosen pack's fixed price.
   state.passportItems.forEach((item) => { printCost += passportItemCost(item); });
   printCost = Math.round(printCost);
+  // Kept as their own buckets (not folded into printCost) — mirrors
+  // pricing.js's stationeryCost/stampCost accumulators server-side, so this
+  // preview never disagrees with the order's real breakdown/invoice. Each
+  // cart item's unitPrice was already computed by /stamps at add-to-cart
+  // time using the same formula pricing.js uses server-side.
+  const stationeryCost = Math.round(stationeryItems.reduce((sum, it) => sum + (it.unitPrice || 0) * (it.quantity || 1), 0));
+  const stampCost = Math.round(stampItems.reduce((sum, it) => sum + (it.unitPrice || 0) * (it.quantity || 1), 0));
   const handlingCharge = pricingConfig.handlingCharge || 0;
-  const preDeliveryTotal = printCost + handlingCharge;
+  const preDeliveryTotal = printCost + stationeryCost + stampCost + handlingCharge;
   const deliveryCharge = resolveDeliveryCharge(preDeliveryTotal);
-  const subtotal = printCost + handlingCharge + deliveryCharge;
+  const subtotal = printCost + stationeryCost + stampCost + handlingCharge + deliveryCharge;
   // GST is charged on the post-discount value, same as server/pricing.js.
   const discountAmount = calcDiscountAmount(subtotal, state.appliedCoupon);
   const taxableAmount = subtotal - discountAmount;
   const gstAmount = Math.round(taxableAmount * (pricingConfig.gstPercent || 0) / 100);
   const totalAmount = taxableAmount + gstAmount;
-  return { colorPages, bwPages, printCost, handlingCharge, deliveryCharge, preDeliveryTotal, discountAmount, gstAmount, totalAmount };
+  return { colorPages, bwPages, printCost, stationeryCost, stampCost, handlingCharge, deliveryCharge, preDeliveryTotal, discountAmount, gstAmount, totalAmount };
 }
 
 function orientationSummaryLabel(){
@@ -1142,7 +1231,15 @@ function renderCartList(){
   const cartGroup = document.getElementById('cartGroup');
   const cartList = document.getElementById('cartList');
   const cartCount = document.getElementById('cartCount');
-  const totalItems = state.files.length + state.passportItems.length;
+  // Stationery and stamp items live in the shared cross-page cart
+  // (localStorage, see /js/cart.js) rather than this page's own in-memory
+  // state — they were added on /stationery or /stamps, possibly in an
+  // earlier visit. Folding them into this same list is what makes the order
+  // page feel like ONE cart instead of a separate document/photo-only one.
+  const sharedCartItems = window.Cart ? Cart.getAll() : [];
+  const stationeryItems = sharedCartItems.filter((it) => it.productType === 'stationery');
+  const stampItems = sharedCartItems.filter((it) => it.productType === 'stamp');
+  const totalItems = state.files.length + state.passportItems.length + stationeryItems.length + stampItems.length;
   cartGroup.style.display = totalItems ? '' : 'none';
   cartCount.textContent = totalItems ? '(' + totalItems + ' item' + (totalItems === 1 ? '' : 's') + ')' : '';
   if(!totalItems){ cartList.innerHTML = ''; return; }
@@ -1180,7 +1277,35 @@ function renderCartList(){
     </div>
   `;
   }).join('');
-  cartList.innerHTML = docRows + passportRows;
+  const stationeryRows = stationeryItems.map((item) => `
+    <div class="item-row" data-cart-stationery="${escapeAttr(item.cartItemId)}">
+      <div class="fdot">📦</div>
+      <div class="item-row-body">
+        <div class="item-row-name">${escapeAttr(item.name || 'Product')}</div>
+        <div class="item-row-meta">Stationery · Qty ${item.quantity || 1}</div>
+      </div>
+      <div class="cart-row-price">₹${(item.unitPrice || 0) * (item.quantity || 1)}</div>
+      <button class="fremove" type="button" data-cart-remove-stationery="${escapeAttr(item.cartItemId)}" aria-label="Remove">✕</button>
+    </div>
+  `).join('');
+  const stampRows = stampItems.map((item) => `
+    <div class="item-row" data-cart-stamp="${escapeAttr(item.cartItemId)}">
+      <div class="fdot">🔖</div>
+      <div class="item-row-body">
+        <div class="item-row-name">${escapeAttr(item.name || 'Custom Stamp')}</div>
+        <div class="item-row-meta">Custom Stamp · Qty ${item.quantity || 1}${(item.textLines && item.textLines[0]) ? ' · ' + escapeAttr(item.textLines[0]) : ''}</div>
+      </div>
+      <div class="cart-row-price">₹${(item.unitPrice || 0) * (item.quantity || 1)}</div>
+      <button class="fremove" type="button" data-cart-remove-stamp="${escapeAttr(item.cartItemId)}" aria-label="Remove">✕</button>
+    </div>
+  `).join('');
+  cartList.innerHTML = docRows + passportRows + stationeryRows + stampRows;
+  cartList.querySelectorAll('[data-cart-remove-stationery]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); Cart.remove(btn.dataset.cartRemoveStationery); recalc(); });
+  });
+  cartList.querySelectorAll('[data-cart-remove-stamp]').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); Cart.remove(btn.dataset.cartRemoveStamp); recalc(); });
+  });
   cartList.querySelectorAll('[data-cart-doc]').forEach((btn) => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); removeFile(Number(btn.dataset.cartDoc)); });
   });
@@ -1225,6 +1350,18 @@ function recalc(){
   document.getElementById('rPassportRow').style.display = state.passportItems.length ? 'flex' : 'none';
   document.getElementById('rPassportPacks').textContent = state.passportItems.length;
   rPrintCost.textContent = '₹' + est.printCost;
+  if(est.stationeryCost > 0){
+    rStationeryRow.style.display = 'flex';
+    rStationery.textContent = '₹' + est.stationeryCost;
+  } else {
+    rStationeryRow.style.display = 'none';
+  }
+  if(est.stampCost > 0){
+    rStampRow.style.display = 'flex';
+    rStamp.textContent = '₹' + est.stampCost;
+  } else {
+    rStampRow.style.display = 'none';
+  }
   rHandling.textContent = '₹' + est.handlingCharge;
   rDelivery.textContent = '₹' + est.deliveryCharge;
   updateDeliveryHint(est);
@@ -1237,9 +1374,10 @@ function recalc(){
   }
   rGst.textContent = '₹' + est.gstAmount;
   rTotal.textContent = est.totalAmount;
-  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rHandling, rDelivery, rDiscount, rGst, rTotal].forEach(flash);
+  [rPages, rDetected, rColorFinal, rBwFinal, rCopies, rPrintCost, rStationery, rStamp, rHandling, rDelivery, rDiscount, rGst, rTotal].forEach(flash);
   const passportUploading = state.passportItems.some((p) => p.status === 'uploading');
-  confirmBtn.disabled = (!state.files.length && !state.passportItems.length) || state.uploading || passportUploading;
+  const sharedCartItemCount = window.Cart ? Cart.getAll().length : 0;
+  confirmBtn.disabled = (!state.files.length && !state.passportItems.length && !sharedCartItemCount) || state.uploading || passportUploading;
 }
 
 // Validates a typed coupon code against GET /api/coupons/:code for the live
@@ -2161,6 +2299,7 @@ async function uploadFiles(fileArray){
         currency: 'INR', value: fileCost(json),
         items: [{ item_name: json.fileName, quantity: 1, price: fileCost(json) }]
       });
+      if(window.Cart) Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:document');
     }catch(err){
       trayError.textContent = err.message || 'Upload failed';
     }
@@ -2238,7 +2377,8 @@ function validateForConfirm(){
   }
   setFieldError('fieldName', !name); if(!name){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldName'; }
   setFieldError('fieldMobile', !mobileValid); if(!mobileValid){ ok = false; firstInvalidFieldId = firstInvalidFieldId || 'fieldMobile'; }
-  if(!state.files.length && !state.passportItems.length){ showToast('Please upload at least one document or passport photo', true); ok = false; }
+  const hasSharedCartItems = window.Cart ? Cart.getAll().length > 0 : false;
+  if(!state.files.length && !state.passportItems.length && !hasSharedCartItems){ showToast('Please add at least one item — upload a document/photo, or add stationery/a stamp from your cart', true); ok = false; }
   const notReadyPassport = state.passportItems.filter((p) => p.status !== 'ready');
   if(notReadyPassport.length){
     if(state.openPassportId !== notReadyPassport[0].localId){
@@ -2389,11 +2529,34 @@ function buildOrderPayload(){
     sizePresetId: item.sizePresetId,
     packQty: item.packQty
   }));
+  // Stationery and stamp lines come from the shared cross-page cart
+  // (localStorage), not this page's own state — see renderCartList's
+  // comment above. Only the fields the server actually validates/re-prices
+  // from are sent: it always re-resolves stationery's name/price from the
+  // live product row, and recomputes a stamp's price from the live
+  // type/size config (buildPricedOrderFiles's stationery/stamp branches) —
+  // nothing client-supplied here is trusted for pricing, same as every
+  // other product type.
+  const sharedCart = window.Cart ? Cart.getAll() : [];
+  const stationeryFiles = sharedCart
+    .filter((it) => it.productType === 'stationery')
+    .map((it) => ({ productType: 'stationery', productId: it.productId, quantity: it.quantity }));
+  const stampFiles = sharedCart
+    .filter((it) => it.productType === 'stamp')
+    .map((it) => ({
+      productType: 'stamp',
+      stampTypeId: it.stampTypeId,
+      stampSizeId: it.stampSizeId,
+      textLines: it.textLines,
+      logoFileId: it.logoFileId || undefined,
+      artworkFileId: it.artworkFileId || undefined,
+      quantity: it.quantity
+    }));
   return {
     customerName: document.getElementById('customerName').value.trim(),
     customerMobile: document.getElementById('customerMobile').value.trim(),
     customerEmail: document.getElementById('customerEmail').value.trim() || undefined,
-    files: documentFiles.concat(passportFiles),
+    files: documentFiles.concat(passportFiles).concat(stationeryFiles).concat(stampFiles),
     deliveryMethod: state.deliveryMethod,
     deliveryAddress: state.deliveryMethod === 'delivery' ? document.getElementById('addrLine').value.trim() : undefined,
     deliveryCity: state.deliveryMethod === 'delivery' ? document.getElementById('addrCity').value.trim() : undefined,
@@ -2417,6 +2580,10 @@ function getSelectedBranchId(){
 }
 
 function showSuccess(order){
+  // The order has been placed with every stationery line already submitted
+  // (see buildOrderPayload) — clear the shared cart so it doesn't linger and
+  // get accidentally re-submitted on a future order.
+  if(window.Cart) Cart.clear();
   window.location.href = '/order-success/' + encodeURIComponent(order.id);
 }
 

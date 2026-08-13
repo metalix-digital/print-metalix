@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const Database = require('better-sqlite3')
 
 const dataDir = path.join(__dirname, 'data')
@@ -142,6 +143,95 @@ db.exec(`
     published_at INTEGER
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_blog_posts_slug ON blog_posts(slug);
+
+  -- Stationery catalog: categories, then products. Soft-delete only (active
+  -- flag) once a product has been referenced by any order — see
+  -- deleteProductHardIfUnreferenced — so a historical order's line item never
+  -- points at a vanished row. cost_price is admin/reporting-only and must
+  -- never be forwarded by any public/customer-facing endpoint.
+  CREATE TABLE IF NOT EXISTS product_categories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_slug ON product_categories(slug);
+
+  CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    sku TEXT NOT NULL,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    description TEXT,
+    category_id TEXT,
+    price INTEGER NOT NULL DEFAULT 0,
+    mrp INTEGER,
+    cost_price INTEGER,
+    stock_qty INTEGER NOT NULL DEFAULT 0,
+    low_stock_threshold INTEGER NOT NULL DEFAULT 5,
+    images TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    meta_title TEXT,
+    meta_description TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
+  CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
+  CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+
+  -- Append-only stock audit trail — every adjustment (manual receive/damage,
+  -- or system-driven order/return) writes exactly one row here, never mutated
+  -- or deleted, so Stock History is always a true reconstruction of how a
+  -- product's stock_qty got to its current value.
+  CREATE TABLE IF NOT EXISTS stock_ledger (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    delta INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    reference TEXT,
+    admin_id TEXT,
+    note TEXT,
+    created_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_stock_ledger_product_id ON stock_ledger(product_id);
+  CREATE INDEX IF NOT EXISTS idx_stock_ledger_created_at ON stock_ledger(created_at);
+
+  -- Admin-configured "you may also need" recommendations. trigger_type is
+  -- either 'productType:<document|stationery|stamp>' (shown after adding any
+  -- item of that type) or 'product:<id>' (shown after adding that specific
+  -- product) — see cross-sell lookup in server.js.
+  CREATE TABLE IF NOT EXISTS cross_sell_rules (
+    id TEXT PRIMARY KEY,
+    trigger_type TEXT NOT NULL,
+    recommended_product_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_cross_sell_rules_trigger ON cross_sell_rules(trigger_type);
+
+  -- Custom-stamp proof-approval history. One order/item can accumulate
+  -- several rows over a changes-requested → re-upload cycle; the latest row
+  -- for a given (order_id, item_id) is authoritative.
+  CREATE TABLE IF NOT EXISTS stamp_proofs (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    uploaded_by_admin_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    customer_comment TEXT,
+    created_at INTEGER,
+    resolved_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_stamp_proofs_order_id ON stamp_proofs(order_id);
 `)
 
 // Add columns introduced after the initial schema without breaking existing
@@ -194,6 +284,18 @@ ensureColumn('orders', 'discount_reason', 'TEXT')
 // "Additional services" as its own line without re-summing files_json every
 // render. Distinct from print_cost since these aren't a per-page print rate.
 ensureColumn('orders', 'services_cost', 'INTEGER DEFAULT 0')
+// Sum of any 'stationery' productType line items in files_json — own summary
+// column, same denormalized-from-files_json convention as services_cost.
+ensureColumn('orders', 'stationery_cost', 'INTEGER DEFAULT 0')
+// Sum of any 'stamp' productType line items in files_json.
+ensureColumn('orders', 'stamp_cost', 'INTEGER DEFAULT 0')
+// Set when a stock-decrement race meant a paid/confirmed order could not be
+// fully covered by available stock (see decrementStockForOrder) — surfaced as
+// a warning badge in the admin Orders tab. Never blocks an already-captured
+// payment; staff resolve it manually (contact customer / restock / refund)
+// and dismiss the flag via the normal order PATCH route.
+ensureColumn('orders', 'needs_attention', 'INTEGER DEFAULT 0')
+ensureColumn('orders', 'needs_attention_reason', 'TEXT')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
 ensureColumn('locations', 'maps_url', 'TEXT')
@@ -294,7 +396,31 @@ const DEFAULT_PRICING = {
   // by staff in New Order or Edit Order, never something a customer picks
   // themselves at checkout. Priced as a flat fee × quantity, same shape as
   // passportPhotos.packPrices, not a per-page rate.
-  additionalServices: []
+  additionalServices: [],
+  // Custom Stamp Printing config (see pricing.js calculate() 'stamp' branch).
+  // A stamp's price = type.basePrice + size.priceModifier +
+  // (hasLogo ? logoPrice : 0) + extraQuantityPrice × (quantity - 1). Seeded
+  // with example types/sizes/prices the admin is expected to edit from the
+  // Stamp Settings tab — never hardcoded into the pricing logic itself.
+  stamps: {
+    types: [
+      { id: 'self-inking', label: 'Self-Inking Stamp', active: true, basePrice: 250 },
+      { id: 'pre-inked', label: 'Pre-Inked Stamp', active: true, basePrice: 350 },
+      { id: 'rubber', label: 'Rubber Stamp (wooden handle)', active: true, basePrice: 150 }
+    ],
+    sizes: [
+      { id: 'small', label: 'Small (up to 25×10mm)', widthMm: 25, heightMm: 10, active: true, priceModifier: 0 },
+      { id: 'medium', label: 'Medium (up to 38×14mm)', widthMm: 38, heightMm: 14, active: true, priceModifier: 50 },
+      { id: 'large', label: 'Large (up to 60×40mm)', widthMm: 60, heightMm: 40, active: true, priceModifier: 150 },
+      { id: 'custom', label: 'Custom Size', widthMm: 50, heightMm: 30, active: true, priceModifier: 100 }
+    ],
+    logoPrice: 100,
+    extraQuantityPrice: 200,
+    // Custom stamps go through a proof-approval step before production by
+    // default (see the item-status workflow in server.js) — admin can turn
+    // this off for a low-friction "produce immediately" flow instead.
+    requireProofApproval: true
+  }
 }
 
 // Default display labels for the three built-in paper-type ids, used when
@@ -503,6 +629,65 @@ function normalizeAdditionalServices(list) {
   return out
 }
 
+// Stamp types/sizes: same id/label normalization convention as paper types
+// above (slugified stable id, unique, numeric prices) — referenced by id from
+// a stamp order's files_json line item, same reasoning as additionalServices.
+function normalizeStampTypes(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugify(row.id || label) || 'type'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    // A reference photo of what this stamp type physically looks like
+    // (e.g. a real self-inking stamp) — admin-uploaded via the same public
+    // /product-uploads pipeline product photos use (see
+    // POST /api/admin/products/upload-image), shown on /stamps step 1 so a
+    // customer can see the actual product, not just a price card.
+    const imageUrl = typeof row.imageUrl === 'string' && row.imageUrl.startsWith('/product-uploads/') ? row.imageUrl : null
+    out.push({ id: unique, label, active: row.active !== false, basePrice: num(row.basePrice), imageUrl })
+  })
+  return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.stamps.types))
+}
+function normalizeStampSizes(list) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return
+    const label = String(row.label || '').trim()
+    if (!label) return
+    let id = slugify(row.id || label) || 'size'
+    let unique = id
+    let n = 2
+    while (seen.has(unique)) unique = `${id}-${n++}`
+    seen.add(unique)
+    out.push({
+      id: unique,
+      label,
+      active: row.active !== false,
+      widthMm: num(row.widthMm, 25) || 25,
+      heightMm: num(row.heightMm, 10) || 10,
+      priceModifier: num(row.priceModifier)
+    })
+  })
+  return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.stamps.sizes))
+}
+function normalizeStamps(input) {
+  const d = input || {}
+  return {
+    types: normalizeStampTypes(d.types),
+    sizes: normalizeStampSizes(d.sizes),
+    logoPrice: num(d.logoPrice, DEFAULT_PRICING.stamps.logoPrice),
+    extraQuantityPrice: num(d.extraQuantityPrice, DEFAULT_PRICING.stamps.extraQuantityPrice),
+    requireProofApproval: d.requireProofApproval !== false
+  }
+}
+
 const VALID_PRINT_MODES = ['auto', 'color', 'bw']
 const VALID_ORIENTATIONS_LIST = ['portrait', 'landscape']
 const VALID_PRINT_SIDES = ['single', 'double']
@@ -589,7 +774,11 @@ function getPricing() {
   const needsCouponsBackfill = !Array.isArray(pricing.coupons)
   // Same reasoning again for additionalServices.
   const needsServicesBackfill = !Array.isArray(pricing.additionalServices)
-  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill || needsServicesBackfill) {
+  // Same reasoning again for stamps (Custom Stamp Printing).
+  const needsStampsBackfill = !pricing.stamps ||
+    !Array.isArray(pricing.stamps.types) ||
+    !Array.isArray(pricing.stamps.sizes)
+  if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill || needsServicesBackfill || needsStampsBackfill) {
     const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
     migrated.passportPhotos = {
       sizePresets: normalizePassportSizePresets(
@@ -602,6 +791,7 @@ function getPricing() {
     migrated.orderDefaults = normalizeOrderDefaults(migrated.orderDefaults, migrated.pageSizes, migrated.rates)
     migrated.coupons = normalizeCoupons(migrated.coupons)
     migrated.additionalServices = normalizeAdditionalServices(migrated.additionalServices)
+    migrated.stamps = normalizeStamps(migrated.stamps)
     setPricing(migrated)
     return migrated
   }
@@ -644,6 +834,7 @@ function setPricing(pricing) {
     pricing.orderDefaults = normalizeOrderDefaults(pricing.orderDefaults, pricing.pageSizes, pricing.rates)
     pricing.coupons = normalizeCoupons(pricing.coupons)
     pricing.additionalServices = normalizeAdditionalServices(pricing.additionalServices)
+    pricing.stamps = normalizeStamps(pricing.stamps)
   }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('pricing', JSON.stringify(pricing))
@@ -651,6 +842,16 @@ function setPricing(pricing) {
 
 const DEFAULT_SITE_SETTINGS = {
   shopOpen: true,
+  // Soft-launch gate for the Stationery/Stamps/Cart vertical — opt-IN
+  // (defaults false, unlike shopOpen's opt-out) so a fresh install, or an
+  // existing settings row saved before this key existed, never accidentally
+  // exposes it to customers. Toggled from the General settings tab; gates
+  // the /stationery, /stamps, /cart routes and their public catalog/
+  // cross-sell APIs down to a real 404 while off (see newVerticalsEnabled()
+  // in server.js) — admin tooling (Products/Inventory/Stamp Settings tabs,
+  // walk-in order creation) stays fully usable throughout so the catalog can
+  // be prepared ahead of the actual launch.
+  newVerticalsEnabled: false,
   businessName: 'Metalix Print',
   phone: '+91 98765 43210',
   whatsapp: '+91 98765 43210',
@@ -861,6 +1062,338 @@ function deleteBlogPost(id) {
   db.prepare('DELETE FROM blog_posts WHERE id = ?').run(id)
 }
 
+// ---------------------------------------------------------------------------
+// Stationery catalog: product_categories, products, stock_ledger.
+// ---------------------------------------------------------------------------
+
+function createProductCategory({ id, name, slug, description, sort_order, active }) {
+  const now = Date.now()
+  db.prepare(`INSERT INTO product_categories (id, name, slug, description, sort_order, active, created_at, updated_at)
+    VALUES (@id, @name, @slug, @description, @sort_order, @active, @now, @now)`)
+    .run({ id, name, slug, description: description || null, sort_order: sort_order || 0, active: active === false ? 0 : 1, now })
+  return getProductCategoryById(id)
+}
+
+function getProductCategoryById(id) {
+  return db.prepare('SELECT * FROM product_categories WHERE id = ?').get(id) || null
+}
+
+function getProductCategoryBySlug(slug) {
+  return db.prepare('SELECT * FROM product_categories WHERE slug = ?').get(slug) || null
+}
+
+function listProductCategories({ includeInactive } = {}) {
+  return includeInactive
+    ? db.prepare('SELECT * FROM product_categories ORDER BY sort_order ASC, name ASC').all()
+    : db.prepare('SELECT * FROM product_categories WHERE active = 1 ORDER BY sort_order ASC, name ASC').all()
+}
+
+function updateProductCategory(id, updates) {
+  const existing = getProductCategoryById(id)
+  if (!existing) return null
+  const patch = { ...updates }
+  if ('active' in patch) patch.active = patch.active ? 1 : 0
+  const fields = Object.keys(patch)
+  if (!fields.length) return existing
+  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  db.prepare(`UPDATE product_categories SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...patch, id, updated_at: Date.now() })
+  return getProductCategoryById(id)
+}
+
+// Categories are just labels — deleting one detaches (not deletes) any
+// products that referenced it, same "never break historical/existing rows"
+// reasoning as products themselves (see deleteProductHardIfUnreferenced).
+function deleteProductCategory(id) {
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE products SET category_id = NULL, updated_at = ? WHERE category_id = ?').run(Date.now(), id)
+    db.prepare('DELETE FROM product_categories WHERE id = ?').run(id)
+  })
+  tx()
+}
+
+function hydrateProduct(row) {
+  if (!row) return null
+  let images = []
+  try { images = row.images ? JSON.parse(row.images) : [] } catch (err) { images = [] }
+  return { ...row, images, active: !!row.active }
+}
+
+function createProduct({ id, sku, name, slug, description, category_id, price, mrp, cost_price, stock_qty, low_stock_threshold, images, active, meta_title, meta_description }) {
+  const now = Date.now()
+  db.prepare(`INSERT INTO products
+    (id, sku, name, slug, description, category_id, price, mrp, cost_price, stock_qty, low_stock_threshold, images, active, meta_title, meta_description, created_at, updated_at)
+    VALUES (@id, @sku, @name, @slug, @description, @category_id, @price, @mrp, @cost_price, @stock_qty, @low_stock_threshold, @images, @active, @meta_title, @meta_description, @now, @now)`)
+    .run({
+      id, sku, name, slug,
+      description: description || null,
+      category_id: category_id || null,
+      price: Math.max(0, Math.round(Number(price) || 0)),
+      mrp: mrp != null && Number(mrp) > 0 ? Math.round(Number(mrp)) : null,
+      cost_price: cost_price != null && Number(cost_price) >= 0 ? Math.round(Number(cost_price)) : null,
+      stock_qty: Math.max(0, Math.round(Number(stock_qty) || 0)),
+      low_stock_threshold: Math.max(0, Math.round(Number(low_stock_threshold) || 5)),
+      images: JSON.stringify(Array.isArray(images) ? images : []),
+      active: active === false ? 0 : 1,
+      meta_title: meta_title || null,
+      meta_description: meta_description || null,
+      now
+    })
+  return getProductById(id)
+}
+
+function getProductById(id) {
+  return hydrateProduct(db.prepare('SELECT * FROM products WHERE id = ?').get(id))
+}
+
+function getProductBySku(sku) {
+  return hydrateProduct(db.prepare('SELECT * FROM products WHERE sku = ?').get(sku))
+}
+
+function getProductBySlug(slug) {
+  return hydrateProduct(db.prepare('SELECT * FROM products WHERE slug = ?').get(slug))
+}
+
+function listProducts({ includeInactive, categoryId } = {}) {
+  const clauses = []
+  const params = {}
+  if (!includeInactive) clauses.push('active = 1')
+  if (categoryId) { clauses.push('category_id = @categoryId'); params.categoryId = categoryId }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  return db.prepare(`SELECT * FROM products ${where} ORDER BY name ASC`).all(params).map(hydrateProduct)
+}
+
+function updateProduct(id, updates) {
+  const existing = getProductById(id)
+  if (!existing) return null
+  const patch = { ...updates }
+  if ('images' in patch) patch.images = JSON.stringify(Array.isArray(patch.images) ? patch.images : [])
+  if ('active' in patch) patch.active = patch.active ? 1 : 0
+  if ('price' in patch) patch.price = Math.max(0, Math.round(Number(patch.price) || 0))
+  if ('mrp' in patch) patch.mrp = patch.mrp != null && Number(patch.mrp) > 0 ? Math.round(Number(patch.mrp)) : null
+  if ('cost_price' in patch) patch.cost_price = patch.cost_price != null && Number(patch.cost_price) >= 0 ? Math.round(Number(patch.cost_price)) : null
+  if ('low_stock_threshold' in patch) patch.low_stock_threshold = Math.max(0, Math.round(Number(patch.low_stock_threshold) || 0))
+  const fields = Object.keys(patch)
+  if (!fields.length) return existing
+  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  db.prepare(`UPDATE products SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...patch, id, updated_at: Date.now() })
+  return getProductById(id)
+}
+
+// A product referenced by any order's files_json line items can never be
+// hard-deleted — its row must keep existing so that order's line item still
+// resolves (name/price were already baked into the order at purchase time,
+// but admin screens like the jobsheet PICK page still look up the product by
+// id for current stock/SKU context). Same LIKE-scan approach as
+// getAllOrderFileIds, which already treats files_json this way.
+function isProductReferencedByOrders(productId) {
+  const row = db.prepare(`SELECT id FROM orders WHERE files_json LIKE ? LIMIT 1`).get(`%"productId":"${productId}"%`)
+  return !!row
+}
+
+function deleteProductHardIfUnreferenced(id) {
+  if (isProductReferencedByOrders(id)) {
+    const err = new Error('This product has past orders and can’t be deleted — deactivate it instead.')
+    err.code = 'product_referenced'
+    throw err
+  }
+  db.prepare('DELETE FROM products WHERE id = ?').run(id)
+  return true
+}
+
+// Applies a stock change and appends one immutable stock_ledger row, inside a
+// single transaction so the two can never drift apart. Clamped so stock_qty
+// can never go negative (see spec: "never allow stock to become negative") —
+// if delta would take it below zero, only the amount down to zero is applied
+// and the ledger records the actual applied delta, not the requested one.
+// reason: 'received' | 'order' | 'damaged' | 'return' | 'adjustment'.
+// reference: free text, e.g. 'order_id:itemId' for order/return rows.
+function adjustStock(productId, delta, reason, adminId, note) {
+  const tx = db.transaction(() => {
+    const product = getProductById(productId)
+    if (!product) { const err = new Error('Product not found'); err.code = 'not_found'; throw err }
+    const requested = Math.round(Number(delta) || 0)
+    const applied = requested < 0 ? -Math.min(-requested, product.stock_qty) : requested
+    const newQty = Math.max(0, product.stock_qty + applied)
+    db.prepare('UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?').run(newQty, Date.now(), productId)
+    db.prepare(`INSERT INTO stock_ledger (id, product_id, delta, reason, reference, admin_id, note, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(crypto.randomUUID(), productId, applied, reason, null, adminId || null, note || null, Date.now())
+    return { product: getProductById(productId), applied }
+  })
+  return tx()
+}
+
+function listStockLedger(productId, { limit } = {}) {
+  return db.prepare('SELECT * FROM stock_ledger WHERE product_id = ? ORDER BY created_at DESC LIMIT ?')
+    .all(productId, limit || 200)
+}
+
+// Called exactly once per order, at the moment it's actually confirmed
+// (COD-at-creation, admin walk-in creation, or paid-online via
+// verify-payment/recheck-payment/the webhook) — the same set of "order just
+// got confirmed" call sites printQueue.enqueue() already fires from (see
+// confirmStockForOrder in server.js). Walks the order's stationery line
+// items in array order, decrementing a per-productId running counter seeded
+// ONCE per product from the DB (not re-read per line), so two lines of the
+// same product in one order correctly split whatever stock is actually
+// available between them rather than each independently reading stale stock
+// and jointly overselling. Never lets stock go negative: if a race means
+// less is available now than buildPricedOrderFiles's pre-check saw (only
+// possible if two confirmations for different orders of the same product
+// land concurrently — rare at this business's volume), decrements only what
+// remains and reports it as a shortfall; the caller flags the order for
+// staff attention but never blocks or unwinds an already-captured payment
+// over it. The actual decremented quantity is stamped onto each item
+// (stockDecrementedQty) so a later cancellation restores exactly what was
+// taken, not the original request (see restoreStockForOrder below).
+function decrementStockForOrder(order) {
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  const stationeryItems = files.filter((f) => f.productType === 'stationery' && f.productId)
+  if (!stationeryItems.length) return { shortfalls: [] }
+  const shortfalls = []
+  const tx = db.transaction(() => {
+    const remaining = new Map()
+    for (const item of stationeryItems) {
+      if (!remaining.has(item.productId)) {
+        const product = getProductById(item.productId)
+        remaining.set(item.productId, product ? product.stock_qty : 0)
+      }
+      const avail = remaining.get(item.productId)
+      const requested = Math.max(0, Math.round(Number(item.quantity)) || 0)
+      const decrement = Math.min(requested, avail)
+      remaining.set(item.productId, avail - decrement)
+      if (decrement > 0) {
+        db.prepare('UPDATE products SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?').run(decrement, Date.now(), item.productId)
+        db.prepare(`INSERT INTO stock_ledger (id, product_id, delta, reason, reference, admin_id, note, created_at)
+          VALUES (?, ?, ?, 'order', ?, NULL, NULL, ?)`).run(crypto.randomUUID(), item.productId, -decrement, `${order.id}:${item.itemId}`, Date.now())
+      }
+      item.stockDecrementedQty = decrement
+      if (decrement < requested) shortfalls.push({ itemId: item.itemId, productId: item.productId, name: item.name, requested, decremented: decrement })
+    }
+    db.prepare('UPDATE orders SET files_json = ? WHERE id = ?').run(JSON.stringify(files), order.id)
+  })
+  tx()
+  return { shortfalls }
+}
+
+// Symmetric to decrementStockForOrder — restores exactly what was actually
+// decremented for each item (stockDecrementedQty), never the original
+// requested quantity, so a previously-undersold order (see shortfalls above)
+// can't over-credit stock on cancellation/refund. Zeroes stockDecrementedQty
+// afterward so a later duplicate restore call (e.g. staff toggling an order's
+// status back and forth) can't double-credit the same stock twice — the
+// second call finds nothing left to restore for any item.
+function restoreStockForOrder(order) {
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  const toRestore = files.filter((f) => f.productType === 'stationery' && f.productId && Number(f.stockDecrementedQty) > 0)
+  if (!toRestore.length) return
+  const tx = db.transaction(() => {
+    for (const item of toRestore) {
+      const qty = Math.round(Number(item.stockDecrementedQty))
+      db.prepare('UPDATE products SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?').run(qty, Date.now(), item.productId)
+      db.prepare(`INSERT INTO stock_ledger (id, product_id, delta, reason, reference, admin_id, note, created_at)
+        VALUES (?, ?, ?, 'return', ?, NULL, NULL, ?)`).run(crypto.randomUUID(), item.productId, qty, `${order.id}:${item.itemId}`, Date.now())
+      item.stockDecrementedQty = 0
+    }
+    db.prepare('UPDATE orders SET files_json = ? WHERE id = ?').run(JSON.stringify(files), order.id)
+  })
+  tx()
+}
+
+// ---------------------------------------------------------------------------
+// Custom Stamp proof-approval history (stamp_proofs). Several rows can
+// accumulate per (order_id, item_id) over a changes-requested -> re-upload
+// cycle — the latest one for that pair is authoritative, which is what
+// getLatestStampProofForItem returns.
+// ---------------------------------------------------------------------------
+
+function createStampProof({ order_id, item_id, file_id, uploaded_by_admin_id }) {
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  db.prepare(`INSERT INTO stamp_proofs (id, order_id, item_id, file_id, uploaded_by_admin_id, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?)`).run(id, order_id, item_id, file_id, uploaded_by_admin_id || null, now)
+  return db.prepare('SELECT * FROM stamp_proofs WHERE id = ?').get(id)
+}
+
+function getLatestStampProofForItem(orderId, itemId) {
+  return db.prepare('SELECT * FROM stamp_proofs WHERE order_id = ? AND item_id = ? ORDER BY created_at DESC LIMIT 1').get(orderId, itemId) || null
+}
+
+function listStampProofsForOrder(orderId) {
+  return db.prepare('SELECT * FROM stamp_proofs WHERE order_id = ? ORDER BY created_at DESC').all(orderId)
+}
+
+function updateStampProof(id, { status, customer_comment, resolved_at }) {
+  const sets = []
+  const params = { id }
+  if (status !== undefined) { sets.push('status = @status'); params.status = status }
+  if (customer_comment !== undefined) { sets.push('customer_comment = @customer_comment'); params.customer_comment = customer_comment }
+  if (resolved_at !== undefined) { sets.push('resolved_at = @resolved_at'); params.resolved_at = resolved_at }
+  if (!sets.length) return db.prepare('SELECT * FROM stamp_proofs WHERE id = ?').get(id)
+  db.prepare(`UPDATE stamp_proofs SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  return db.prepare('SELECT * FROM stamp_proofs WHERE id = ?').get(id)
+}
+
+// ---------------------------------------------------------------------------
+// Cross-sell rules — admin-configured "you may also need" recommendations.
+// trigger_type is either 'productType:<document|stationery|stamp>' (shown
+// after adding any item of that type) or 'product:<id>' (shown after adding
+// that specific product).
+// ---------------------------------------------------------------------------
+
+function createCrossSellRule({ id, trigger_type, recommended_product_id, sort_order, active }) {
+  const now = Date.now()
+  db.prepare(`INSERT INTO cross_sell_rules (id, trigger_type, recommended_product_id, sort_order, active, created_at, updated_at)
+    VALUES (@id, @trigger_type, @recommended_product_id, @sort_order, @active, @now, @now)`)
+    .run({ id, trigger_type, recommended_product_id, sort_order: sort_order || 0, active: active === false ? 0 : 1, now })
+  return getCrossSellRuleById(id)
+}
+
+function getCrossSellRuleById(id) {
+  return db.prepare('SELECT * FROM cross_sell_rules WHERE id = ?').get(id) || null
+}
+
+function listCrossSellRules({ includeInactive } = {}) {
+  return includeInactive
+    ? db.prepare('SELECT * FROM cross_sell_rules ORDER BY trigger_type ASC, sort_order ASC').all()
+    : db.prepare('SELECT * FROM cross_sell_rules WHERE active = 1 ORDER BY trigger_type ASC, sort_order ASC').all()
+}
+
+// Active rules for one trigger, joined with their (also active) recommended
+// product — the public cross-sell endpoint's exact query. A rule pointing at
+// a since-deactivated/deleted product is silently skipped, never shown as a
+// broken recommendation. Looks up each product via getProductById (not a
+// raw SQL JOIN) specifically so `images` comes back hydrated into a real
+// array — a raw `p.*` join would leak the column's raw JSON-string value
+// instead, same bug class `hydrateProduct` exists to prevent everywhere else.
+function listCrossSellRulesForTrigger(triggerType) {
+  const rules = db.prepare('SELECT * FROM cross_sell_rules WHERE trigger_type = ? AND active = 1 ORDER BY sort_order ASC').all(triggerType)
+  return rules
+    .map((r) => getProductById(r.recommended_product_id))
+    .filter((p) => p && p.active)
+}
+
+function updateCrossSellRule(id, updates) {
+  const existing = getCrossSellRuleById(id)
+  if (!existing) return null
+  const patch = { ...updates }
+  if ('active' in patch) patch.active = patch.active ? 1 : 0
+  const fields = Object.keys(patch)
+  if (!fields.length) return existing
+  const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
+  db.prepare(`UPDATE cross_sell_rules SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...patch, id, updated_at: Date.now() })
+  return getCrossSellRuleById(id)
+}
+
+function deleteCrossSellRule(id) {
+  db.prepare('DELETE FROM cross_sell_rules WHERE id = ?').run(id)
+}
+
 // Order workflow stages are admin-editable (add/delete/reorder) and stored in
 // settings under 'order_stages'. Each stage carries a `notify` flag deciding
 // whether reaching it emails the customer. These defaults reproduce the
@@ -999,7 +1532,7 @@ function createOrder(order) {
       location_id, location_name,
       payment_method,
       delivery_timing, scheduled_at,
-      print_cost, delivery_charge, handling_charge, gst_amount, total_amount, services_cost,
+      print_cost, delivery_charge, handling_charge, gst_amount, total_amount, services_cost, stationery_cost, stamp_cost,
       discount_type, discount_value, discount_amount, discount_code, discount_reason,
       razorpay_order_id, cashfree_order_id, payment_status, order_status, notes,
       created_at, updated_at
@@ -1011,14 +1544,14 @@ function createOrder(order) {
       @location_id, @location_name,
       @payment_method,
       @delivery_timing, @scheduled_at,
-      @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount, @services_cost,
+      @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount, @services_cost, @stationery_cost, @stamp_cost,
       @discount_type, @discount_value, @discount_amount, @discount_code, @discount_reason,
       @razorpay_order_id, @cashfree_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
   `).run({
     files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null,
-    discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null, services_cost: 0,
+    discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null, services_cost: 0, stationery_cost: 0, stamp_cost: 0,
     ...order, created_at: now, updated_at: now
   })
   return getOrder(order.id)
@@ -1529,5 +2062,33 @@ module.exports = {
   updateUserPassword,
   createPasswordReset,
   findValidPasswordReset,
-  markPasswordResetUsed
+  markPasswordResetUsed,
+  createProductCategory,
+  getProductCategoryById,
+  getProductCategoryBySlug,
+  listProductCategories,
+  updateProductCategory,
+  deleteProductCategory,
+  createProduct,
+  getProductById,
+  getProductBySku,
+  getProductBySlug,
+  listProducts,
+  updateProduct,
+  isProductReferencedByOrders,
+  deleteProductHardIfUnreferenced,
+  adjustStock,
+  listStockLedger,
+  decrementStockForOrder,
+  restoreStockForOrder,
+  createStampProof,
+  getLatestStampProofForItem,
+  listStampProofsForOrder,
+  updateStampProof,
+  createCrossSellRule,
+  getCrossSellRuleById,
+  listCrossSellRules,
+  listCrossSellRulesForTrigger,
+  updateCrossSellRule,
+  deleteCrossSellRule
 }

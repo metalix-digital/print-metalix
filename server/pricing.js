@@ -46,10 +46,62 @@ function calculateDeliveryCharge(config, { deliveryMethod, deliveryPincode, preD
 function calculate(config, { files, deliveryMethod, deliveryPincode, discount }) {
   let printCost = 0
   let servicesCost = 0
+  let stationeryCost = 0
+  let stampCost = 0
   let colorPages = 0
   let bwPages = 0
   const fileBreakdown = []
   ;(files || []).forEach((f) => {
+    // Custom Stamp Printing — base type price + size modifier + optional
+    // logo surcharge + a flat per-extra-unit charge for quantity beyond the
+    // first (a second identical stamp isn't free, but doesn't cost as much
+    // as a second fully-independent order either). Type/size are resolved
+    // against the ACTIVE config lists by id, same "unknown id -> priced as
+    // 0 rather than crashing" fallback as the document branch's paper-type
+    // lookup below. hasLogo is a plain boolean the caller derives from
+    // whether a logo file was actually attached — pricing.js never touches
+    // the filesystem itself.
+    if (f.productType === 'stamp') {
+      const stampConfig = config.stamps || {}
+      const type = (stampConfig.types || []).find((t) => t.id === f.stampTypeId)
+      const size = (stampConfig.sizes || []).find((s) => s.id === f.stampSizeId)
+      const basePrice = type ? Number(type.basePrice) || 0 : 0
+      const sizeModifier = size ? Number(size.priceModifier) || 0 : 0
+      const logoPrice = f.hasLogo ? (Number(stampConfig.logoPrice) || 0) : 0
+      const qty = Math.max(1, f.quantity || 1)
+      const extraQtyPrice = (Number(stampConfig.extraQuantityPrice) || 0) * (qty - 1)
+      const amount = basePrice + sizeModifier + logoPrice + extraQtyPrice
+      stampCost += amount
+      const labelParts = [type ? type.label : (f.stampTypeId || 'Stamp'), size ? size.label : null].filter(Boolean)
+      fileBreakdown.push({
+        paperLabel: labelParts.join(' · '),
+        colorLabel: qty > 1 ? qty + '×' : null,
+        amount: Math.round(amount)
+      })
+      return
+    }
+    // Ready-made stationery (pens, staplers, Rent Receipt Booklets, ...) —
+    // flat unit price × quantity, same shape as the 'service' branch below,
+    // but kept in its own stationeryCost accumulator (own order column,
+    // own invoice line) rather than folded into servicesCost, since it's a
+    // physical-inventory product line, not staff-added extra work. The
+    // caller (buildPricedOrderFiles) resolves productId -> a product row and
+    // snapshots its name/unitPrice onto the file before calling here —
+    // pricing.js stays pure math and never queries the products table
+    // itself, same reasoning as the 'service' branch resolving from
+    // config.additionalServices rather than a live DB read.
+    if (f.productType === 'stationery') {
+      const unitPrice = Number(f.unitPrice) || 0
+      const qty = Math.max(1, f.quantity || 1)
+      const amount = unitPrice * qty
+      stationeryCost += amount
+      fileBreakdown.push({
+        paperLabel: f.name || 'Product',
+        colorLabel: qty > 1 ? qty + '×' : null,
+        amount: Math.round(amount)
+      })
+      return
+    }
     // Additional Services (e.g. photo editing) — flat fee × quantity, staff-
     // added extra effort rather than a per-page print cost. Kept out of
     // printCost/fileBreakdown's page-oriented fields entirely (colorLabel
@@ -115,14 +167,16 @@ function calculate(config, { files, deliveryMethod, deliveryPincode, discount })
   })
   printCost = Math.round(printCost)
   servicesCost = Math.round(servicesCost)
+  stationeryCost = Math.round(stationeryCost)
+  stampCost = Math.round(stampCost)
 
   const handlingCharge = Number(config.handlingCharge) || 0
   const deliveryCharge = calculateDeliveryCharge(config, {
     deliveryMethod,
     deliveryPincode,
-    preDeliveryTotal: printCost + servicesCost + handlingCharge
+    preDeliveryTotal: printCost + servicesCost + stationeryCost + stampCost + handlingCharge
   })
-  const subtotal = printCost + servicesCost + deliveryCharge + handlingCharge
+  const subtotal = printCost + servicesCost + stationeryCost + stampCost + deliveryCharge + handlingCharge
   // GST is charged on the post-discount (taxable) value, standard invoicing
   // practice — not on the full pre-discount subtotal.
   const discountAmount = calculateDiscountAmount(subtotal, discount)
@@ -130,7 +184,7 @@ function calculate(config, { files, deliveryMethod, deliveryPincode, discount })
   const gstAmount = Math.round((taxableAmount * (config.gstPercent || 0)) / 100)
   const totalAmount = taxableAmount + gstAmount
 
-  return { colorPages, bwPages, printCost, servicesCost, deliveryCharge, handlingCharge, discountAmount, gstAmount, totalAmount, fileBreakdown }
+  return { colorPages, bwPages, printCost, servicesCost, stationeryCost, stampCost, deliveryCharge, handlingCharge, discountAmount, gstAmount, totalAmount, fileBreakdown }
 }
 
 // `discount` is already-resolved data the caller looked up (a coupon row, or
