@@ -3443,6 +3443,13 @@ app.get('/googlecfc92098877ba2b1.html', (req, res) => {
   res.type('text/plain').sendFile(path.join(publicDir, 'googlecfc92098877ba2b1.html'))
 })
 
+// IndexNow key file (Bing/Yandex instant-crawl protocol) — the key at this
+// URL must match the key submitted to the IndexNow API so engines can verify
+// we control the domain before honoring a submission.
+app.get('/9bfdfd32292e7b33e7925368594d989d.txt', (req, res) => {
+  res.type('text/plain').sendFile(path.join(publicDir, '9bfdfd32292e7b33e7925368594d989d.txt'))
+})
+
 // Password-protected admin dashboard (orders, customers, pricing).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'))
