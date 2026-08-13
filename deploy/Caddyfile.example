@@ -1,23 +1,14 @@
 # Reference Caddy configuration for print.metalix.in
 # ----------------------------------------------------
 # Live in production since 2026-08-12 (replaced nginx; see deploy/nginx.conf.example,
-# kept for rollback). Caddy provisions and renews the Let's Encrypt cert for the domain(s)
+# kept for rollback). Caddy provisions and renews the Let's Encrypt cert for the domain
 # below automatically; no certbot/cron step is needed.
 #
 # This file mirrors /etc/caddy/Caddyfile on the VM. To reapply after an edit:
 #   sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 #   sudo systemctl reload caddy
-#
-# metalix.in (bare apex) is included here too as of 2026-08-14: AdSense's Sites
-# feature verifies ownership at the root domain, not per-subdomain, so its
-# crawler hits metalix.in directly rather than print.metalix.in. The apex used
-# to point at an unrelated, unaffiliated business's VM (deliberately terminated
-# for cost) — its A record was repointed here specifically to satisfy that
-# crawl. Canonical tags in the app already point every page at
-# https://print.metalix.in/..., so this doesn't create duplicate-content SEO
-# issues; it just means the same app also answers for the apex hostname.
 
-print.metalix.in, metalix.in {
+print.metalix.in {
     # Unlike nginx, Caddy logs nothing by default — this was a blind spot for
     # several days post-migration. /var/log/caddy/ is created (caddy:caddy) by
     # the Debian/Ubuntu package, but if access.log doesn't already exist owned
