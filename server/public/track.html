@@ -205,8 +205,8 @@ function renderTimeline(stages, stageIndex, deliveryMethod){
 // tracking link — a COD order they'd rather settle remotely, or an online
 // order whose original checkout was abandoned. POSTs to /api/track/:id/pay
 // (see server.js — reuses the same payment-link mechanism the admin "Send
-// payment link" button uses) and redirects straight to Cashfree's hosted
-// checkout; Cashfree's returnUrl brings them right back to this page after.
+// payment link" button uses) and redirects straight to Razorpay's hosted
+// checkout; Razorpay's callback_url brings them right back to this page after.
 function payNowHtml(data){
   const isCod = data.payment_method === 'cod';
   return '<div class="card pay-now">' +
@@ -349,13 +349,14 @@ function renderFeedbackForm(orderId){
   return wrap;
 }
 
-// Cashfree's Payment Link returnUrl sends the customer straight back here
-// the instant they finish paying, but confirmation is entirely webhook-
-// driven (see server.js's /api/webhook PAYMENT_LINK_EVENT handler) and can
-// lag a few seconds behind that redirect. Poll briefly so "Pending" flips to
-// "✓ Paid online" on its own instead of requiring a manual refresh — only
-// kicks in while an online order is genuinely still unpaid; a COD order or
-// one that's already paid never schedules another fetch.
+// Razorpay's Payment Link callback_url sends the customer straight back here
+// the instant they finish paying, and that redirect is itself signature-
+// verified (see server.js's /api/payment-links/callback), but many UPI apps
+// never return control to the browser at all — the webhook is the backup
+// confirmation path for those, and can lag a few seconds. Poll briefly so
+// "Pending" flips to "✓ Paid online" on its own instead of requiring a
+// manual refresh — only kicks in while an online order is genuinely still
+// unpaid; a COD order or one that's already paid never schedules another fetch.
 const PAYMENT_POLL_MS = 4000;
 const PAYMENT_POLL_MAX_ATTEMPTS = 20; // ~80s, generous over normal webhook latency
 let paymentPollAttempts = 0;

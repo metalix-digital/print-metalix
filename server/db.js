@@ -258,8 +258,13 @@ ensureColumn('orders', 'delivery_timing', "TEXT DEFAULT 'instant'") // 'instant'
 ensureColumn('orders', 'scheduled_at', 'INTEGER') // epoch ms, set only when delivery_timing = 'scheduled'
 ensureColumn('orders', 'payment_link_id', 'TEXT')   // gateway Payment Link id, set when a link is generated for this order
 ensureColumn('orders', 'payment_link_url', 'TEXT')
-ensureColumn('orders', 'cashfree_order_id', 'TEXT')   // Cashfree's internal order reference — support/audit only, not used for lookups (Cashfree's order_id is our own order id by construction)
-ensureColumn('orders', 'cashfree_payment_id', 'TEXT') // shown to customers/staff as "Transaction ID" — the functional replacement for razorpay_payment_id going forward
+// Populated only for orders placed 2026-08-02 to 2026-08-14, the brief
+// window Cashfree was the active gateway — kept permanently (not backfilled
+// or renamed) so those historical orders' invoices/analytics still resolve.
+// razorpay_order_id/payment_id (base schema, top of this file) is what every
+// order uses again going forward.
+ensureColumn('orders', 'cashfree_order_id', 'TEXT')
+ensureColumn('orders', 'cashfree_payment_id', 'TEXT')
 ensureColumn('orders', 'notes', 'TEXT') // optional free-text instructions from the customer (or added by staff) for whoever fulfils the order
 // Summary of the productType(s) present across files_json's entries — 'document'
 // (the only kind that existed before this column), 'passport-photo', or 'mixed'

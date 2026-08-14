@@ -2286,7 +2286,7 @@ function renderOrders(orders){
         // Once paid, the modal locks customer/delivery/print fields (money
         // already changed hands for those) but discount stays editable — cash/
         // UPI collected in person (payment_method 'cod') can be reconciled by
-        // hand, so "Adjust discount" still shows. A gateway (Cashfree) payment
+        // hand, so "Adjust discount" still shows. A gateway (Razorpay) payment
         // is captured and settled with no such give — server.js's PATCH route
         // rejects a discount change there too, so the button is hidden rather
         // than opening a modal that can only ever fail to save.
@@ -2501,7 +2501,7 @@ function renderOrders(orders){
           showFlash('Payment confirmed — order marked paid.');
           loadOrders();
         } else {
-          showFlash('Not paid yet on Cashfree' + (data.cashfreeStatus ? ' (' + data.cashfreeStatus + ')' : '') + '.');
+          showFlash('Not paid yet on Razorpay' + (data.razorpayStatus ? ' (' + data.razorpayStatus + ')' : '') + '.');
         }
       } catch (err) {
         if (err.message !== 'unauthorized') alert(err.message || 'Could not check payment status.');

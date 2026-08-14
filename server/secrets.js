@@ -1,11 +1,11 @@
-// On GCP, secrets like CASHFREE_APP_ID / CASHFREE_SECRET_KEY are fetched from
-// Secret Manager at startup instead of living in a plaintext .env file.
-// Local/dev runs without GCP credentials fall straight back to process.env,
-// so nothing changes for development.
+// On GCP, RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are fetched from Secret
+// Manager at startup instead of living in a plaintext .env file. Local/dev
+// runs without GCP credentials fall straight back to process.env, so nothing
+// changes for development.
 async function loadSecretsIntoEnv() {
   const needed = [
-    ['CASHFREE_APP_ID', 'cashfree-app-id'],
-    ['CASHFREE_SECRET_KEY', 'cashfree-secret-key'],
+    ['RAZORPAY_KEY_ID', 'razorpay-key-id'],
+    ['RAZORPAY_KEY_SECRET', 'razorpay-key-secret'],
     ['ADMIN_PASSWORD', 'admin-password'],
     ['ADMIN_JWT_SECRET', 'admin-jwt-secret'],
     ['GOOGLE_CLIENT_ID', 'google-client-id'],

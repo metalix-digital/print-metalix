@@ -53,8 +53,7 @@ the repo.
 | Variable | Purpose |
 |---|---|
 | `PORT` | HTTP port (default `5050`) |
-| `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY` | Cashfree payments, payment links & webhook verification |
-| `CASHFREE_ENV` | Set to `production` for live payments; anything else uses Cashfree's sandbox |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay payments, payment links & webhook verification. Live vs. test mode is implicit in the key type (`rzp_live_...` vs `rzp_test_...`) — no separate env toggle needed |
 | `ADMIN_JWT_SECRET` | Signing secret for admin/customer sessions |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap super-admin login (used once to seed the DB) |
 | `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
@@ -107,10 +106,10 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 - Upload PDF / Word / PPT; the server analyses pages, colour, and page count
 - Print options: paper size/type, B&W or colour, single/double-sided, orientation, copies
 - Live pricing calculator; choose a branch, home delivery or store pickup
-- Cashfree checkout (online) or cash/UPI pay-on-delivery. Cashfree's client SDK gives no
-  cryptographically verifiable signature, so payment confirmation is server-to-server —
-  `verify-payment` asks Cashfree directly for order status, and admin-sent payment links
-  are confirmed solely via the Cashfree webhook (no client-driven fallback)
+- Razorpay checkout (online) or cash/UPI pay-on-delivery. Razorpay's client SDK hands back
+  a cryptographically verifiable signature, so `verify-payment` checks it locally with no
+  round trip to Razorpay; admin-sent payment links are confirmed via a signed redirect
+  callback (primary) with the Razorpay webhook as a backup
 - Accounts: email/mobile + password, Google sign-in, password reset by email
 - Track order status and progress timeline from a link / QR code; rate a completed order
 - Shop-closed state: outside a branch's hours, order/track/blog pages show a "closed" page
@@ -127,9 +126,9 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 - Order status workflow (Queued → Printing → Delivery/Pickup → Completed), single or bulk
 - **Cash-on-delivery orders cannot be marked Completed until payment is recorded** via the
   "Collect Cash" / "Collect UPI" action — enforced both in the UI and by the API
-- Send a Cashfree payment link for phone/WhatsApp orders; "Recheck payment" manually
-  re-queries Cashfree for a link's status as a hardening measure, since payment links have
-  no client-side confirmation path
+- Send a Razorpay payment link for phone/WhatsApp orders; "Recheck payment" manually
+  re-queries Razorpay for a link's status as a hardening measure, for the rare case both
+  the redirect callback and the webhook are delayed or lost
 - Soft-delete ("Archive") with a 30-day recovery window before a background job purges the
   order and its files permanently
 - Analytics & SEO settings: Google Tag Manager container ID, Google Search Console
