@@ -42,7 +42,7 @@ const TABLES = [
         delivery_timing, scheduled_at,
         location_id, location_name,
         print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
-        razorpay_order_id, razorpay_payment_id, cashfree_order_id, cashfree_payment_id, payment_status, payment_method, payment_mode, order_status, failure_reason,
+        razorpay_order_id, razorpay_payment_id, payment_status, payment_method, payment_mode, order_status, failure_reason,
         created_at, updated_at, completed_at, files_deleted_at
       FROM orders WHERE archived_at IS NULL`,
     schema: [
@@ -78,8 +78,6 @@ const TABLES = [
       { name: 'total_amount', type: 'INTEGER' },
       { name: 'razorpay_order_id', type: 'STRING' },
       { name: 'razorpay_payment_id', type: 'STRING' },
-      { name: 'cashfree_order_id', type: 'STRING' },
-      { name: 'cashfree_payment_id', type: 'STRING' },
       { name: 'payment_status', type: 'STRING' },
       { name: 'payment_method', type: 'STRING' },
       { name: 'payment_mode', type: 'STRING' },

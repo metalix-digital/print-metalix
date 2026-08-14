@@ -312,12 +312,7 @@ async function buildInvoicePdf(order) {
   right(money(order.total_amount), width - M, y, 13, bold, ORANGE)
   y -= 34
 
-  // razorpay_payment_id is primary going forward; cashfree_payment_id only
-  // ever populates orders placed during the brief Cashfree window (2026-08-02
-  // to 2026-08-14) and is kept solely so those historical invoices still show
-  // a transaction id.
-  const txnId = order.razorpay_payment_id || order.cashfree_payment_id
-  if (txnId) text('Payment ID: ' + txnId, M, y, 9, font, MUTED)
+  if (order.razorpay_payment_id) text('Payment ID: ' + order.razorpay_payment_id, M, y, 9, font, MUTED)
 
   // Footer
   text('Thank you for choosing ' + bizName + '.', M, 58, 10, font, MUTED)

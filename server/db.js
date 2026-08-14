@@ -258,13 +258,6 @@ ensureColumn('orders', 'delivery_timing', "TEXT DEFAULT 'instant'") // 'instant'
 ensureColumn('orders', 'scheduled_at', 'INTEGER') // epoch ms, set only when delivery_timing = 'scheduled'
 ensureColumn('orders', 'payment_link_id', 'TEXT')   // gateway Payment Link id, set when a link is generated for this order
 ensureColumn('orders', 'payment_link_url', 'TEXT')
-// Populated only for orders placed 2026-08-02 to 2026-08-14, the brief
-// window Cashfree was the active gateway — kept permanently (not backfilled
-// or renamed) so those historical orders' invoices/analytics still resolve.
-// razorpay_order_id/payment_id (base schema, top of this file) is what every
-// order uses again going forward.
-ensureColumn('orders', 'cashfree_order_id', 'TEXT')
-ensureColumn('orders', 'cashfree_payment_id', 'TEXT')
 ensureColumn('orders', 'notes', 'TEXT') // optional free-text instructions from the customer (or added by staff) for whoever fulfils the order
 // Summary of the productType(s) present across files_json's entries — 'document'
 // (the only kind that existed before this column), 'passport-photo', or 'mixed'
@@ -1540,7 +1533,7 @@ function createOrder(order) {
       delivery_timing, scheduled_at,
       print_cost, delivery_charge, handling_charge, gst_amount, total_amount, services_cost, stationery_cost, stamp_cost,
       discount_type, discount_value, discount_amount, discount_code, discount_reason,
-      razorpay_order_id, cashfree_order_id, payment_status, order_status, notes,
+      razorpay_order_id, payment_status, order_status, notes,
       created_at, updated_at
     ) VALUES (
       @id, @customer_id, @customer_name, @customer_mobile, @customer_email,
@@ -1552,11 +1545,11 @@ function createOrder(order) {
       @delivery_timing, @scheduled_at,
       @print_cost, @delivery_charge, @handling_charge, @gst_amount, @total_amount, @services_cost, @stationery_cost, @stamp_cost,
       @discount_type, @discount_value, @discount_amount, @discount_code, @discount_reason,
-      @razorpay_order_id, @cashfree_order_id, @payment_status, @order_status, @notes,
+      @razorpay_order_id, @payment_status, @order_status, @notes,
       @created_at, @updated_at
     )
   `).run({
-    files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null, cashfree_order_id: null,
+    files_json: null, paper_type: 'normal', product_type: 'document', customer_id: null, location_id: null, location_name: null, payment_method: 'online', delivery_timing: 'instant', scheduled_at: null, handling_charge: 0, notes: null, razorpay_order_id: null,
     discount_type: null, discount_value: 0, discount_amount: 0, discount_code: null, discount_reason: null, services_cost: 0, stationery_cost: 0, stamp_cost: 0,
     ...order, created_at: now, updated_at: now
   })
