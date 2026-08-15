@@ -239,7 +239,6 @@ document.getElementById('productGrid').addEventListener('click', function(e){
   if (e.target.closest('.add-btn') && product) {
     var qty = Math.max(1, Math.min(999, parseInt(qtyInput.value, 10) || 1));
     Cart.add({ productType: 'stationery', productId: product.id, name: product.name, sku: product.sku, unitPrice: product.price, image: (product.images && product.images[0]) || null, quantity: qty });
-    showToast(qty + ' × ' + product.name + ' added to cart');
     Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stationery');
     qtyInput.value = 1;
   }

@@ -502,7 +502,6 @@ function addToCart(){
     unitPrice: price.total,
     quantity: state.quantity
   });
-  showToast('Added to cart — configure another or head to checkout.');
   Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stamp');
   state = { step: 'type', stampTypeId: null, stampSizeId: null, designMode: null, textLines: [''], artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false, quantity: 1 };
   render();
