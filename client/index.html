@@ -202,6 +202,10 @@ __GTM_HEAD__
   #printJobWrap.expanded{ display:block; }
   #stampWrap{ display:none; }
   #stampWrap.expanded{ display:block; }
+  #stationeryWrap{ display:none; }
+  #stationeryWrap.expanded{ display:block; }
+  .stationery-row-thumb{ width:38px; height:38px; border-radius:10px; flex-shrink:0; object-fit:cover; background:var(--paper-dim); border:1px solid var(--line); }
+  .stationery-qty{ width:52px; padding:6px 8px; text-align:center; }
   .field{margin-top:12px;}
   .field label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; display:block; }
   .field input, .field textarea{ width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface); transition:border-color .15s ease; }
@@ -520,6 +524,26 @@ __GTM_NOSCRIPT__
         <div class="passport-list" id="passportList"></div>
       </div>
       </div><!-- /#printJobWrap -->
+
+      <!-- Same collapsed-by-default standing as Add a print job above — a
+           quick way to add stationery to THIS order without a trip to
+           /stationery. Kept intentionally simple (flat list, no category
+           filtering) since a compact order-page panel isn't the place to
+           replicate the full catalog browse experience. Hidden entirely
+           when Stationery is soft-launch-disabled — see the settings fetch
+           near the bottom of this script (same one that hides the
+           .shop-nav Stationery pill). Added items go through the same
+           shared Cart.add() /stationery itself uses, so they show up in
+           the cart list above, the mini-cart drawer, and the final order
+           payload with zero extra wiring — see buildOrderPayload. -->
+      <button type="button" class="print-job-toggle" id="stationeryToggle">
+        <span>📎 Add stationery <span class="opt-sub">(pens, files, envelopes &amp; more)</span></span>
+        <span class="pjt-chevron" id="stationeryChevron">▾</span>
+      </button>
+      <div id="stationeryWrap">
+        <div id="stationeryList"></div>
+        <div class="delivery-note" id="stationeryEmptyNote" style="display:none;">No stationery items available right now — check back soon.</div>
+      </div><!-- /#stationeryWrap -->
 
       <!-- Same collapsed-by-default standing as Add a print job above — a
            quick way to add a stamp to THIS order without leaving the page,
@@ -1220,6 +1244,56 @@ document.getElementById('addStampBtn').addEventListener('click', () => {
   updateStampPricePreview();
   recalc();
 });
+
+// Quick "add stationery to this order" panel — same collapse pattern and
+// shared-cart integration as Add a stamp above. Fetches its own product
+// list (stationery is its own catalog, not part of pricingConfig) — a 404
+// here means Stationery is soft-launch-disabled, same reasoning as the
+// settings-fetch check that hides the .shop-nav Stationery pill, so the
+// whole panel just hides rather than showing a broken empty state.
+const stationeryToggle = document.getElementById('stationeryToggle');
+const stationeryWrap = document.getElementById('stationeryWrap');
+const stationeryList = document.getElementById('stationeryList');
+const stationeryEmptyNote = document.getElementById('stationeryEmptyNote');
+function setStationeryExpanded(expanded){
+  stationeryToggle.classList.toggle('expanded', expanded);
+  stationeryWrap.classList.toggle('expanded', expanded);
+}
+stationeryToggle.addEventListener('click', () => setStationeryExpanded(!stationeryWrap.classList.contains('expanded')));
+
+function stationeryRowHtml(p){
+  const thumb = (p.images && p.images[0])
+    ? `<img class="stationery-row-thumb" src="${escapeAttr(p.images[0])}" alt="" />`
+    : `<div class="fdot">📦</div>`;
+  return `
+    <div class="item-row" style="cursor:default;">
+      ${thumb}
+      <div class="item-row-body">
+        <div class="item-row-name">${escapeAttr(p.name)}</div>
+        <div class="item-row-meta">₹${p.price}${p.inStock ? '' : ' · Out of stock'}</div>
+      </div>
+      <input type="number" class="stationery-qty" min="1" max="999" value="1" data-qty-for="${escapeAttr(p.id)}" ${p.inStock ? '' : 'disabled'} />
+      <button type="button" class="btn btn-primary" style="padding:8px 14px;font-size:12.5px;" data-add-stationery="${escapeAttr(p.id)}" ${p.inStock ? '' : 'disabled'}>Add</button>
+    </div>`;
+}
+
+let stationeryProducts = [];
+fetch('/api/products').then((r) => r.ok ? r.json() : Promise.reject()).then((data) => {
+  stationeryProducts = data.products || [];
+  if (!stationeryProducts.length) { stationeryEmptyNote.style.display = 'block'; return; }
+  stationeryList.innerHTML = stationeryProducts.map(stationeryRowHtml).join('');
+  stationeryList.querySelectorAll('[data-add-stationery]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const p = stationeryProducts.find((x) => x.id === btn.dataset.addStationery);
+      if (!p) return;
+      const qtyInput = stationeryList.querySelector('[data-qty-for="' + p.id + '"]');
+      const quantity = Math.max(1, Math.min(999, Math.round(Number(qtyInput.value)) || 1));
+      Cart.add({ productType: 'stationery', productId: p.id, name: p.name, sku: p.sku, unitPrice: p.price, image: (p.images && p.images[0]) || null, quantity });
+      qtyInput.value = 1;
+      recalc();
+    });
+  });
+}).catch(() => { stationeryToggle.style.display = 'none'; });
 
 // Resolves a single file's color/bw page split given its own print mode —
 // mirrors server/pricing.js's resolveFileColorPages so client estimate and
