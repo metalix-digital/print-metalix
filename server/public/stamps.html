@@ -77,6 +77,7 @@ main{max-width:760px;margin:0 auto;padding:28px 20px 100px;}
 .choice-card .cc-label{font-weight:700;font-size:14.5px;}
 .choice-card .cc-meta{font-size:12px;color:var(--ink3);margin-top:4px;}
 .choice-card .cc-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;margin-bottom:10px;background:var(--orange-l);}
+.choice-card .cc-code{font-weight:500;font-size:12px;color:var(--ink3);}
 .text-lines{display:flex;flex-direction:column;gap:8px;}
 .text-line-row{display:flex;gap:8px;}
 .text-line-row input{flex:1;padding:10px 12px;border:1.5px solid var(--line-strong);border-radius:9px;font-size:14px;background:var(--card);color:var(--ink);}
@@ -188,8 +189,11 @@ var state = {
 };
 
 function activeTypes(){ return (stampConfig && stampConfig.types || []).filter(function(t){ return t.active; }); }
-function activeSizes(){ return (stampConfig && stampConfig.sizes || []).filter(function(s){ return s.active; }); }
 function selectedType(){ return activeTypes().find(function(t){ return t.id === state.stampTypeId; }); }
+// Sizes belong to the selected type — a Self-Inking size chart and a
+// Pre-Inked size chart are different real-world products, not one shared
+// list, so there's no size to offer until a type is chosen.
+function activeSizes(){ var type = selectedType(); return ((type && type.sizes) || []).filter(function(s){ return s.active; }); }
 function selectedSize(){ return activeSizes().find(function(s){ return s.id === state.stampSizeId; }); }
 
 function computePrice(){
@@ -248,8 +252,10 @@ function stepBodyHtml(){
     return '<h2>Choose a size</h2><div class="wizard-sub">Larger sizes fit more text but cost a little more.</div>' +
       '<div class="choice-grid" id="sizeGrid">' + activeSizes().map(function(s){
         var mod = s.priceModifier > 0 ? ' (+₹' + s.priceModifier + ')' : (s.priceModifier < 0 ? ' (−₹' + Math.abs(s.priceModifier) + ')' : '');
+        var label = s.code ? (escHtml(s.label) + ' <span class="cc-code">#' + escHtml(s.code) + '</span>') : escHtml(s.label);
         return '<button type="button" class="choice-card' + (s.id === state.stampSizeId ? ' selected' : '') + '" data-size="' + escHtml(s.id) + '">' +
-          '<div class="cc-label">' + escHtml(s.label) + '</div><div class="cc-meta">' + s.widthMm + '×' + s.heightMm + 'mm' + mod + '</div></button>';
+          (s.imageUrl ? '<img class="cc-img" src="' + escHtml(s.imageUrl) + '" alt="' + escHtml(s.label) + '" />' : '') +
+          '<div class="cc-label">' + label + '</div><div class="cc-meta">' + s.widthMm + '×' + s.heightMm + 'mm' + mod + '</div></button>';
       }).join('') + '</div>';
   }
   if (state.step === 'designMode') {
@@ -401,7 +407,15 @@ function bindStepEvents(){
 
   if (state.step === 'type') {
     document.querySelectorAll('#typeGrid [data-type]').forEach(function(btn){
-      btn.addEventListener('click', function(){ state.stampTypeId = btn.dataset.type; render(); });
+      btn.addEventListener('click', function(){
+        if (btn.dataset.type !== state.stampTypeId) {
+          // Sizes belong to a type — a size id valid under the old type is
+          // meaningless (or invalid) under the new one.
+          state.stampTypeId = btn.dataset.type;
+          state.stampSizeId = null;
+        }
+        render();
+      });
     });
   }
   if (state.step === 'size') {
@@ -502,7 +516,7 @@ function addToCart(){
 }
 
 fetch('/api/pricing').then(function(r){ return r.json(); }).then(function(p){
-  stampConfig = p.stamps || { types: [], sizes: [], logoPrice: 0, extraQuantityPrice: 0 };
+  stampConfig = p.stamps || { types: [], logoPrice: 0, extraQuantityPrice: 0 };
   render();
 }).catch(function(){
   document.getElementById('wizardCard').innerHTML = '<div class="wizard-sub">Could not load stamp options. Please refresh.</div>';

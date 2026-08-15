@@ -1588,7 +1588,7 @@ app.post('/api/admin/orders/:id/jobsheet-pdf', requireAdmin, requireTab('orders'
         const page = merged.addPage([A4_PT.width, A4_PT.height])
         page.drawText('PRODUCE THIS STAMP', { x: 50, y: A4_PT.height - 90, size: 20, font, color: rgb(1, 0.4, 0) })
         const type = ((pricingConfig.stamps || {}).types || []).find((t) => t.id === f.stampTypeId)
-        const size = ((pricingConfig.stamps || {}).sizes || []).find((s) => s.id === f.stampSizeId)
+        const size = ((type && type.sizes) || []).find((s) => s.id === f.stampSizeId)
         const qty = f.quantity || 1
         page.drawText(sanitizeForFont(`${qty} × ${type ? type.label : (f.stampTypeId || 'Stamp')}`, font), { x: 50, y: A4_PT.height - 140, size: 15, font, color: rgb(0.1, 0.13, 0.2) })
         if (size) page.drawText(sanitizeForFont(`Size: ${size.label}`, font), { x: 50, y: A4_PT.height - 165, size: 11, font, color: rgb(0.42, 0.45, 0.5) })
@@ -3003,10 +3003,14 @@ function buildPricedOrderFiles(files, { deliveryMethod, deliveryAddress, deliver
     if (productType === 'stamp') {
       const stampConfig = paperTypeConfig.stamps || {}
       const stampTypes = (stampConfig.types || []).filter((t) => t.active)
-      const stampSizes = (stampConfig.sizes || []).filter((s) => s.active)
-      if (!stampTypes.some((t) => t.id === f.stampTypeId)) {
+      const stampType = stampTypes.find((t) => t.id === f.stampTypeId)
+      if (!stampType) {
         return { error: 'missing_stamp_type', message: 'Select a stamp type.' }
       }
+      // Sizes live inside their type — a size id is only valid for the type
+      // it belongs to (a Self-Inking size chart and a Pre-Inked size chart
+      // are different real-world products, not interchangeable ids).
+      const stampSizes = (stampType.sizes || []).filter((s) => s.active)
       if (!stampSizes.some((s) => s.id === f.stampSizeId)) {
         return { error: 'missing_stamp_size', message: 'Select a stamp size.' }
       }

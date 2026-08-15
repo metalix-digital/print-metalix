@@ -198,6 +198,13 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .st-thumb:hover{border-color:var(--orange,#FF6600);}
 .st-thumb-img{width:100%;height:100%;object-fit:cover;}
 .st-thumb-empty{font-size:16px;opacity:.55;}
+/* Each stamp type is its own card (label/price/active header + its own
+   nested size table) rather than a flat table row — sizes are no longer a
+   single shared list, so each type needs room for its own size table. */
+.stamp-type-block{border:1.5px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;}
+.stamp-type-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+.stamp-type-head .field{flex:1;min-width:160px;}
+.stamp-type-head .field.col-rate{flex:0 0 120px;min-width:100px;}
 .rate-add{margin-top:14px;background:none;border:1.5px dashed var(--orange);color:var(--orange);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Roboto',sans-serif;}
 .rate-add:hover{background:var(--orange);color:#fff;}
 /* Discounts tab's "+ Add coupon" and "Save coupons" sit directly adjacent
@@ -4099,38 +4106,116 @@ async function savePricing(){
 /* -- STAMP SETTINGS (Custom Stamp Printing catalog — its own tab, same
    settings.pricing.stamps blob the Pricing tab's savePricing() now
    carefully preserves rather than clobbers, see the "currentStamps" fetch
-   there) -- */
-function stampTypeRowHtml(row){
-  row = row || { id: '', label: '', basePrice: '', active: true, imageUrl: null };
+   there). Sizes are no longer one list shared across every type — a
+   Self-Inking size chart and a Pre-Inked size chart are different
+   real-world products, not the same sizes reused — so each type is its own
+   card with its own nested size table. -- */
+function stampSizeRowHtml(row){
+  row = row || { id: '', label: '', code: '', widthMm: '', heightMm: '', priceModifier: '', active: true, imageUrl: null };
   const thumb = row.imageUrl
     ? '<img src="' + escHtml(row.imageUrl) + '" alt="" class="st-thumb-img" />'
     : '<span class="st-thumb-empty">📷</span>';
-  return '<tr class="stamp-type-row" data-id="' + escHtml(row.id || '') + '" data-image-url="' + escHtml(row.imageUrl || '') + '">' +
-    '<td><div class="st-thumb" title="Click to upload a reference photo">' + thumb + '<input type="file" class="st-image-input hidden" accept="image/png,image/jpeg,image/webp,image/gif" /></div></td>' +
-    '<td><input class="st-label" type="text" placeholder="e.g. Self-Inking Stamp" value="' + escHtml(row.label || '') + '" /></td>' +
-    '<td class="col-rate"><input class="st-price" type="number" step="1" min="0" value="' + (row.basePrice != null ? row.basePrice : '') + '" /></td>' +
-    '<td><label class="loc-active"><input type="checkbox" class="st-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
-    '<td><button type="button" class="rate-remove stamp-type-remove" aria-label="Remove type">✕</button></td>' +
+  return '<tr class="stamp-size-row" data-id="' + escHtml(row.id || '') + '" data-image-url="' + escHtml(row.imageUrl || '') + '">' +
+    '<td><div class="st-thumb" title="Click to upload a reference photo">' + thumb + '<input type="file" class="ss-image-input hidden" accept="image/png,image/jpeg,image/webp,image/gif" /></div></td>' +
+    '<td><input class="ss-code" type="text" placeholder="e.g. 6900" value="' + escHtml(row.code || '') + '" /></td>' +
+    '<td><input class="ss-label" type="text" placeholder="e.g. Trodat 6900" value="' + escHtml(row.label || '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-width" type="number" step="0.1" min="0" value="' + (row.widthMm != null ? row.widthMm : '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-height" type="number" step="0.1" min="0" value="' + (row.heightMm != null ? row.heightMm : '') + '" /></td>' +
+    '<td class="col-rate"><input class="ss-modifier" type="number" step="1" value="' + (row.priceModifier != null ? row.priceModifier : '') + '" /></td>' +
+    '<td><label class="loc-active"><input type="checkbox" class="ss-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
+    '<td><button type="button" class="rate-remove stamp-size-remove" aria-label="Remove size">✕</button></td>' +
   '</tr>';
+}
+function collectStampSizesFromForm(tbody){
+  const out = [];
+  const seen = new Set();
+  tbody.querySelectorAll('.stamp-size-row').forEach((tr) => {
+    const label = tr.querySelector('.ss-label').value.trim();
+    if (!label) return;
+    let id = slugify(tr.dataset.id || label) || 'size';
+    let unique = id; let n = 2;
+    while (seen.has(unique)) unique = id + '-' + (n++);
+    seen.add(unique);
+    out.push({
+      id: unique, label,
+      code: tr.querySelector('.ss-code').value.trim(),
+      widthMm: Number(tr.querySelector('.ss-width').value) || 0,
+      heightMm: Number(tr.querySelector('.ss-height').value) || 0,
+      priceModifier: Number(tr.querySelector('.ss-modifier').value) || 0,
+      active: tr.querySelector('.ss-active').checked,
+      imageUrl: tr.dataset.imageUrl || null
+    });
+  });
+  return out;
+}
+function bindStampSizeRow(tr){
+  tr.querySelector('.stamp-size-remove').addEventListener('click', () => tr.remove());
+  const thumb = tr.querySelector('.st-thumb');
+  const input = tr.querySelector('.ss-image-input');
+  thumb.addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      // Same public product-photo upload pipeline a stamp type's own
+      // reference photo uses (see bindStampTypeBlock below).
+      const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      tr.dataset.imageUrl = data.url;
+      thumb.innerHTML = '<img src="' + data.url + '" alt="" class="st-thumb-img" />';
+      thumb.appendChild(input);
+    } catch (err) {
+      if (err.message !== 'unauthorized') alert(err.message || 'Could not upload image.');
+    }
+  });
+}
+
+function stampTypeBlockHtml(type){
+  type = type || { id: '', label: '', basePrice: '', active: true, imageUrl: null, sizes: [] };
+  const thumb = type.imageUrl
+    ? '<img src="' + escHtml(type.imageUrl) + '" alt="" class="st-thumb-img" />'
+    : '<span class="st-thumb-empty">📷</span>';
+  const sizes = Array.isArray(type.sizes) ? type.sizes : [];
+  return '<div class="stamp-type-block" data-id="' + escHtml(type.id || '') + '" data-image-url="' + escHtml(type.imageUrl || '') + '">' +
+    '<div class="stamp-type-head">' +
+      '<div class="st-thumb" title="Click to upload a reference photo">' + thumb + '<input type="file" class="st-image-input hidden" accept="image/png,image/jpeg,image/webp,image/gif" /></div>' +
+      '<div class="field"><label>Label</label><input class="st-label" type="text" placeholder="e.g. Self-Inking Stamp" value="' + escHtml(type.label || '') + '" /></div>' +
+      '<div class="field col-rate"><label>Base price (₹)</label><input class="st-price" type="number" step="1" min="0" value="' + (type.basePrice != null ? type.basePrice : '') + '" /></div>' +
+      '<label class="loc-active"><input type="checkbox" class="st-active"' + (type.active !== false ? ' checked' : '') + ' /> Active</label>' +
+      '<button type="button" class="rate-remove stamp-type-remove" aria-label="Remove type">✕</button>' +
+    '</div>' +
+    '<div class="table-scroll"><table class="rate-table"><thead><tr><th>Image</th><th>Code</th><th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Price modifier (₹)</th><th>Active</th><th></th></tr></thead>' +
+      '<tbody class="stamp-size-rows">' + sizes.map(stampSizeRowHtml).join('') + '</tbody></table></div>' +
+    '<button type="button" class="rate-add stamp-add-size">+ Add size</button>' +
+  '</div>';
 }
 function collectStampTypesFromForm(){
   const out = [];
   const seen = new Set();
-  document.querySelectorAll('#stampTypeRows .stamp-type-row').forEach((tr) => {
-    const label = tr.querySelector('.st-label').value.trim();
+  document.querySelectorAll('#stampTypeBlocks .stamp-type-block').forEach((block) => {
+    const label = block.querySelector('.st-label').value.trim();
     if (!label) return;
-    let id = slugify(tr.dataset.id || label) || 'type';
+    let id = slugify(block.dataset.id || label) || 'type';
     let unique = id; let n = 2;
     while (seen.has(unique)) unique = id + '-' + (n++);
     seen.add(unique);
-    out.push({ id: unique, label, basePrice: Number(tr.querySelector('.st-price').value) || 0, active: tr.querySelector('.st-active').checked, imageUrl: tr.dataset.imageUrl || null });
+    out.push({
+      id: unique, label,
+      basePrice: Number(block.querySelector('.st-price').value) || 0,
+      active: block.querySelector('.st-active').checked,
+      imageUrl: block.dataset.imageUrl || null,
+      sizes: collectStampSizesFromForm(block.querySelector('.stamp-size-rows'))
+    });
   });
   return out;
 }
-function bindStampTypeRow(tr){
-  tr.querySelector('.stamp-type-remove').addEventListener('click', () => tr.remove());
-  const thumb = tr.querySelector('.st-thumb');
-  const input = tr.querySelector('.st-image-input');
+function bindStampTypeBlock(block){
+  block.querySelector('.stamp-type-remove').addEventListener('click', () => block.remove());
+  const thumb = block.querySelector('.st-thumb');
+  const input = block.querySelector('.st-image-input');
   thumb.addEventListener('click', () => input.click());
   input.addEventListener('change', async () => {
     const file = input.files[0];
@@ -4144,47 +4229,20 @@ function bindStampTypeRow(tr){
       const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Upload failed');
-      tr.dataset.imageUrl = data.url;
+      block.dataset.imageUrl = data.url;
       thumb.innerHTML = '<img src="' + data.url + '" alt="" class="st-thumb-img" />';
       thumb.appendChild(input);
     } catch (err) {
       if (err.message !== 'unauthorized') alert(err.message || 'Could not upload image.');
     }
   });
-}
-
-function stampSizeRowHtml(row){
-  row = row || { id: '', label: '', widthMm: '', heightMm: '', priceModifier: '', active: true };
-  return '<tr class="stamp-size-row" data-id="' + escHtml(row.id || '') + '">' +
-    '<td><input class="ss-label" type="text" placeholder="e.g. Medium" value="' + escHtml(row.label || '') + '" /></td>' +
-    '<td class="col-rate"><input class="ss-width" type="number" step="0.1" min="0" value="' + (row.widthMm != null ? row.widthMm : '') + '" /></td>' +
-    '<td class="col-rate"><input class="ss-height" type="number" step="0.1" min="0" value="' + (row.heightMm != null ? row.heightMm : '') + '" /></td>' +
-    '<td class="col-rate"><input class="ss-modifier" type="number" step="1" value="' + (row.priceModifier != null ? row.priceModifier : '') + '" /></td>' +
-    '<td><label class="loc-active"><input type="checkbox" class="ss-active"' + (row.active !== false ? ' checked' : '') + ' /> Active</label></td>' +
-    '<td><button type="button" class="rate-remove stamp-size-remove" aria-label="Remove size">✕</button></td>' +
-  '</tr>';
-}
-function collectStampSizesFromForm(){
-  const out = [];
-  const seen = new Set();
-  document.querySelectorAll('#stampSizeRows .stamp-size-row').forEach((tr) => {
-    const label = tr.querySelector('.ss-label').value.trim();
-    if (!label) return;
-    let id = slugify(tr.dataset.id || label) || 'size';
-    let unique = id; let n = 2;
-    while (seen.has(unique)) unique = id + '-' + (n++);
-    seen.add(unique);
-    out.push({
-      id: unique, label,
-      widthMm: Number(tr.querySelector('.ss-width').value) || 0,
-      heightMm: Number(tr.querySelector('.ss-height').value) || 0,
-      priceModifier: Number(tr.querySelector('.ss-modifier').value) || 0,
-      active: tr.querySelector('.ss-active').checked
-    });
+  const sizeRows = block.querySelector('.stamp-size-rows');
+  block.querySelectorAll('.stamp-size-row').forEach(bindStampSizeRow);
+  block.querySelector('.stamp-add-size').addEventListener('click', () => {
+    sizeRows.insertAdjacentHTML('beforeend', stampSizeRowHtml(null));
+    bindStampSizeRow(sizeRows.lastElementChild);
   });
-  return out;
 }
-function bindStampSizeRow(tr){ tr.querySelector('.stamp-size-remove').addEventListener('click', () => tr.remove()); }
 
 async function loadStampSettings(){
   const form = document.getElementById('stampSettingsForm');
@@ -4192,21 +4250,18 @@ async function loadStampSettings(){
   const p = await res.json();
   const stamps = p.stamps || {};
   const types = Array.isArray(stamps.types) ? stamps.types : [];
-  const sizes = Array.isArray(stamps.sizes) ? stamps.sizes : [];
-  types.forEach((t) => { if (t.id) STAMP_TYPE_LABELS[t.id] = t.label; });
-  sizes.forEach((s) => { if (s.id) STAMP_SIZE_LABELS[s.id] = s.label; });
+  STAMP_TYPE_LABELS = {};
+  STAMP_SIZE_LABELS = {};
+  types.forEach((t) => {
+    if (t.id) STAMP_TYPE_LABELS[t.id] = t.label;
+    (Array.isArray(t.sizes) ? t.sizes : []).forEach((s) => { if (s.id) STAMP_SIZE_LABELS[s.id] = s.label; });
+  });
 
   form.innerHTML =
     '<h2>Stamp types</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">The base price for each stamp type customers can choose on /stamps. Deactivate a type to hide it from new orders without affecting past ones.</p>' +
-    '<div class="table-scroll"><table class="rate-table"><thead><tr><th>Image</th><th>Label</th><th>Base price (₹)</th><th>Active</th><th></th></tr></thead>' +
-      '<tbody id="stampTypeRows">' + types.map(stampTypeRowHtml).join('') + '</tbody></table></div>' +
+    '<p class="detail" style="margin-bottom:12px;">Each stamp type customers can choose on /stamps, its base price, and its own size chart (sizes belong to a single type — a Self-Inking size list is a different real-world product line from a Pre-Inked one). Deactivate a type to hide it from new orders without affecting past ones.</p>' +
+    '<div id="stampTypeBlocks">' + types.map(stampTypeBlockHtml).join('') + '</div>' +
     '<button type="button" class="rate-add" id="addStampType">+ Add type</button>' +
-    '<h2>Stamp sizes</h2>' +
-    '<p class="detail" style="margin-bottom:12px;">Size options and how much each adds to (or, if negative, subtracts from) the base price.</p>' +
-    '<div class="table-scroll"><table class="rate-table"><thead><tr><th>Label</th><th>Width (mm)</th><th>Height (mm)</th><th>Price modifier (₹)</th><th>Active</th><th></th></tr></thead>' +
-      '<tbody id="stampSizeRows">' + sizes.map(stampSizeRowHtml).join('') + '</tbody></table></div>' +
-    '<button type="button" class="rate-add" id="addStampSize">+ Add size</button>' +
     '<h2>Other charges</h2>' +
     '<div class="field-grid">' +
       '<div class="field"><label>Logo surcharge (₹)</label><input type="number" step="1" min="0" id="stampLogoPrice" value="' + (stamps.logoPrice != null ? stamps.logoPrice : 100) + '" /></div>' +
@@ -4218,15 +4273,10 @@ async function loadStampSettings(){
     '<button class="save-btn" type="button" id="saveStampSettingsBtn">Save stamp settings</button>';
 
   document.getElementById('addStampType').addEventListener('click', () => {
-    document.getElementById('stampTypeRows').insertAdjacentHTML('beforeend', stampTypeRowHtml(null));
-    bindStampTypeRow(document.getElementById('stampTypeRows').lastElementChild);
+    document.getElementById('stampTypeBlocks').insertAdjacentHTML('beforeend', stampTypeBlockHtml(null));
+    bindStampTypeBlock(document.getElementById('stampTypeBlocks').lastElementChild);
   });
-  document.getElementById('addStampSize').addEventListener('click', () => {
-    document.getElementById('stampSizeRows').insertAdjacentHTML('beforeend', stampSizeRowHtml(null));
-    bindStampSizeRow(document.getElementById('stampSizeRows').lastElementChild);
-  });
-  document.querySelectorAll('#stampTypeRows .stamp-type-row').forEach(bindStampTypeRow);
-  document.querySelectorAll('#stampSizeRows .stamp-size-row').forEach(bindStampSizeRow);
+  document.querySelectorAll('#stampTypeBlocks .stamp-type-block').forEach(bindStampTypeBlock);
   document.getElementById('saveStampSettingsBtn').addEventListener('click', saveStampSettings);
 }
 
@@ -4255,7 +4305,6 @@ async function saveStampSettings(){
   }
   fresh.stamps = {
     types,
-    sizes: collectStampSizesFromForm(),
     logoPrice: Number(document.getElementById('stampLogoPrice').value) || 0,
     extraQuantityPrice: Number(document.getElementById('stampExtraQtyPrice').value) || 0,
     requireProofApproval: document.getElementById('stampRequireProof').checked
@@ -5656,14 +5705,21 @@ function noStampTypeOptionsHtml(selected){
   return ((noPricingConfig.stamps || {}).types || []).filter((t) => t.active)
     .map((t) => '<option value="' + t.id + '"' + (t.id === selected ? ' selected' : '') + '>' + escHtml(t.label) + ' — ₹' + t.basePrice + '</option>').join('');
 }
-function noStampSizeOptionsHtml(selected){
-  return ((noPricingConfig.stamps || {}).sizes || []).filter((s) => s.active)
+// Sizes live inside their type now — a Self-Inking size chart and a
+// Pre-Inked size chart are different real-world products, not one shared
+// list, so this needs the owning type's id to know which sizes to offer.
+function noStampSizesForType(typeId){
+  const type = ((noPricingConfig.stamps || {}).types || []).find((t) => t.id === typeId);
+  return ((type && type.sizes) || []).filter((s) => s.active);
+}
+function noStampSizeOptionsHtml(selected, typeId){
+  return noStampSizesForType(typeId)
     .map((s) => '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escHtml(s.label) + (s.priceModifier ? ' (' + (s.priceModifier > 0 ? '+' : '−') + '₹' + Math.abs(s.priceModifier) + ')' : '') + '</option>').join('');
 }
 function noStampLineAmount(line){
   const stampConfig = noPricingConfig.stamps || {};
   const type = (stampConfig.types || []).find((t) => t.id === line.stampTypeId);
-  const size = (stampConfig.sizes || []).find((s) => s.id === line.stampSizeId);
+  const size = ((type && type.sizes) || []).find((s) => s.id === line.stampSizeId);
   const base = type ? Number(type.basePrice) || 0 : 0;
   const sizeMod = size ? Number(size.priceModifier) || 0 : 0;
   const logoPrice = line.logoFileId ? (Number(stampConfig.logoPrice) || 0) : 0;
@@ -5674,7 +5730,7 @@ function noStampCardHtml(line, idx){
   return '<div class="no-stamp-card" data-idx="' + idx + '">' +
     '<div class="field-grid">' +
       '<div class="field"><label>Type</label><select class="nsm-type" data-idx="' + idx + '">' + noStampTypeOptionsHtml(line.stampTypeId) + '</select></div>' +
-      '<div class="field"><label>Size</label><select class="nsm-size" data-idx="' + idx + '">' + noStampSizeOptionsHtml(line.stampSizeId) + '</select></div>' +
+      '<div class="field"><label>Size</label><select class="nsm-size" data-idx="' + idx + '">' + noStampSizeOptionsHtml(line.stampSizeId, line.stampTypeId) + '</select></div>' +
     '</div>' +
     '<div class="field"><label>Text <span class="opt">(one line per row, up to 6)</span></label><textarea class="nsm-text" data-idx="' + idx + '" rows="2" maxlength="400">' + escHtml(line.textLines.join('\n')) + '</textarea></div>' +
     '<div class="field-grid">' +
@@ -5693,9 +5749,9 @@ function renderNoStampList(){
 }
 document.getElementById('noStampAddBtn').addEventListener('click', () => {
   const types = ((noPricingConfig.stamps || {}).types || []).filter((t) => t.active);
-  const sizes = ((noPricingConfig.stamps || {}).sizes || []).filter((s) => s.active);
-  if (!types.length || !sizes.length) { alert('No stamp types/sizes are active yet — configure them in Stamp Settings first.'); return; }
-  noStampLines.push({ stampTypeId: types[0].id, stampSizeId: sizes[0].id, textLines: [''], logoFileId: null, logoFileName: null, logoUploading: false, quantity: 1 });
+  const firstType = types.find((t) => noStampSizesForType(t.id).length);
+  if (!firstType) { alert('No stamp types/sizes are active yet — configure them in Stamp Settings first.'); return; }
+  noStampLines.push({ stampTypeId: firstType.id, stampSizeId: noStampSizesForType(firstType.id)[0].id, textLines: [''], logoFileId: null, logoFileName: null, logoUploading: false, quantity: 1 });
   renderNoStampList();
   recalcNoOrder();
 });
@@ -5743,7 +5799,14 @@ document.getElementById('noStampList').addEventListener('change', (e) => {
   if (!card) return;
   const line = noStampLines[Number(card.dataset.idx)];
   if (!line) return;
-  if (e.target.classList.contains('nsm-type')) line.stampTypeId = e.target.value;
+  if (e.target.classList.contains('nsm-type')) {
+    line.stampTypeId = e.target.value;
+    // Sizes belong to a type — a size id valid under the old type is almost
+    // certainly meaningless (or invalid) under the new one, so re-pick the
+    // new type's first active size rather than leaving a stale id in state.
+    const sizes = noStampSizesForType(line.stampTypeId);
+    line.stampSizeId = sizes.length ? sizes[0].id : null;
+  }
   if (e.target.classList.contains('nsm-size')) line.stampSizeId = e.target.value;
   if (e.target.classList.contains('nsm-qty')) line.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
   if (e.target.classList.contains('nsm-text')) {

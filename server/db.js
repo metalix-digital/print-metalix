@@ -397,20 +397,47 @@ const DEFAULT_PRICING = {
   additionalServices: [],
   // Custom Stamp Printing config (see pricing.js calculate() 'stamp' branch).
   // A stamp's price = type.basePrice + size.priceModifier +
-  // (hasLogo ? logoPrice : 0) + extraQuantityPrice × (quantity - 1). Seeded
-  // with example types/sizes/prices the admin is expected to edit from the
-  // Stamp Settings tab — never hardcoded into the pricing logic itself.
+  // (hasLogo ? logoPrice : 0) + extraQuantityPrice × (quantity - 1). Each
+  // type owns its own sizes list (real-world stamp models come in different
+  // size charts per type — a Self-Inking "Code 0" and a Pre-Inked "Trodat
+  // 6900" are unrelated products, not the same size under different names).
+  // priceModifier left at 0 for the real Self-Inking/Pre-Inked size charts
+  // below — admin fills these in from the Stamp Settings tab once pricing
+  // is decided; never hardcoded into the pricing logic itself.
   stamps: {
     types: [
-      { id: 'self-inking', label: 'Self-Inking Stamp', active: true, basePrice: 250 },
-      { id: 'pre-inked', label: 'Pre-Inked Stamp', active: true, basePrice: 350 },
-      { id: 'rubber', label: 'Rubber Stamp (wooden handle)', active: true, basePrice: 150 }
-    ],
-    sizes: [
-      { id: 'small', label: 'Small (up to 25×10mm)', widthMm: 25, heightMm: 10, active: true, priceModifier: 0 },
-      { id: 'medium', label: 'Medium (up to 38×14mm)', widthMm: 38, heightMm: 14, active: true, priceModifier: 50 },
-      { id: 'large', label: 'Large (up to 60×40mm)', widthMm: 60, heightMm: 40, active: true, priceModifier: 150 },
-      { id: 'custom', label: 'Custom Size', widthMm: 50, heightMm: 30, active: true, priceModifier: 100 }
+      {
+        id: 'self-inking', label: 'Self-Inking Stamp', active: true, basePrice: 250, imageUrl: null,
+        sizes: [
+          { id: 'code-0', label: 'Code 0', code: '0', widthMm: 46, heightMm: 11, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'code-1', label: 'Code 1', code: '1', widthMm: 29, heightMm: 29, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'code-2', label: 'Code 2', code: '2', widthMm: 50, heightMm: 20, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'code-3', label: 'Code 3', code: '3', widthMm: 64, heightMm: 22, active: true, priceModifier: 0, imageUrl: null }
+        ]
+      },
+      {
+        id: 'pre-inked', label: 'Pre-Inked Stamp', active: true, basePrice: 350, imageUrl: null,
+        sizes: [
+          { id: 'trodat-6900', label: 'Trodat 6900', code: '6900', widthMm: 32, heightMm: 16, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'trodat-6901', label: 'Trodat 6901', code: '6901', widthMm: 45, heightMm: 12, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'trodat-6902', label: 'Trodat 6902', code: '6902', widthMm: 59, heightMm: 17, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'trodat-6903', label: 'Trodat 6903', code: '6903', widthMm: 49, heightMm: 22, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'trodat-6904', label: 'Trodat 6904', code: '6904', widthMm: 63, heightMm: 23, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'trodat-6330', label: 'Trodat 6330', code: '6330', widthMm: 30, heightMm: 30, active: true, priceModifier: 0, imageUrl: null }
+        ]
+      },
+      {
+        // No real size chart yet — kept as a placeholder with the old generic
+        // sizes and switched off (inactive) so it's invisible to customers
+        // and excluded from admin/staff pickers until it's ready to launch.
+        id: 'rubber', label: 'Rubber Stamp (wooden handle)', active: false, basePrice: 150, imageUrl: null,
+        sizes: [
+          { id: 'small', label: 'Small (up to 25×10mm)', code: '', widthMm: 25, heightMm: 10, active: true, priceModifier: 0, imageUrl: null },
+          { id: 'medium', label: 'Medium (up to 38×14mm)', code: '', widthMm: 38, heightMm: 14, active: true, priceModifier: 50, imageUrl: null },
+          { id: 'large', label: 'Large (up to 60×40mm)', code: '', widthMm: 60, heightMm: 40, active: true, priceModifier: 150, imageUrl: null },
+          { id: 'custom', label: 'Custom Size', code: '', widthMm: 50, heightMm: 30, active: true, priceModifier: 100, imageUrl: null }
+        ]
+      }
     ],
     logoPrice: 100,
     extraQuantityPrice: 200,
@@ -630,6 +657,12 @@ function normalizeAdditionalServices(list) {
 // Stamp types/sizes: same id/label normalization convention as paper types
 // above (slugified stable id, unique, numeric prices) — referenced by id from
 // a stamp order's files_json line item, same reasoning as additionalServices.
+// Sizes live inside their type (a Self-Inking size chart and a Pre-Inked size
+// chart are unrelated real-world products, not the same list reused) — each
+// type normalizes its own `sizes` array, falling back to that same type id's
+// DEFAULT_PRICING sizes (not a generic shared list) when missing/empty, which
+// is also how a pre-restructure settings row (flat top-level `sizes`, no
+// per-type list yet) picks up the real size charts on its next read/write.
 function normalizeStampTypes(list) {
   const out = []
   const seen = new Set()
@@ -648,11 +681,19 @@ function normalizeStampTypes(list) {
     // POST /api/admin/products/upload-image), shown on /stamps step 1 so a
     // customer can see the actual product, not just a price card.
     const imageUrl = typeof row.imageUrl === 'string' && row.imageUrl.startsWith('/product-uploads/') ? row.imageUrl : null
-    out.push({ id: unique, label, active: row.active !== false, basePrice: num(row.basePrice), imageUrl })
+    const defaultType = DEFAULT_PRICING.stamps.types.find((t) => t.id === unique)
+    out.push({
+      id: unique,
+      label,
+      active: row.active !== false,
+      basePrice: num(row.basePrice),
+      imageUrl,
+      sizes: normalizeStampSizes(row.sizes, defaultType ? defaultType.sizes : [])
+    })
   })
   return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.stamps.types))
 }
-function normalizeStampSizes(list) {
+function normalizeStampSizes(list, fallback) {
   const out = []
   const seen = new Set()
   ;(Array.isArray(list) ? list : []).forEach((row) => {
@@ -664,22 +705,30 @@ function normalizeStampSizes(list) {
     let n = 2
     while (seen.has(unique)) unique = `${id}-${n++}`
     seen.add(unique)
+    // Manufacturer/catalog code (e.g. Trodat model "6900") — display-only,
+    // shown alongside the label; not used as the id (ids are slugified from
+    // the label above so they stay stable if the code is edited later).
+    const code = String(row.code || '').trim()
+    // Same admin-uploaded /product-uploads reference-photo convention as a
+    // stamp type's imageUrl above — shown on the /stamps size-picker step.
+    const imageUrl = typeof row.imageUrl === 'string' && row.imageUrl.startsWith('/product-uploads/') ? row.imageUrl : null
     out.push({
       id: unique,
       label,
+      code,
       active: row.active !== false,
       widthMm: num(row.widthMm, 25) || 25,
       heightMm: num(row.heightMm, 10) || 10,
-      priceModifier: num(row.priceModifier)
+      priceModifier: num(row.priceModifier),
+      imageUrl
     })
   })
-  return out.length ? out : JSON.parse(JSON.stringify(DEFAULT_PRICING.stamps.sizes))
+  return out.length ? out : JSON.parse(JSON.stringify(fallback || []))
 }
 function normalizeStamps(input) {
   const d = input || {}
   return {
     types: normalizeStampTypes(d.types),
-    sizes: normalizeStampSizes(d.sizes),
     logoPrice: num(d.logoPrice, DEFAULT_PRICING.stamps.logoPrice),
     extraQuantityPrice: num(d.extraQuantityPrice, DEFAULT_PRICING.stamps.extraQuantityPrice),
     requireProofApproval: d.requireProofApproval !== false
@@ -772,10 +821,13 @@ function getPricing() {
   const needsCouponsBackfill = !Array.isArray(pricing.coupons)
   // Same reasoning again for additionalServices.
   const needsServicesBackfill = !Array.isArray(pricing.additionalServices)
-  // Same reasoning again for stamps (Custom Stamp Printing).
+  // Same reasoning again for stamps (Custom Stamp Printing). Checks that
+  // every type already carries its OWN sizes array — a pre-restructure row
+  // (flat top-level `stamps.sizes` shared across types, no per-type list)
+  // fails this and gets migrated via normalizeStamps below.
   const needsStampsBackfill = !pricing.stamps ||
     !Array.isArray(pricing.stamps.types) ||
-    !Array.isArray(pricing.stamps.sizes)
+    !pricing.stamps.types.every((t) => t && Array.isArray(t.sizes))
   if (needsCoreMigration || needsPassportBackfill || needsOrderDefaultsBackfill || needsCouponsBackfill || needsServicesBackfill || needsStampsBackfill) {
     const migrated = needsCoreMigration ? migratePricing(pricing) : pricing
     migrated.passportPhotos = {

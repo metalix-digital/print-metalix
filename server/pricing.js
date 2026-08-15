@@ -64,7 +64,7 @@ function calculate(config, { files, deliveryMethod, deliveryPincode, discount })
     if (f.productType === 'stamp') {
       const stampConfig = config.stamps || {}
       const type = (stampConfig.types || []).find((t) => t.id === f.stampTypeId)
-      const size = (stampConfig.sizes || []).find((s) => s.id === f.stampSizeId)
+      const size = ((type && type.sizes) || []).find((s) => s.id === f.stampSizeId)
       const basePrice = type ? Number(type.basePrice) || 0 : 0
       const sizeModifier = size ? Number(size.priceModifier) || 0 : 0
       const logoPrice = f.hasLogo ? (Number(stampConfig.logoPrice) || 0) : 0
