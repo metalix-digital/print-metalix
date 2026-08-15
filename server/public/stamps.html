@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no"/>
 __GTM_HEAD__
 <title>Create Your Stamp — Metalix Print</title>
-<meta name="description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text, add a logo, and order online.">
+<meta name="description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text or upload your own design, and order online.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://print.metalix.in/stamps"/>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Metalix Print">
 <meta property="og:title" content="Create Your Stamp — Metalix Print">
-<meta property="og:description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text, add a logo, and order online.">
+<meta property="og:description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text or upload your own design, and order online.">
 <meta property="og:url" content="https://print.metalix.in/stamps">
 <meta property="og:image" content="https://print.metalix.in/images/logo.svg">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Create Your Stamp — Metalix Print">
-<meta name="twitter:description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text, add a logo, and order online.">
+<meta name="twitter:description" content="Design a custom self-inking, pre-inked, or rubber stamp — pick a type and size, enter your text or upload your own design, and order online.">
 <link rel="icon" type="image/svg+xml" href="/images/logo.svg"/>
 <style>
 @font-face{font-family:'Roboto';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/Roboto-variable.woff2) format('woff2');}
@@ -192,17 +192,18 @@ function showToast(msg){
   clearTimeout(t._timer); t._timer = setTimeout(function(){ t.classList.remove('show'); }, 2400);
 }
 
-// Steps are addressed by key, not position, because 'text'+'logo' vs
-// 'artwork' are mutually exclusive branches picked at the 'designMode' step —
-// a customer with their own ready-made design skips straight to uploading it
-// instead of being forced through text entry first. currentSequence() below
-// computes the actual step order/count for whichever branch is active.
-var STEP_LABELS = { type: 'Stamp type', size: 'Size', designMode: 'Your design', text: 'Your text', logo: 'Logo (optional)', artwork: 'Upload your design', quantity: 'Quantity', preview: 'Preview & add to cart' };
+// Steps are addressed by key, not position, because 'text' vs 'artwork' are
+// mutually exclusive branches picked at the 'designMode' step — a customer
+// with their own ready-made design (which can already include a logo) skips
+// straight to uploading it instead of being forced through text entry first.
+// currentSequence() below computes the actual step order/count for whichever
+// branch is active.
+var STEP_LABELS = { type: 'Stamp type', size: 'Size', designMode: 'Your design', text: 'Your text', artwork: 'Upload your design', quantity: 'Quantity', preview: 'Preview & add to cart' };
 
 function currentSequence(){
   var seq = ['type', 'size', 'designMode'];
   if (state.designMode === 'upload') seq.push('artwork');
-  else seq.push('text', 'logo'); // default branch, also used for step-count display before a choice is made
+  else seq.push('text'); // default branch, also used for step-count display before a choice is made
   seq.push('quantity', 'preview');
   return seq;
 }
@@ -214,7 +215,6 @@ var state = {
   stampSizeId: null,
   designMode: null, // 'text' | 'upload'
   textLines: [''],
-  logoFileId: null, logoFileName: null, logoObjectUrl: null, logoUploading: false,
   artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false,
   quantity: 1
 };
@@ -231,9 +231,8 @@ function computePrice(){
   var type = selectedType(), size = selectedSize();
   var base = type ? type.basePrice : 0;
   var sizeMod = size ? size.priceModifier : 0;
-  var logoPrice = state.logoFileId ? (stampConfig.logoPrice || 0) : 0;
   var extraQty = (stampConfig ? (stampConfig.extraQuantityPrice || 0) : 0) * Math.max(0, state.quantity - 1);
-  return { base: base, sizeMod: sizeMod, logoPrice: logoPrice, extraQty: extraQty, total: base + sizeMod + logoPrice + extraQty };
+  return { base: base, sizeMod: sizeMod, extraQty: extraQty, total: base + sizeMod + extraQty };
 }
 
 function renderStepProgress(){
@@ -254,7 +253,6 @@ function canAdvance(){
   if (state.step === 'size') return !!state.stampSizeId;
   if (state.step === 'designMode') return state.designMode === 'text' || state.designMode === 'upload';
   if (state.step === 'text') return state.textLines.some(function(l){ return l.trim(); });
-  if (state.step === 'logo') return !state.logoUploading;
   if (state.step === 'artwork') return !!state.artworkFileId && !state.artworkUploading;
   return true;
 }
@@ -306,12 +304,6 @@ function stepBodyHtml(){
       }).join('') + '</div>' +
       (state.textLines.length < 6 ? '<button type="button" class="add-line-btn" id="addLineBtn">+ Add line</button>' : '');
   }
-  if (state.step === 'logo') {
-    return '<h2>Add a logo</h2><div class="wizard-sub">Optional — adds ₹' + ((stampConfig && stampConfig.logoPrice) || 0) + ' to the price.</div>' +
-      (state.logoFileId
-        ? '<div class="upload-preview"><img src="' + state.logoObjectUrl + '" alt="Logo" /><div style="flex:1;"><div style="font-weight:700;font-size:13.5px;">' + escHtml(state.logoFileName) + '</div></div><button type="button" class="btn-ghost" id="removeLogoBtn" style="padding:6px 12px;">Remove</button></div>'
-        : '<div class="upload-zone" id="logoZone">' + (state.logoUploading ? 'Uploading…' : '📎 Click to upload a logo image') + '<input type="file" id="logoInput" accept="image/png,image/jpeg,image/webp" style="display:none;" /></div>');
-  }
   if (state.step === 'artwork') {
     return '<h2>Upload your design</h2><div class="wizard-sub">Image or PDF — this is exactly what we\'ll produce, so make sure it\'s the final version.</div>' +
       (state.artworkFileId
@@ -330,7 +322,6 @@ function stepBodyHtml(){
     '<div class="price-summary">' +
       '<div class="price-row"><span>' + escHtml(selectedType() ? selectedType().label : '') + '</span><span>₹' + price.base + '</span></div>' +
       (price.sizeMod ? '<div class="price-row"><span>' + escHtml(selectedSize() ? selectedSize().label : '') + '</span><span>' + (price.sizeMod > 0 ? '+' : '') + '₹' + price.sizeMod + '</span></div>' : '') +
-      (price.logoPrice ? '<div class="price-row"><span>Logo</span><span>+₹' + price.logoPrice + '</span></div>' : '') +
       (price.extraQty ? '<div class="price-row"><span>Extra quantity (×' + (state.quantity - 1) + ')</span><span>+₹' + price.extraQty + '</span></div>' : '') +
       '<div class="price-row total"><span>Total (' + state.quantity + '×)</span><span>₹' + (price.total) + '</span></div>' +
     '</div>';
@@ -361,7 +352,7 @@ function drawStampPreview(){
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // A customer who uploaded their own design has no text/logo to render —
+  // A customer who uploaded their own design has no text to render —
   // show their actual artwork in the box instead (or a fallback note for a
   // PDF, which a canvas Image element can't decode for preview purposes;
   // the real file is still what staff produce from, see the jobsheet).
@@ -389,28 +380,12 @@ function drawStampPreview(){
   }
 
   var lines = state.textLines.filter(function(l){ return l.trim(); });
-  var logoImg = null;
-  var drawText = function(){
-    var fontSize = Math.max(9, Math.min(15, (boxH - 16) / Math.max(1, lines.length) - 4));
-    ctx.font = '700 ' + fontSize + 'px Inter, sans-serif';
-    var startY = y + boxH / 2 - ((lines.length - 1) * (fontSize + 3)) / 2;
-    var textX = x + boxW / 2 + (logoImg ? 14 : 0);
-    lines.forEach(function(line, i){
-      ctx.fillText(line.toUpperCase(), textX, startY + i * (fontSize + 3));
-    });
-  };
-  if (state.logoObjectUrl) {
-    logoImg = new Image();
-    logoImg.onload = function(){
-      var logoSize = Math.min(boxH - 16, 40);
-      ctx.drawImage(logoImg, x + 10, y + boxH / 2 - logoSize / 2, logoSize, logoSize);
-      drawText();
-    };
-    logoImg.onerror = drawText;
-    logoImg.src = state.logoObjectUrl;
-  } else {
-    drawText();
-  }
+  var fontSize = Math.max(9, Math.min(15, (boxH - 16) / Math.max(1, lines.length) - 4));
+  ctx.font = '700 ' + fontSize + 'px Inter, sans-serif';
+  var startY = y + boxH / 2 - ((lines.length - 1) * (fontSize + 3)) / 2;
+  lines.forEach(function(line, i){
+    ctx.fillText(line.toUpperCase(), x + boxW / 2, startY + i * (fontSize + 3));
+  });
 }
 
 function render(){
@@ -469,19 +444,11 @@ function bindStepEvents(){
     var addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.addEventListener('click', function(){ state.textLines.push(''); render(); });
   }
-  if (state.step === 'logo') {
-    var logoZone = document.getElementById('logoZone');
-    if (logoZone) logoZone.addEventListener('click', function(){ document.getElementById('logoInput').click(); });
-    var logoInput = document.getElementById('logoInput');
-    if (logoInput) logoInput.addEventListener('change', function(){ uploadAsset(logoInput.files[0], 'logo'); });
-    var removeLogoBtn = document.getElementById('removeLogoBtn');
-    if (removeLogoBtn) removeLogoBtn.addEventListener('click', function(){ state.logoFileId = null; state.logoFileName = null; state.logoObjectUrl = null; render(); });
-  }
   if (state.step === 'artwork') {
     var artworkZone = document.getElementById('artworkZone');
     if (artworkZone) artworkZone.addEventListener('click', function(){ document.getElementById('artworkInput').click(); });
     var artworkInput = document.getElementById('artworkInput');
-    if (artworkInput) artworkInput.addEventListener('change', function(){ uploadAsset(artworkInput.files[0], 'artwork'); });
+    if (artworkInput) artworkInput.addEventListener('change', function(){ uploadAsset(artworkInput.files[0]); });
     var removeArtworkBtn = document.getElementById('removeArtworkBtn');
     if (removeArtworkBtn) removeArtworkBtn.addEventListener('click', function(){ state.artworkFileId = null; state.artworkFileName = null; state.artworkObjectUrl = null; render(); });
   }
@@ -499,27 +466,23 @@ function bindStepEvents(){
   }
 }
 
-function uploadAsset(file, kind){
+function uploadAsset(file){
   if (!file) return;
   var objectUrl = URL.createObjectURL(file);
-  if (kind === 'logo') { state.logoUploading = true; } else { state.artworkUploading = true; }
+  state.artworkUploading = true;
   render();
   var fd = new FormData();
   fd.append('file', file);
   fetch('/api/stamp-assets/upload', { method: 'POST', body: fd })
     .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
     .then(function(res){
-      if (!res.ok) { showToast(res.data.message || 'Upload failed'); if (kind === 'logo') state.logoUploading = false; else state.artworkUploading = false; render(); return; }
-      if (kind === 'logo') {
-        state.logoFileId = res.data.fileId; state.logoFileName = res.data.fileName; state.logoObjectUrl = objectUrl; state.logoUploading = false;
-      } else {
-        state.artworkFileId = res.data.fileId; state.artworkFileName = res.data.fileName; state.artworkObjectUrl = objectUrl; state.artworkUploading = false;
-      }
+      if (!res.ok) { showToast(res.data.message || 'Upload failed'); state.artworkUploading = false; render(); return; }
+      state.artworkFileId = res.data.fileId; state.artworkFileName = res.data.fileName; state.artworkObjectUrl = objectUrl; state.artworkUploading = false;
       render();
     })
     .catch(function(){
       showToast('Upload failed — please try again.');
-      if (kind === 'logo') state.logoUploading = false; else state.artworkUploading = false;
+      state.artworkUploading = false;
       render();
     });
 }
@@ -535,19 +498,18 @@ function addToCart(){
     stampSizeId: state.stampSizeId,
     stampSizeLabel: size ? size.label : '',
     textLines: state.textLines.filter(function(l){ return l.trim(); }),
-    logoFileId: state.logoFileId,
     artworkFileId: state.artworkFileId,
     unitPrice: price.total,
     quantity: state.quantity
   });
   showToast('Added to cart — configure another or head to checkout.');
   Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stamp');
-  state = { step: 'type', stampTypeId: null, stampSizeId: null, designMode: null, textLines: [''], logoFileId: null, logoFileName: null, logoObjectUrl: null, logoUploading: false, artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false, quantity: 1 };
+  state = { step: 'type', stampTypeId: null, stampSizeId: null, designMode: null, textLines: [''], artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false, quantity: 1 };
   render();
 }
 
 fetch('/api/pricing').then(function(r){ return r.json(); }).then(function(p){
-  stampConfig = p.stamps || { types: [], logoPrice: 0, extraQuantityPrice: 0 };
+  stampConfig = p.stamps || { types: [], extraQuantityPrice: 0 };
   render();
 }).catch(function(){
   document.getElementById('wizardCard').innerHTML = '<div class="wizard-sub">Could not load stamp options. Please refresh.</div>';
