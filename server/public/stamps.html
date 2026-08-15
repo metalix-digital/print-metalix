@@ -118,6 +118,10 @@ canvas#stampCanvas{border-radius:10px;background:#FFF4EB;box-shadow:0 0 0 1px rg
 .btn-ghost:disabled{opacity:.4;cursor:not-allowed;}
 .field-error{color:var(--red);font-size:12.5px;margin-top:6px;display:none;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:12px 22px;border-radius:10px;font-weight:600;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:100;}
+footer{background:#1C1917;color:#fff;padding:40px 20px;margin-top:20px;}
+.footer-inner{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;font-size:13.5px;color:#C7C2BA;}
+.footer-inner a{color:#C7C2BA;text-decoration:none;}
+.footer-inner a:hover{color:#fff;}
 .cross-sell-strip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:20px;box-shadow:var(--shadow);}
 .cross-sell-title{font-weight:700;font-size:13.5px;margin-bottom:12px;}
 .cross-sell-items{display:flex;gap:12px;overflow-x:auto;padding-bottom:2px;}
@@ -146,9 +150,6 @@ canvas#stampCanvas{border-radius:10px;background:#FFF4EB;box-shadow:0 0 0 1px rg
           <a class="nav-dd-item" href="/stamps"><span class="dd-ico">🔖</span><span><span class="dd-t">Stamps</span><span class="dd-d">Custom self-inking &amp; pre-inked</span></span></a>
         </div>
       </div>
-      <a href="/blog">Blog</a>
-      <a href="/policies/refund-reprint">Policies</a>
-      <a href="/contact">Contact</a>
       <a href="/orders">My Orders</a>
     </nav>
     <div class="h-actions">
@@ -164,6 +165,14 @@ canvas#stampCanvas{border-radius:10px;background:#FFF4EB;box-shadow:0 0 0 1px rg
   <div class="wizard-card" id="wizardCard"><div class="wizard-sub">Loading…</div></div>
   <div class="cross-sell-strip" id="crossSellStrip" style="display:none;"></div>
 </main>
+
+<footer>
+  <div class="footer-inner">
+    <span>© 2026 Metalix Print</span>
+    <span><a href="/">Home</a> · <a href="/order">Place an order</a> · <a href="/blog">Blog</a> · <a href="/policies/refund-reprint">Policies</a> · <a href="/contact">Contact</a></span>
+  </div>
+</footer>
+
 <div class="toast" id="toast"></div>
 <script src="/js/cart.js"></script>
 <script>

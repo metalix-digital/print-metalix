@@ -84,6 +84,10 @@ h1{font-size:26px;margin-bottom:20px;}
 .empty-cart{text-align:center;padding:70px 20px;color:var(--ink3);}
 .empty-cart a{color:var(--orange);font-weight:700;text-decoration:none;}
 .note{background:var(--orange-l);border:1px solid var(--line-strong);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--ink2);margin-bottom:18px;}
+footer{background:#1C1917;color:#fff;padding:40px 20px;margin-top:20px;}
+.footer-inner{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;font-size:13.5px;color:#C7C2BA;}
+.footer-inner a{color:#C7C2BA;text-decoration:none;}
+.footer-inner a:hover{color:#fff;}
 </style>
 </head>
 <body>
@@ -100,9 +104,6 @@ h1{font-size:26px;margin-bottom:20px;}
           <a class="nav-dd-item" href="/stamps"><span class="dd-ico">🔖</span><span><span class="dd-t">Stamps</span><span class="dd-d">Custom self-inking &amp; pre-inked</span></span></a>
         </div>
       </div>
-      <a href="/blog">Blog</a>
-      <a href="/policies/refund-reprint">Policies</a>
-      <a href="/contact">Contact</a>
       <a href="/orders">My Orders</a>
     </nav>
     <div class="h-actions">
@@ -118,6 +119,13 @@ h1{font-size:26px;margin-bottom:20px;}
   <div id="cartItems"></div>
   <div id="cartSummaryWrap"></div>
 </main>
+
+<footer>
+  <div class="footer-inner">
+    <span>© 2026 Metalix Print</span>
+    <span><a href="/">Home</a> · <a href="/order">Place an order</a> · <a href="/blog">Blog</a> · <a href="/policies/refund-reprint">Policies</a> · <a href="/contact">Contact</a></span>
+  </div>
+</footer>
 <script src="/js/cart.js"></script>
 <script>
 (function(){
