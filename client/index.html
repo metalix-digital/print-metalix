@@ -55,6 +55,8 @@ __GTM_HEAD__
   a.badge{text-decoration:none; cursor:pointer;}
   .cart-badge-inline{background:var(--orange); color:#fff; font-size:10px; font-weight:800; border-radius:999px; min-width:15px; height:15px; display:none; align-items:center; justify-content:center; padding:0 3px; line-height:1;}
   @media (max-width:860px){ .shop-nav{order:3; width:100%; margin-top:6px; justify-content:flex-start;} }
+  .cart-link{ border-color:var(--orange-tint-border); background:var(--orange-tint); color:var(--orange-deep); flex-shrink:0; }
+  .cart-link:hover{ border-color:var(--orange); }
   .badge .pulse{width:6px;height:6px;border-radius:50%;background:var(--green); position:relative;}
   .badge .pulse::after{content:''; position:absolute; inset:-3px; border-radius:50%; border:1px solid var(--green); animation:pulse 2s ease-out infinite;}
   @keyframes pulse{0%{transform:scale(.6);opacity:.8;}100%{transform:scale(1.8);opacity:0;}}
@@ -74,11 +76,11 @@ __GTM_HEAD__
   .profile-menu-head{ padding:10px 12px 12px; border-bottom:1px solid var(--paper-dim); margin-bottom:6px; }
   .profile-menu-head .pm-name{ font-size:13.5px; font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .profile-menu-head .pm-sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
-  .profile-menu-section{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); padding:6px 12px 4px; }
   .profile-menu-item{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:9px 12px; border-radius:9px; border:none; background:none; color:var(--ink); font-size:13.5px; font-weight:600; font-family:'Roboto',sans-serif; cursor:pointer; text-decoration:none; }
   .profile-menu-item:hover{ background:var(--paper-dim); }
   .profile-menu-item.danger{ color:var(--red); }
   .profile-menu-item.danger:hover{ background:var(--red-tint); }
+  .profile-menu-divider{ height:1px; background:var(--paper-dim); margin:6px 4px; }
 
 
   .card{ background:var(--surface); border:1px solid var(--line); border-radius:24px; box-shadow: var(--shadow); padding:44px; display:grid; grid-template-columns: 1.15fr 1fr; gap:48px; transition: box-shadow .3s ease; }
@@ -390,13 +392,12 @@ __GTM_NOSCRIPT__
     <nav class="shop-nav">
       <a class="badge" href="/stationery">🖊 Stationery</a>
       <a class="badge" href="/stamps">🔖 Stamps</a>
-      <a class="badge" href="/cart">🛒 Cart <span class="cart-badge-inline" data-cart-badge>0</span></a>
     </nav>
     <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button>
     <div class="header-actions profile-wrap hidden" id="headerActions" style="display:none; align-items:center; gap:8px;">
       <button class="btn btn-ghost profile-trigger" type="button" id="profileTrigger" aria-haspopup="true" aria-expanded="false" style="padding:9px 14px; font-size:13px;">
         <span class="profile-avatar" id="profileAvatar">•</span>
-        <span>Profile</span>
+        <span id="profileGreeting">Hi there</span>
         <span class="profile-caret">▾</span>
       </button>
       <div class="profile-menu" id="profileMenu">
@@ -404,11 +405,12 @@ __GTM_NOSCRIPT__
           <div class="pm-name" id="pmName">—</div>
           <div class="pm-sub" id="pmSub">—</div>
         </div>
-        <div class="profile-menu-section">Account</div>
         <a class="profile-menu-item" href="/orders">📦 My Orders</a>
+        <div class="profile-menu-divider"></div>
         <button class="profile-menu-item danger" type="button" id="headerLogoutBtn">↪ Log out</button>
       </div>
     </div>
+    <a class="badge cart-link" href="/cart" id="headerCartLink">🛒 Cart <span class="cart-badge-inline" data-cart-badge>0</span></a>
   </header>
 
   <div class="card" id="appCard">
@@ -847,6 +849,7 @@ const headerLogoutBtn = document.getElementById('headerLogoutBtn');
 const profileTrigger = document.getElementById('profileTrigger');
 const profileMenu = document.getElementById('profileMenu');
 const profileAvatar = document.getElementById('profileAvatar');
+const profileGreeting = document.getElementById('profileGreeting');
 const pmName = document.getElementById('pmName');
 const pmSub = document.getElementById('pmSub');
 
@@ -873,6 +876,7 @@ function showOrderingAs(user){
   pmName.textContent = displayName;
   pmSub.textContent = user.mobile || user.email || '';
   profileAvatar.textContent = displayName.trim().charAt(0).toUpperCase() || '•';
+  profileGreeting.textContent = 'Hi ' + displayName.trim().split(' ')[0];
 
   // The "ordering as" shortcut hides the editable mobile field — only safe to
   // show it when we actually have a valid mobile on file. Accounts created via
@@ -1141,13 +1145,14 @@ fetchPricing();
 // fallback baked into the markup going stale.
 (function(){
   const shopNav = document.querySelector('.shop-nav');
+  const cartLink = document.getElementById('headerCartLink');
   function hide(href){ if (!shopNav) return; const el = shopNav.querySelector('a[href="' + href + '"]'); if (el) el.style.display = 'none'; }
   fetch('/api/settings').then(r => r.json()).then(s => {
     const stationeryOn = !!s && s.stationeryEnabled === true;
     const stampsOn = !!s && s.stampsEnabled === true;
     if (!stationeryOn) hide('/stationery');
     if (!stampsOn) hide('/stamps');
-    if (!stationeryOn && !stampsOn) hide('/cart');
+    if (!stationeryOn && !stampsOn && cartLink) cartLink.style.display = 'none';
     if (s && s.phone) {
       const phoneEl = document.getElementById('footerPhone');
       if (phoneEl) { phoneEl.href = 'tel:' + s.phone.replace(/\s+/g, ''); phoneEl.textContent = '📞 ' + s.phone; }
@@ -1156,7 +1161,7 @@ fetchPricing();
       const emailEl = document.getElementById('footerEmail');
       if (emailEl) { emailEl.href = 'mailto:' + s.email; emailEl.textContent = '✉️ ' + s.email; }
     }
-  }).catch(() => { hide('/stationery'); hide('/stamps'); hide('/cart'); });
+  }).catch(() => { hide('/stationery'); hide('/stamps'); if (cartLink) cartLink.style.display = 'none'; });
 })();
 
 // Printing is one of several things a customer can add on this page, same
