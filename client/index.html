@@ -28,6 +28,14 @@ __GTM_HEAD__
   [data-theme="dark"]{ --paper:#14151D; --paper-dim:#1C1E29; --surface:#1F212C; --ink:#F7F6F1; --ink-soft:#C7CBDE; --line:#3B3F52; --line-strong:#565B72; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -16px rgba(0,0,0,.55); --orange-tint:rgba(255,102,0,.16); --orange-tint-border:rgba(255,102,0,.45); --orange-tint-strong:rgba(255,102,0,.22); --red-tint:rgba(220,38,38,.2); color-scheme:dark; }
   *{box-sizing:border-box;} html,body{margin:0;padding:0;} body{ background: radial-gradient(900px 500px at 12% -10%, rgba(255,102,0,.1), transparent 60%), radial-gradient(900px 500px at 100% 0%, rgba(225,29,116,.06), transparent 55%), radial-gradient(700px 400px at 50% 100%, rgba(14,165,233,.04), transparent 60%), var(--paper); color:var(--ink); font-family:'Roboto', system-ui, sans-serif; min-height:100vh; padding:56px 20px 80px; -webkit-font-smoothing:antialiased; transition:background-color .25s ease, color .25s ease; }
   .wrap{max-width:1080px; margin:0 auto; animation: fade-up .55s cubic-bezier(.2,.8,.3,1) both;} @keyframes fade-up{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  .order-footer{ max-width:1080px; margin:64px auto 0; padding:28px 20px 40px; border-top:1px solid var(--line); }
+  .of-trust{ display:flex; flex-wrap:wrap; justify-content:center; gap:28px; font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:22px; text-align:center; }
+  .of-row{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:14px; }
+  .of-links, .of-contact{ display:flex; flex-wrap:wrap; gap:16px; }
+  .of-links a, .of-contact a{ font-size:12.5px; font-weight:600; color:var(--ink-soft); text-decoration:none; }
+  .of-links a:hover, .of-contact a:hover{ color:var(--orange-deep); }
+  .of-bottom{ text-align:center; margin-top:22px; font-size:11.5px; color:var(--ink-soft); opacity:.7; }
+  @media(max-width:600px){ .of-row{ flex-direction:column; align-items:flex-start; } }
   header{display:flex; align-items:center; gap:18px; margin-bottom:40px; flex-wrap:wrap;}
   @media (max-width:640px){ body{padding:32px 14px 56px;} }
   @media (max-width:560px){ header{gap:12px; margin-bottom:28px;} .logo{width:48px;height:48px;border-radius:13px;} .brandname{font-size:26px;} .tagline{font-size:13px;} .badge-row{margin-left:0; width:100%; order:3;} }
@@ -642,6 +650,28 @@ __GTM_NOSCRIPT__
   </div>
 </div>
 
+<footer class="order-footer">
+  <div class="of-trust">
+    <span>🔒 Secure online payments</span>
+    <span>⏱️ 3–4 hour turnaround</span>
+    <span>🚚 Pickup or home delivery in Gurugram</span>
+  </div>
+  <div class="of-row">
+    <div class="of-links">
+      <a href="/policies/refund-reprint">Refund &amp; Reprint</a>
+      <a href="/policies/delivery">Delivery</a>
+      <a href="/policies/terms-of-service">Terms</a>
+      <a href="/policies/privacy">Privacy</a>
+      <a href="/contact">Contact</a>
+    </div>
+    <div class="of-contact">
+      <a href="tel:+917042443143" id="footerPhone">📞 +91 70424 43143</a>
+      <a href="mailto:hello@metalix.in" id="footerEmail">✉️ hello@metalix.in</a>
+    </div>
+  </div>
+  <div class="of-bottom">© 2026 Metalix Print · Gurugram</div>
+</footer>
+
 <div class="toast" id="toast">
   <div class="check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
   <span id="toastMsg">Order sent to print queue</span>
@@ -1046,17 +1076,26 @@ fetchPricing();
 // in lockstep, and Cart (shared checkout for both, not a vertical of its
 // own) hides only when neither is on. Fails CLOSED on a fetch error, same
 // reasoning as landing.html's copy of this check: never risk exposing a
-// dead link.
+// dead link. Same fetch also keeps the footer's phone/email in sync with
+// whatever the admin has actually configured, rather than the hardcoded
+// fallback baked into the markup going stale.
 (function(){
   const shopNav = document.querySelector('.shop-nav');
-  if (!shopNav) return;
-  function hide(href){ const el = shopNav.querySelector('a[href="' + href + '"]'); if (el) el.style.display = 'none'; }
+  function hide(href){ if (!shopNav) return; const el = shopNav.querySelector('a[href="' + href + '"]'); if (el) el.style.display = 'none'; }
   fetch('/api/settings').then(r => r.json()).then(s => {
     const stationeryOn = !!s && s.stationeryEnabled === true;
     const stampsOn = !!s && s.stampsEnabled === true;
     if (!stationeryOn) hide('/stationery');
     if (!stampsOn) hide('/stamps');
     if (!stationeryOn && !stampsOn) hide('/cart');
+    if (s && s.phone) {
+      const phoneEl = document.getElementById('footerPhone');
+      if (phoneEl) { phoneEl.href = 'tel:' + s.phone.replace(/\s+/g, ''); phoneEl.textContent = '📞 ' + s.phone; }
+    }
+    if (s && s.email) {
+      const emailEl = document.getElementById('footerEmail');
+      if (emailEl) { emailEl.href = 'mailto:' + s.email; emailEl.textContent = '✉️ ' + s.email; }
+    }
   }).catch(() => { hide('/stationery'); hide('/stamps'); hide('/cart'); });
 })();
 
