@@ -176,6 +176,16 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
   document.addEventListener('click', function(e){ if (!dd.contains(e.target)) dd.classList.remove('open'); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') dd.classList.remove('open'); });
 })();
+(function(){
+  // Stationery and Stamps are independently soft-launch-gated — reaching
+  // this page guarantees Stationery is on, but says nothing about Stamps,
+  // so its Services-menu item needs its own live check. Fails closed
+  // (hides it) on a fetch error rather than risking a dead link.
+  function hide(href){ document.querySelectorAll('a[href="' + href + '"]').forEach(function(el){ el.style.display = 'none'; }); }
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(s){
+    if (!s || s.stampsEnabled !== true) hide('/stamps');
+  }).catch(function(){ hide('/stamps'); });
+})();
 
 var allProducts = [];
 var allCategories = [];

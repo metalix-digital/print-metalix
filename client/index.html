@@ -37,6 +37,9 @@ __GTM_HEAD__
   .brandname{font-family:'Roboto',sans-serif; font-weight:700; font-size:34px; letter-spacing:-0.02em; margin:0; background:linear-gradient(100deg, var(--ink) 35%, var(--orange-deep) 90%); -webkit-background-clip:text; background-clip:text; color:transparent;}
   .tagline{margin:4px 0 0; color:var(--ink-soft); font-size:15px; display:flex; align-items:center; gap:8px; font-weight:500;}
   .tagline b{color:var(--ink); font-weight:600;} .tagline .dot{width:4px;height:4px;border-radius:50%;background:var(--line-strong);}
+  .site-tabs{display:flex; gap:14px; margin-top:7px; flex-wrap:wrap;}
+  .site-tabs a{font-size:12.5px; font-weight:600; color:var(--ink-soft); text-decoration:none;}
+  .site-tabs a:hover{color:var(--orange-deep);}
   .badge-row{margin-left:auto; display:flex; gap:10px;}
   .badge{font-family:'IBM Plex Mono', monospace; font-size:11.5px; font-weight:500; color:var(--ink-soft); background:var(--surface); border:1px solid var(--line); padding:7px 12px; border-radius:999px; display:flex; align-items:center; gap:6px; transition: border-color .2s ease, transform .2s ease;}
   .badge:hover{border-color:var(--line-strong); transform:translateY(-1px);}
@@ -355,10 +358,16 @@ __GTM_NOSCRIPT__
 
 <div class="wrap">
   <header>
-    <div class="logo"><img src="./metalix-logo.svg" alt="Metalix Print logo"></div>
+    <a class="logo" href="/" aria-label="Back to home"><img src="./metalix-logo.svg" alt="Metalix Print logo"></a>
     <div>
       <h1 class="brandname">Metalix Print</h1>
       <p class="tagline"><b>Upload</b><span class="dot"></span><b>Price it instantly</b><span class="dot"></span><b>We deliver</b></p>
+      <nav class="site-tabs">
+        <a href="/">Home</a>
+        <a href="/blog">Blog</a>
+        <a href="/policies/refund-reprint">Policies</a>
+        <a href="/contact">Contact</a>
+      </nav>
     </div>
     <div class="badge-row">
       <div class="badge"><span class="pulse"></span> Shop open</div>
@@ -1031,17 +1040,24 @@ function fetchPricing(){
 }
 fetchPricing();
 
-// Stationery/Stamps/Cart are soft-launch-gated (see newVerticalsEnabled() in
-// server.js — /stationery, /stamps, /cart and their APIs 404 while off) —
-// this page's own nav links to them are hidden in lockstep. Fails CLOSED
-// (hides the nav) on a fetch error, same reasoning as landing.html's copy of
-// this check: never risk exposing a dead link.
+// Stationery and Stamps are independently soft-launch-gated (see
+// stationeryEnabled()/stampsEnabled() in server.js — each vertical's own
+// routes/APIs 404 while off) — this page's own nav links to them are hidden
+// in lockstep, and Cart (shared checkout for both, not a vertical of its
+// own) hides only when neither is on. Fails CLOSED on a fetch error, same
+// reasoning as landing.html's copy of this check: never risk exposing a
+// dead link.
 (function(){
   const shopNav = document.querySelector('.shop-nav');
   if (!shopNav) return;
+  function hide(href){ const el = shopNav.querySelector('a[href="' + href + '"]'); if (el) el.style.display = 'none'; }
   fetch('/api/settings').then(r => r.json()).then(s => {
-    if (!s || s.newVerticalsEnabled !== true) shopNav.style.display = 'none';
-  }).catch(() => { shopNav.style.display = 'none'; });
+    const stationeryOn = !!s && s.stationeryEnabled === true;
+    const stampsOn = !!s && s.stampsEnabled === true;
+    if (!stationeryOn) hide('/stationery');
+    if (!stampsOn) hide('/stamps');
+    if (!stationeryOn && !stampsOn) hide('/cart');
+  }).catch(() => { hide('/stationery'); hide('/stamps'); hide('/cart'); });
 })();
 
 // Printing is one of several things a customer can add on this page, same

@@ -892,16 +892,19 @@ function setPricing(pricing) {
 
 const DEFAULT_SITE_SETTINGS = {
   shopOpen: true,
-  // Soft-launch gate for the Stationery/Stamps/Cart vertical — opt-IN
-  // (defaults false, unlike shopOpen's opt-out) so a fresh install, or an
-  // existing settings row saved before this key existed, never accidentally
-  // exposes it to customers. Toggled from the General settings tab; gates
-  // the /stationery, /stamps, /cart routes and their public catalog/
-  // cross-sell APIs down to a real 404 while off (see newVerticalsEnabled()
-  // in server.js) — admin tooling (Products/Inventory/Stamp Settings tabs,
-  // walk-in order creation) stays fully usable throughout so the catalog can
-  // be prepared ahead of the actual launch.
-  newVerticalsEnabled: false,
+  // Soft-launch gates for Stationery and Stamps — independent opt-INs
+  // (default false, unlike shopOpen's opt-out) so a fresh install, or an
+  // existing settings row saved before these keys existed, never
+  // accidentally exposes either to customers. Toggled independently from
+  // the General settings tab; each gates its own routes and public catalog
+  // API down to a real 404 while off (see stationeryEnabled()/
+  // stampsEnabled() in server.js) — admin tooling (Products/Inventory/
+  // Stamp Settings tabs, walk-in order creation) stays fully usable
+  // throughout so either catalog can be prepared ahead of its own launch.
+  // /cart is live whenever either one is, since it's shared checkout
+  // infrastructure for both, not a vertical of its own.
+  stationeryEnabled: false,
+  stampsEnabled: false,
   businessName: 'Metalix Print',
   phone: '+91 98765 43210',
   whatsapp: '+91 98765 43210',
@@ -954,6 +957,17 @@ function getSiteSettings() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('site')
   if (!row) return DEFAULT_SITE_SETTINGS
   const stored = JSON.parse(row.value)
+  // One-time migration: the old single newVerticalsEnabled flag (which
+  // gated Stationery, Stamps, and Cart together) split into independent
+  // per-vertical toggles. A row saved before this split carries the old
+  // key but neither new one — backfill both from it so a site that was
+  // already live doesn't silently go dark the moment this deploys.
+  if (stored.newVerticalsEnabled !== undefined && stored.stationeryEnabled === undefined && stored.stampsEnabled === undefined) {
+    stored.stationeryEnabled = stored.newVerticalsEnabled === true
+    stored.stampsEnabled = stored.newVerticalsEnabled === true
+    delete stored.newVerticalsEnabled
+    setSiteSettings(stored)
+  }
   return {
     ...DEFAULT_SITE_SETTINGS,
     ...stored,

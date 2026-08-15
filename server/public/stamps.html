@@ -184,6 +184,16 @@ canvas#stampCanvas{border-radius:10px;background:#FFF4EB;box-shadow:0 0 0 1px rg
   document.addEventListener('click', function(e){ if (!dd.contains(e.target)) dd.classList.remove('open'); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') dd.classList.remove('open'); });
 })();
+(function(){
+  // Stationery and Stamps are independently soft-launch-gated — reaching
+  // this page guarantees Stamps is on, but says nothing about Stationery,
+  // so its Services-menu item needs its own live check. Fails closed
+  // (hides it) on a fetch error rather than risking a dead link.
+  function hide(href){ document.querySelectorAll('a[href="' + href + '"]').forEach(function(el){ el.style.display = 'none'; }); }
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(s){
+    if (!s || s.stationeryEnabled !== true) hide('/stationery');
+  }).catch(function(){ hide('/stationery'); });
+})();
 
 function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
 function showToast(msg){

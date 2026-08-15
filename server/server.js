@@ -528,17 +528,17 @@ function publicProduct(p) {
     inStock: p.stock_qty > 0
   }
 }
-// All four routes below are gated by newVerticalsEnabled() — while off they
-// 404 exactly like the /stationery, /stamps, /cart pages themselves, so the
-// catalog can't be discovered by hitting the API directly even with the nav
-// links hidden. Admin's own catalog endpoints (/api/admin/products etc.) are
-// never gated — see newVerticalsEnabled()'s comment above.
+// All three routes below are gated by stationeryEnabled() — while off they
+// 404 exactly like the /stationery page itself, so the catalog can't be
+// discovered by hitting the API directly even with the nav link hidden.
+// Admin's own catalog endpoints (/api/admin/products etc.) are never gated
+// — see stationeryEnabled()'s comment above.
 app.get('/api/product-categories', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  if (!stationeryEnabled()) return res.status(404).json({ error: 'not_found' })
   res.json({ categories: db.listProductCategories({ includeInactive: false }).map((c) => ({ id: c.id, name: c.name, slug: c.slug, description: c.description })) })
 })
 app.get('/api/products', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  if (!stationeryEnabled()) return res.status(404).json({ error: 'not_found' })
   // ?category is a slug (URL-friendly, matches the categories endpoint and
   // the /:slug product route), resolved to an id server-side for filtering.
   let categoryId
@@ -550,7 +550,7 @@ app.get('/api/products', (req, res) => {
   res.json({ products: products.map(publicProduct) })
 })
 app.get('/api/products/:slug', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  if (!stationeryEnabled()) return res.status(404).json({ error: 'not_found' })
   const product = db.getProductBySlug(req.params.slug)
   if (!product || !product.active) return res.status(404).json({ error: 'not_found' })
   res.json({ product: publicProduct(product) })
@@ -562,7 +562,7 @@ app.get('/api/products/:slug', (req, res) => {
 // product. Same safe DTO as the products list above — never cost_price/raw
 // stock_qty.
 app.get('/api/cross-sell', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).json({ error: 'not_found' })
+  if (!anyVerticalEnabled()) return res.status(404).json({ error: 'not_found' })
   const trigger = String(req.query.trigger || '')
   if (!trigger) return res.json({ products: [] })
   const rows = db.listCrossSellRulesForTrigger(trigger)
@@ -3839,15 +3839,22 @@ function isShopOpen() {
   return db.getSiteSettings().shopOpen !== false
 }
 
-// Soft-launch gate for Stationery/Stamps/Cart (see DEFAULT_SITE_SETTINGS in
-// db.js) — explicit opt-in, checked at the /stationery, /stamps, /cart
-// routes and their public catalog/cross-sell APIs (all return a real 404
-// while off, same as newVerticalsEnabled() === false being indistinguishable
-// from the route never having existed). Admin endpoints are never gated by
-// this — Products/Inventory/Stamp Settings/walk-in order creation must stay
-// usable so the catalog can be fully prepared before flipping this on.
-function newVerticalsEnabled() {
-  return db.getSiteSettings().newVerticalsEnabled === true
+// Independent soft-launch gates for Stationery and Stamps (see
+// DEFAULT_SITE_SETTINGS in db.js) — explicit opt-in, checked at each
+// vertical's own routes/APIs (real 404 while off, same as the route never
+// having existed). Admin endpoints are never gated by these — Products/
+// Inventory/Stamp Settings/walk-in order creation must stay usable so
+// either catalog can be fully prepared before flipping it on.
+function stationeryEnabled() {
+  return db.getSiteSettings().stationeryEnabled === true
+}
+function stampsEnabled() {
+  return db.getSiteSettings().stampsEnabled === true
+}
+// /cart and /api/cross-sell are shared by both verticals, not a vertical of
+// their own — live whenever either one is.
+function anyVerticalEnabled() {
+  return stationeryEnabled() || stampsEnabled()
 }
 
 // Kept in sync by hand with the <details class="faq-item"> markup in
@@ -4460,19 +4467,19 @@ app.get('/jobsheet.html', (req, res) => {
 // stationery.html / cart.html), same GTM-substitution pattern as every
 // other public page here.
 app.get('/stationery', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  if (!stationeryEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
   const gtm = gtmSnippets(db.getSiteSettings())
   const template = readPublicTemplate('stationery.html')
   res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 app.get('/cart', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  if (!anyVerticalEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
   const gtm = gtmSnippets(db.getSiteSettings())
   const template = readPublicTemplate('cart.html')
   res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))
 })
 app.get('/stamps', (req, res) => {
-  if (!newVerticalsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
+  if (!stampsEnabled()) return res.status(404).sendFile(path.join(publicDir, 'not-found.html'))
   const gtm = gtmSnippets(db.getSiteSettings())
   const template = readPublicTemplate('stamps.html')
   res.send(template.split('__GTM_HEAD__').join(gtm.head).split('__GTM_NOSCRIPT__').join(gtm.noscript))

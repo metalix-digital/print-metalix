@@ -4854,17 +4854,23 @@ async function loadSettings(){
   const res = await fetch('/api/settings');
   const s = await res.json();
   const shopOpen = s.shopOpen !== false;
-  const newVerticals = s.newVerticalsEnabled === true;
+  const stationeryLive = s.stationeryEnabled === true;
+  const stampsLive = s.stampsEnabled === true;
   form.innerHTML =
     '<div class="shop-toggle-box' + (shopOpen ? '' : ' closed') + '" id="shopToggleBox">' +
       '<div><div class="stb-label">Shop is ' + (shopOpen ? 'Open' : 'Closed') + '</div>' +
       '<div class="stb-sub">' + (shopOpen ? 'The full website is live for customers.' : 'Visitors see a "we\'re closed" page instead of the site.') + '</div></div>' +
       '<label class="shop-switch"><input type="checkbox" id="shopOpenToggle"' + (shopOpen ? ' checked' : '') + '><span class="slider"></span></label>' +
     '</div>' +
-    '<div class="shop-toggle-box' + (newVerticals ? '' : ' closed') + '" id="newVerticalsToggleBox">' +
-      '<div><div class="stb-label">Stationery &amp; Stamps are ' + (newVerticals ? 'Live' : 'Hidden') + '</div>' +
-      '<div class="stb-sub">' + (newVerticals ? '/stationery, /stamps and /cart are live — customers can browse and buy.' : 'Customers get a real 404 on /stationery, /stamps, /cart and their APIs — fully invisible. Product/Inventory/Stamp Settings tabs stay usable so you can prepare everything first.') + '</div></div>' +
-      '<label class="shop-switch"><input type="checkbox" id="newVerticalsToggle"' + (newVerticals ? ' checked' : '') + '><span class="slider"></span></label>' +
+    '<div class="shop-toggle-box' + (stationeryLive ? '' : ' closed') + '" id="stationeryToggleBox">' +
+      '<div><div class="stb-label">Stationery is ' + (stationeryLive ? 'Live' : 'Hidden') + '</div>' +
+      '<div class="stb-sub">' + (stationeryLive ? '/stationery is live — customers can browse and buy.' : 'Customers get a real 404 on /stationery and its catalog API — fully invisible. Products/Inventory tabs stay usable so you can prepare the catalog first.') + '</div></div>' +
+      '<label class="shop-switch"><input type="checkbox" id="stationeryToggle"' + (stationeryLive ? ' checked' : '') + '><span class="slider"></span></label>' +
+    '</div>' +
+    '<div class="shop-toggle-box' + (stampsLive ? '' : ' closed') + '" id="stampsToggleBox">' +
+      '<div><div class="stb-label">Stamps is ' + (stampsLive ? 'Live' : 'Hidden') + '</div>' +
+      '<div class="stb-sub">' + (stampsLive ? '/stamps is live — customers can design and order custom stamps.' : 'Customers get a real 404 on /stamps. Stamp Settings tab stays usable so you can prepare types/sizes first.') + '</div></div>' +
+      '<label class="shop-switch"><input type="checkbox" id="stampsToggle"' + (stampsLive ? ' checked' : '') + '><span class="slider"></span></label>' +
     '</div>' +
     '<h2>Contact information</h2><div class="field-grid">' +
       textFieldHtml('Business name', 'businessName', s.businessName) +
@@ -4926,13 +4932,22 @@ async function loadSettings(){
       : 'Visitors see a "we\'re closed" page instead of the site.';
     saveSettings();
   });
-  document.getElementById('newVerticalsToggle').addEventListener('change', (e) => {
-    const box = document.getElementById('newVerticalsToggleBox');
+  document.getElementById('stationeryToggle').addEventListener('change', (e) => {
+    const box = document.getElementById('stationeryToggleBox');
     box.classList.toggle('closed', !e.target.checked);
-    box.querySelector('.stb-label').textContent = 'Stationery & Stamps are ' + (e.target.checked ? 'Live' : 'Hidden');
+    box.querySelector('.stb-label').textContent = 'Stationery is ' + (e.target.checked ? 'Live' : 'Hidden');
     box.querySelector('.stb-sub').textContent = e.target.checked
-      ? '/stationery, /stamps and /cart are live — customers can browse and buy.'
-      : 'Customers get a real 404 on /stationery, /stamps, /cart and their APIs — fully invisible. Product/Inventory/Stamp Settings tabs stay usable so you can prepare everything first.';
+      ? '/stationery is live — customers can browse and buy.'
+      : 'Customers get a real 404 on /stationery and its catalog API — fully invisible. Products/Inventory tabs stay usable so you can prepare the catalog first.';
+    saveSettings();
+  });
+  document.getElementById('stampsToggle').addEventListener('change', (e) => {
+    const box = document.getElementById('stampsToggleBox');
+    box.classList.toggle('closed', !e.target.checked);
+    box.querySelector('.stb-label').textContent = 'Stamps is ' + (e.target.checked ? 'Live' : 'Hidden');
+    box.querySelector('.stb-sub').textContent = e.target.checked
+      ? '/stamps is live — customers can design and order custom stamps.'
+      : 'Customers get a real 404 on /stamps. Stamp Settings tab stays usable so you can prepare types/sizes first.';
     saveSettings();
   });
 }
@@ -4943,7 +4958,8 @@ async function saveSettings(){
   const settings = {
     legal: {}, social: {}, seo: {}, storeTimings: {}, analytics: {},
     shopOpen: document.getElementById('shopOpenToggle').checked,
-    newVerticalsEnabled: document.getElementById('newVerticalsToggle').checked
+    stationeryEnabled: document.getElementById('stationeryToggle').checked,
+    stampsEnabled: document.getElementById('stampsToggle').checked
   };
   document.querySelectorAll('#settingsForm input[data-key], #settingsForm textarea[data-key]').forEach((input) => {
     const path = input.dataset.key.split('.');

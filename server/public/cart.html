@@ -137,6 +137,17 @@ h1{font-size:26px;margin-bottom:20px;}
   document.addEventListener('click', function(e){ if (!dd.contains(e.target)) dd.classList.remove('open'); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') dd.classList.remove('open'); });
 })();
+(function(){
+  // Stationery and Stamps are independently soft-launch-gated — /cart is
+  // reachable whenever either one is on, which says nothing about the
+  // other, so both Services-menu items need their own live check. Fails
+  // closed (hides them) on a fetch error rather than risking dead links.
+  function hide(href){ document.querySelectorAll('a[href="' + href + '"]').forEach(function(el){ el.style.display = 'none'; }); }
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(s){
+    if (!s || s.stationeryEnabled !== true) hide('/stationery');
+    if (!s || s.stampsEnabled !== true) hide('/stamps');
+  }).catch(function(){ hide('/stationery'); hide('/stamps'); });
+})();
 
 function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
 

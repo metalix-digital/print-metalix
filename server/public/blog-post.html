@@ -200,6 +200,20 @@ themeToggle.addEventListener('click', () => {
   document.addEventListener('click', (e) => { if (!dd.contains(e.target)) dd.classList.remove('open'); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dd.classList.remove('open'); });
 })();
+(function(){
+  // Stationery and Stamps are independently soft-launch-gated, and this
+  // page is reachable regardless of either — Services-menu items and the
+  // Cart link all need their own live check. Fails closed (hides them) on
+  // a fetch error rather than risking dead links.
+  function hide(href){ document.querySelectorAll('a[href="' + href + '"]').forEach((el) => { el.style.display = 'none'; }); }
+  fetch('/api/settings').then((r) => r.json()).then((s) => {
+    const stationeryOn = !!s && s.stationeryEnabled === true;
+    const stampsOn = !!s && s.stampsEnabled === true;
+    if (!stationeryOn) hide('/stationery');
+    if (!stampsOn) hide('/stamps');
+    if (!stationeryOn && !stampsOn) hide('/cart');
+  }).catch(() => { hide('/stationery'); hide('/stamps'); hide('/cart'); });
+})();
 
 // The article itself is server-rendered (see /blog/:slug in server.js) so it's
 // there for crawlers with no JS involved — this just wires up the one bit of
