@@ -60,6 +60,23 @@ header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-fil
 .h-space{flex:1;}
 nav a{font-size:14px;font-weight:600;color:var(--ink2);text-decoration:none;padding:8px 14px;border-radius:8px;}
 nav a:hover{color:var(--ink);background:var(--surface-hover);}
+/* Services — one dropdown for Print/Stationery/Stamps instead of a lone
+   "Place an order" link, kept in sync across every page's header. */
+.nav-dropdown{position:relative;display:inline-block;}
+.nav-dd-trigger{font:inherit;font-family:'Roboto',sans-serif;background:none;border:none;cursor:pointer;color:var(--ink2);font-weight:600;font-size:14px;padding:8px 14px;border-radius:8px;display:inline-flex;align-items:center;gap:4px;vertical-align:middle;}
+.nav-dd-trigger:hover{color:var(--ink);background:var(--surface-hover);}
+.nav-dropdown.open .nav-dd-trigger{color:var(--orange-text);}
+.dd-caret{font-size:10px;transition:transform .15s;}
+.nav-dropdown.open .dd-caret{transform:rotate(180deg);}
+.nav-dd-panel{position:absolute;top:calc(100% + 6px);left:0;background:var(--white);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.14);padding:8px;min-width:250px;display:none;flex-direction:column;gap:2px;z-index:60;}
+.nav-dropdown.open .nav-dd-panel{display:flex;}
+.nav-dd-item{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:9px;text-decoration:none;color:var(--ink);}
+.nav-dd-item:hover{background:var(--orange-l);}
+.dd-ico{width:30px;height:30px;border-radius:8px;background:var(--orange-l);color:var(--orange-text);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.dd-t{display:block;font-weight:700;font-size:13.5px;color:var(--ink);}
+.dd-d{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px;font-weight:400;}
+.cart-link-mini{text-decoration:none;color:var(--ink2);font-weight:600;font-size:14px;padding:8px 12px;border-radius:8px;}
+.cart-link-mini:hover{color:var(--ink);background:var(--surface-hover);}
 .theme-toggle{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:var(--white);color:var(--ink3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-left:8px;transition:border-color .15s,transform .15s;}
 .theme-toggle:hover{border-color:var(--line-hover);transform:translateY(-1px);}
 
@@ -142,7 +159,12 @@ __GTM_NOSCRIPT__
       <span>Metalix Print</span>
     </a>
     <div class="h-space"></div>
-    <nav><a href="/">Home</a> <a href="/blog">Blog</a> <a href="/policies/refund-reprint">Policies</a> <a href="/contact">Contact</a> <a href="/order">Place an order</a></nav>
+    <nav><a href="/">Home</a> <div class="nav-dropdown" id="svcDropdown"><button type="button" class="nav-dd-trigger" id="svcTrigger">Services <span class="dd-caret">▾</span></button><div class="nav-dd-panel">
+          <a class="nav-dd-item" href="/order"><span class="dd-ico">🖨️</span><span><span class="dd-t">Print</span><span class="dd-d">Upload &amp; print documents</span></span></a>
+          <a class="nav-dd-item" href="/stationery"><span class="dd-ico">📎</span><span><span class="dd-t">Stationery</span><span class="dd-d">Pens, files, envelopes &amp; more</span></span></a>
+          <a class="nav-dd-item" href="/stamps"><span class="dd-ico">🔖</span><span><span class="dd-t">Stamps</span><span class="dd-d">Custom self-inking &amp; pre-inked</span></span></a>
+        </div></div> <a href="/blog">Blog</a> <a href="/policies/refund-reprint">Policies</a> <a href="/contact">Contact</a> <a href="/orders">My Orders</a></nav>
+    <a class="cart-link-mini" href="/cart">🛒 Cart</a>
     <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span id="themeToggleIcon">🌙</span></button>
   </div>
 </header>
@@ -170,6 +192,14 @@ themeToggle.addEventListener('click', () => {
   localStorage.setItem('metalix_theme', next);
   syncThemeIcon();
 });
+(function(){
+  const dd = document.getElementById('svcDropdown');
+  const trigger = document.getElementById('svcTrigger');
+  if (!dd || !trigger) return;
+  trigger.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
+  document.addEventListener('click', (e) => { if (!dd.contains(e.target)) dd.classList.remove('open'); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dd.classList.remove('open'); });
+})();
 
 // The article itself is server-rendered (see /blog/:slug in server.js) so it's
 // there for crawlers with no JS involved — this just wires up the one bit of

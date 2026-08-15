@@ -31,12 +31,36 @@ body{font-family:'Roboto',sans-serif;background:var(--paper);color:var(--ink);-w
 a{color:inherit;}
 h1{font-family:'Roboto',sans-serif;}
 header{position:sticky;top:0;z-index:40;background:var(--paper);border-bottom:1px solid var(--line);}
-.header-inner{max-width:900px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:16px;}
-.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Roboto';font-weight:800;font-size:19px;color:var(--ink);}
+.header-inner{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:22px;}
+.h-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:'Roboto';font-weight:800;font-size:19px;color:var(--ink);flex-shrink:0;}
 .h-logo img{height:30px;width:30px;}
 .h-logo span:last-child{color:var(--orange);}
-.h-back{margin-left:auto;text-decoration:none;color:var(--ink2);font-weight:600;font-size:14px;}
+nav.main-nav{display:flex;align-items:center;gap:4px;flex:1;flex-wrap:wrap;}
+nav.main-nav a{text-decoration:none;color:var(--ink2);font-weight:600;font-size:14.5px;padding:8px 12px;border-radius:8px;transition:.15s;}
+nav.main-nav a:hover{background:var(--orange-l);color:var(--orange-d);}
+nav.main-nav a.active{background:var(--orange-l);color:var(--orange-d);}
+/* Services — one dropdown for Print/Stationery/Stamps instead of three
+   competing top-level nav items, kept in sync across every page's header. */
+.nav-dropdown{position:relative;}
+.nav-dd-trigger{font:inherit;font-family:'Roboto',sans-serif;background:none;border:none;cursor:pointer;color:var(--ink2);font-weight:600;font-size:14.5px;padding:8px 12px;border-radius:8px;display:flex;align-items:center;gap:4px;}
+.nav-dd-trigger:hover, .nav-dropdown.open .nav-dd-trigger, .nav-dd-trigger.active{background:var(--orange-l);color:var(--orange-d);}
+.dd-caret{font-size:10px;transition:transform .15s;}
+.nav-dropdown.open .dd-caret{transform:rotate(180deg);}
+.nav-dd-panel{position:absolute;top:calc(100% + 6px);left:0;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:8px;min-width:250px;display:none;flex-direction:column;gap:2px;z-index:60;}
+.nav-dropdown.open .nav-dd-panel{display:flex;}
+.nav-dd-item{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:9px;text-decoration:none;color:var(--ink);}
+.nav-dd-item:hover{background:var(--orange-l);}
+.dd-ico{width:30px;height:30px;border-radius:8px;background:var(--orange-l);color:var(--orange-d);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.dd-t{display:block;font-weight:700;font-size:13.5px;}
+.dd-d{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px;font-weight:400;}
+.h-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cart-link{position:relative;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink);font-weight:700;font-size:14px;background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;padding:8px 14px;}
+.cart-badge{background:var(--orange);color:#fff;font-size:11px;font-weight:800;border-radius:999px;min-width:18px;height:18px;display:none;align-items:center;justify-content:center;padding:0 5px;}
+.theme-toggle{background:var(--card);border:1.5px solid var(--line-strong);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;}
+.back-row{margin-bottom:16px;}
+.h-back{text-decoration:none;color:var(--ink2);font-weight:600;font-size:14px;}
 main{max-width:900px;margin:0 auto;padding:28px 20px 100px;}
+@media (max-width:640px){ nav.main-nav{order:3;width:100%;} .header-inner{flex-wrap:wrap;} }
 h1{font-size:26px;margin-bottom:20px;}
 .cart-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:12px;box-shadow:var(--shadow);}
 .ci-thumb{width:56px;height:56px;border-radius:10px;background:var(--orange-l);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;overflow:hidden;}
@@ -66,11 +90,30 @@ h1{font-size:26px;margin-bottom:20px;}
 <header>
   <div class="header-inner">
     <a class="h-logo" href="/"><img src="/images/logo.svg" alt="Metalix Print"><span>Metalix<span> Print</span></span></a>
-    <a class="h-back" href="/stationery">← Continue shopping</a>
+    <nav class="main-nav">
+      <a href="/">Home</a>
+      <div class="nav-dropdown" id="svcDropdown">
+        <button type="button" class="nav-dd-trigger" id="svcTrigger">Services <span class="dd-caret">▾</span></button>
+        <div class="nav-dd-panel">
+          <a class="nav-dd-item" href="/order"><span class="dd-ico">🖨️</span><span><span class="dd-t">Print</span><span class="dd-d">Upload &amp; print documents</span></span></a>
+          <a class="nav-dd-item" href="/stationery"><span class="dd-ico">📎</span><span><span class="dd-t">Stationery</span><span class="dd-d">Pens, files, envelopes &amp; more</span></span></a>
+          <a class="nav-dd-item" href="/stamps"><span class="dd-ico">🔖</span><span><span class="dd-t">Stamps</span><span class="dd-d">Custom self-inking &amp; pre-inked</span></span></a>
+        </div>
+      </div>
+      <a href="/blog">Blog</a>
+      <a href="/policies/refund-reprint">Policies</a>
+      <a href="/contact">Contact</a>
+      <a href="/orders">My Orders</a>
+    </nav>
+    <div class="h-actions">
+      <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+      <a class="cart-link" href="/cart">🛒 Cart <span class="cart-badge" data-cart-badge>0</span></a>
+    </div>
   </div>
 </header>
 <main>
   <h1>Your Cart</h1>
+  <div class="back-row"><a class="h-back" href="/stationery">← Continue shopping</a></div>
   <div class="note">Printing items (documents / photos) are configured and added on the <a href="/order" style="color:var(--orange-d);font-weight:700;">Print</a> page — they'll appear together with everything below at checkout.</div>
   <div id="cartItems"></div>
   <div id="cartSummaryWrap"></div>
@@ -81,6 +124,18 @@ h1{font-size:26px;margin-bottom:20px;}
   var THEME_KEY = 'metalix_theme';
   function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); }
   applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(cur); localStorage.setItem(THEME_KEY, cur);
+  });
+})();
+(function(){
+  var dd = document.getElementById('svcDropdown');
+  var trigger = document.getElementById('svcTrigger');
+  if (!dd || !trigger) return;
+  trigger.addEventListener('click', function(e){ e.stopPropagation(); dd.classList.toggle('open'); });
+  document.addEventListener('click', function(e){ if (!dd.contains(e.target)) dd.classList.remove('open'); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') dd.classList.remove('open'); });
 })();
 
 function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
