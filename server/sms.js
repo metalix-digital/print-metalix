@@ -39,16 +39,29 @@ async function sendOrderConfirmationSms(order) {
   return true
 }
 
-// Deliberately disabled — customers should only receive status SMS (order
-// confirmation, order completed), never a payment-link text. Left as a
-// no-op stub rather than removed so callers (payment-link generation, New
-// Order's "send a payment link" option) don't need touching: they already
-// treat smsSent: false as "share the link manually" and fall back to
-// copying it to the admin's clipboard, so this just always takes that path.
+// Unlike the status SMS above, this only ever fires from an explicit staff
+// action — the admin's "Send payment link" button on an existing order, or
+// New Order's "send a payment link" option — never automatically, so it
+// stays request-only by construction rather than needing its own gate here.
+// Separate DLT template from order-confirmation — India's carrier-side
+// filtering is content-locked per template, so a differently-worded message
+// needs its own registered template/SID before it can actually deliver.
+// Until TWILIO_PAYMENT_LINK_TEMPLATE_SID is set, this just logs — the admin
+// can still copy/share the link manually from the dashboard.
 async function sendPaymentLinkSms(order, linkUrl) {
   if (!order || !order.customer_mobile) return false
-  console.log(`[sms] payment-link SMS disabled -> ${order.customer_mobile}: pay for order ${order.id} at ${linkUrl}`)
-  return false
+  const client = getClient()
+  if (!client || !process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID) {
+    console.log(`[sms] stub -> ${order.customer_mobile}: pay for order ${order.id} at ${linkUrl}`)
+    return false
+  }
+  await client.messages.create({
+    to: toE164India(order.customer_mobile),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+    contentSid: process.env.TWILIO_PAYMENT_LINK_TEMPLATE_SID,
+    contentVariables: JSON.stringify({ '1': order.id, '2': linkUrl })
+  })
+  return true
 }
 
 // Separate DLT template again, same reasoning as sendPaymentLinkSms — needs
