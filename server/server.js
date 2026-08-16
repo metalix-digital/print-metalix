@@ -525,7 +525,20 @@ function publicProduct(p) {
   return {
     id: p.id, sku: p.sku, name: p.name, slug: p.slug, description: p.description,
     categoryId: p.category_id, price: p.price, mrp: p.mrp, images: p.images,
-    inStock: p.stock_qty > 0
+    inStock: p.stock_qty > 0, kind: 'product'
+  }
+}
+// Same public-DTO role as publicProduct above, but for a cross-sell rule
+// recommending a stamp type instead of a stationery product — a stamp type
+// has no stock/SKU/slug, and (unlike stationery) can't be one-click-added to
+// cart since it still needs a size and text/artwork, so the client renders
+// it as a link into /stamps rather than an instant "+ Add" (see cart.js).
+function publicStampRecommendation(stampType) {
+  return {
+    id: 'stamp:' + stampType.id, sku: null, name: stampType.label, slug: null, description: null,
+    categoryId: null, price: stampType.basePrice, mrp: null,
+    images: stampType.imageUrl ? [stampType.imageUrl] : [],
+    inStock: true, kind: 'stamp', stampTypeId: stampType.id
   }
 }
 // All three routes below are gated by stationeryEnabled() — while off they
@@ -560,13 +573,16 @@ app.get('/api/products/:slug', (req, res) => {
 // 'productType:document'/'stationery'/'stamp' (fired from cart.js right
 // after Cart.add()) or 'product:<id>' for a rule scoped to one specific
 // product. Same safe DTO as the products list above — never cost_price/raw
-// stock_qty.
+// stock_qty. A recommendation can point at either a stationery product or a
+// stamp type — db.listCrossSellRulesForTrigger returns which kind each rule
+// resolved to (already filtered to active-only), shaped here into the same
+// public DTO family as the rest of this file.
 app.get('/api/cross-sell', (req, res) => {
   if (!anyVerticalEnabled()) return res.status(404).json({ error: 'not_found' })
   const trigger = String(req.query.trigger || '')
   if (!trigger) return res.json({ products: [] })
   const rows = db.listCrossSellRulesForTrigger(trigger)
-  res.json({ products: rows.map(publicProduct) })
+  res.json({ products: rows.map((r) => r.kind === 'stamp' ? publicStampRecommendation(r.stampType) : publicProduct(r.product)) })
 })
 
 // Public — surfaces at most one coupon (the first active, not-yet-expired
@@ -1226,6 +1242,22 @@ function isValidCrossSellTrigger(trigger) {
   if (typeof trigger === 'string' && trigger.startsWith('product:')) return !!db.getProductById(trigger.slice('product:'.length))
   return false
 }
+// A recommendation is either a stationery product id (existing behavior) or
+// 'stamp:<stampTypeId>' pointing at an active admin-configured stamp type —
+// resolves the same way db.listCrossSellRulesForTrigger does, so a rule can
+// never be saved pointing at something the public endpoint would then
+// silently drop.
+function resolveCrossSellRecommendation(value) {
+  if (typeof value !== 'string' || !value) return null
+  if (value.startsWith('stamp:')) {
+    const stampTypeId = value.slice('stamp:'.length)
+    const types = ((db.getPricing().stamps || {}).types || [])
+    const type = types.find((t) => t.id === stampTypeId && t.active)
+    return type ? 'stamp:' + type.id : null
+  }
+  const product = db.getProductById(value)
+  return product ? product.id : null
+}
 
 app.get('/api/admin/cross-sell-rules', requireSuperAdmin, (req, res) => {
   res.json({ rules: db.listCrossSellRules({ includeInactive: true }) })
@@ -1234,10 +1266,10 @@ app.get('/api/admin/cross-sell-rules', requireSuperAdmin, (req, res) => {
 app.post('/api/admin/cross-sell-rules', requireSuperAdmin, express.json(), (req, res) => {
   const { triggerType, recommendedProductId, sortOrder, active } = req.body || {}
   if (!isValidCrossSellTrigger(triggerType)) return res.status(400).json({ error: 'invalid_trigger', message: 'Choose a valid trigger.' })
-  const product = db.getProductById(recommendedProductId)
-  if (!product) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product to recommend.' })
+  const resolved = resolveCrossSellRecommendation(recommendedProductId)
+  if (!resolved) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product or stamp to recommend.' })
   const rule = db.createCrossSellRule({
-    id: crypto.randomUUID(), trigger_type: triggerType, recommended_product_id: product.id,
+    id: crypto.randomUUID(), trigger_type: triggerType, recommended_product_id: resolved,
     sort_order: Number(sortOrder) || 0, active: active !== false
   })
   return res.json({ rule })
@@ -1248,10 +1280,10 @@ app.put('/api/admin/cross-sell-rules/:id', requireSuperAdmin, express.json(), (r
   if (!existing) return res.status(404).json({ error: 'not_found' })
   const { triggerType, recommendedProductId, sortOrder, active } = req.body || {}
   if (!isValidCrossSellTrigger(triggerType)) return res.status(400).json({ error: 'invalid_trigger', message: 'Choose a valid trigger.' })
-  const product = db.getProductById(recommendedProductId)
-  if (!product) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product to recommend.' })
+  const resolved = resolveCrossSellRecommendation(recommendedProductId)
+  if (!resolved) return res.status(400).json({ error: 'invalid_product', message: 'Choose a product or stamp to recommend.' })
   const rule = db.updateCrossSellRule(existing.id, {
-    trigger_type: triggerType, recommended_product_id: product.id, sort_order: Number(sortOrder) || 0, active: active !== false
+    trigger_type: triggerType, recommended_product_id: resolved, sort_order: Number(sortOrder) || 0, active: active !== false
   })
   return res.json({ rule })
 })

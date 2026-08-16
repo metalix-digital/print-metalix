@@ -268,6 +268,12 @@
   // your order" strip into containerEl — called right after Cart.add() on
   // /stationery and /stamps. Silently renders nothing if there's no matching
   // rule, so a page with no cross-sell configured never shows an empty box.
+  // A recommendation is either a stationery product (kind: 'product',
+  // one-click add — unchanged) or a stamp type (kind: 'stamp') — a stamp
+  // can't be one-click-added since it still needs a size and text/artwork,
+  // so that card links into the full /stamps designer instead, pre-selecting
+  // the recommended type and bringing the customer back here once they've
+  // added it (same returnTo pattern /order's "Add a stamp" link uses).
   function renderCrossSellStrip(containerEl, trigger) {
     if (!containerEl) return;
     fetch('/api/cross-sell?trigger=' + encodeURIComponent(trigger))
@@ -278,15 +284,18 @@
         containerEl.style.display = '';
         containerEl.innerHTML = '<div class="cross-sell-title">Complete your order — you may also need</div>' +
           '<div class="cross-sell-items">' + products.map(function (p) {
-            var thumb = (p.images && p.images[0]) ? '<img src="' + escHtml(p.images[0]) + '" alt="">' : '📦';
+            var thumb = (p.images && p.images[0]) ? '<img src="' + escHtml(p.images[0]) + '" alt="">' : (p.kind === 'stamp' ? '🔖' : '📦');
+            var action = p.kind === 'stamp'
+              ? '<a class="cross-sell-add" href="/stamps?returnTo=' + encodeURIComponent(window.location.pathname) + '&preselectType=' + encodeURIComponent(p.stampTypeId) + '">Configure →</a>'
+              : '<button type="button" class="cross-sell-add" data-product-id="' + escHtml(p.id) + '">+ Add</button>';
             return '<div class="cross-sell-item">' +
               '<div class="cross-sell-thumb">' + thumb + '</div>' +
               '<div class="cross-sell-name">' + escHtml(p.name) + '</div>' +
-              '<div class="cross-sell-price">₹' + p.price + '</div>' +
-              '<button type="button" class="cross-sell-add" data-product-id="' + escHtml(p.id) + '">+ Add</button>' +
+              '<div class="cross-sell-price">' + (p.kind === 'stamp' ? 'from ' : '') + '₹' + p.price + '</div>' +
+              action +
             '</div>';
           }).join('') + '</div>';
-        containerEl.querySelectorAll('.cross-sell-add').forEach(function (btn) {
+        containerEl.querySelectorAll('button.cross-sell-add').forEach(function (btn) {
           btn.addEventListener('click', function () {
             var p = products.find(function (x) { return x.id === btn.dataset.productId; });
             if (!p) return;

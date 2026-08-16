@@ -4385,6 +4385,12 @@ const CROSS_SELL_TRIGGER_OPTIONS = [
   { value: 'productType:stamp', label: 'Custom Stamp (any stamp added)' }
 ];
 let crossSellRulesList = [];
+// A recommendation can point at a stationery product (existing) or a stamp
+// type (value 'stamp:<id>') — fetched independently here (the public
+// endpoint, same one customer-facing pages use) rather than depending on
+// noPricingConfig, since Settings' various loadX() calls in showDash() all
+// fire in parallel with no guaranteed order.
+let crossSellStampTypes = [];
 
 function crossSellTriggerOptionsHtml(selected){
   const opts = CROSS_SELL_TRIGGER_OPTIONS.concat(
@@ -4393,9 +4399,20 @@ function crossSellTriggerOptionsHtml(selected){
   return opts.map((o) => '<option value="' + escHtml(o.value) + '"' + (o.value === selected ? ' selected' : '') + '>' + escHtml(o.label) + '</option>').join('');
 }
 function crossSellProductOptionsHtml(selected){
-  return productsList.filter((p) => p.active).map((p) =>
-    '<option value="' + escHtml(p.id) + '"' + (p.id === selected ? ' selected' : '') + '>' + escHtml(p.name) + '</option>'
-  ).join('');
+  let html = '';
+  const products = productsList.filter((p) => p.active);
+  if (products.length) {
+    html += '<optgroup label="Stationery">' + products.map((p) =>
+      '<option value="' + escHtml(p.id) + '"' + (p.id === selected ? ' selected' : '') + '>' + escHtml(p.name) + '</option>'
+    ).join('') + '</optgroup>';
+  }
+  if (crossSellStampTypes.length) {
+    html += '<optgroup label="Stamps">' + crossSellStampTypes.map((t) => {
+      const value = 'stamp:' + t.id;
+      return '<option value="' + escHtml(value) + '"' + (value === selected ? ' selected' : '') + '>' + escHtml(t.label) + '</option>';
+    }).join('') + '</optgroup>';
+  }
+  return html;
 }
 function crossSellRowHtml(rule){
   rule = rule || { id: '', trigger_type: 'productType:document', recommended_product_id: '', sort_order: 0, active: true };
@@ -4422,6 +4439,11 @@ async function loadCrossSellRules(){
     // Products must be loaded first — the trigger/product dropdowns are
     // built from productsList (see crossSellTriggerOptionsHtml above).
     if (!productsList.length) await loadProducts();
+    try {
+      const pricingRes = await fetch('/api/pricing');
+      const pricingData = await pricingRes.json();
+      crossSellStampTypes = ((pricingData.stamps || {}).types || []).filter((t) => t.active);
+    } catch (e) { crossSellStampTypes = []; }
     const res = await adminFetch('/api/admin/cross-sell-rules');
     const data = await res.json();
     crossSellRulesList = data.rules || [];
@@ -4433,8 +4455,8 @@ async function loadCrossSellRules(){
 
 function renderCrossSellTable(){
   const wrap = document.getElementById('crossSellWrap');
-  if (!productsList.length) {
-    wrap.innerHTML = '<p class="subtle">Add at least one product in the Products tab before configuring cross-sell rules.</p>';
+  if (!productsList.length && !crossSellStampTypes.length) {
+    wrap.innerHTML = '<p class="subtle">Add at least one product in the Products tab, or an active stamp type in Stamp Settings, before configuring cross-sell rules.</p>';
     return;
   }
   wrap.innerHTML =

@@ -1445,17 +1445,30 @@ function listCrossSellRules({ includeInactive } = {}) {
 }
 
 // Active rules for one trigger, joined with their (also active) recommended
-// product — the public cross-sell endpoint's exact query. A rule pointing at
-// a since-deactivated/deleted product is silently skipped, never shown as a
-// broken recommendation. Looks up each product via getProductById (not a
-// raw SQL JOIN) specifically so `images` comes back hydrated into a real
-// array — a raw `p.*` join would leak the column's raw JSON-string value
+// item — the public cross-sell endpoint's exact query. A rule pointing at a
+// since-deactivated/deleted product or stamp type is silently skipped, never
+// shown as a broken recommendation. Looks up each product via getProductById
+// (not a raw SQL JOIN) specifically so `images` comes back hydrated into a
+// real array — a raw `p.*` join would leak the column's raw JSON-string value
 // instead, same bug class `hydrateProduct` exists to prevent everywhere else.
+// recommended_product_id is either a plain product id, or 'stamp:<id>' for a
+// rule recommending a stamp type (see resolveCrossSellRecommendation in
+// server.js) — returns { kind: 'product', product } or { kind: 'stamp',
+// stampType } so the caller can shape each into its own public DTO.
 function listCrossSellRulesForTrigger(triggerType) {
   const rules = db.prepare('SELECT * FROM cross_sell_rules WHERE trigger_type = ? AND active = 1 ORDER BY sort_order ASC').all(triggerType)
+  const stampTypes = ((getPricing().stamps || {}).types || [])
   return rules
-    .map((r) => getProductById(r.recommended_product_id))
-    .filter((p) => p && p.active)
+    .map((r) => {
+      const rid = r.recommended_product_id
+      if (typeof rid === 'string' && rid.startsWith('stamp:')) {
+        const stampType = stampTypes.find((t) => t.id === rid.slice('stamp:'.length) && t.active)
+        return stampType ? { kind: 'stamp', stampType } : null
+      }
+      const product = getProductById(rid)
+      return (product && product.active) ? { kind: 'product', product } : null
+    })
+    .filter(Boolean)
 }
 
 function updateCrossSellRule(id, updates) {
