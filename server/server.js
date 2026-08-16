@@ -2232,6 +2232,145 @@ app.post('/api/admin/orders/:id/add-service', requireAdmin, requireTab('orders')
   return res.json({ order: updated })
 })
 
+// Adds one more "quick print line" to an already-placed order — same rate-
+// card-priced, no-file-required shape as New Order's Quick Print flow (the
+// admin walk-in create path), for the common "customer's back, print 5 more
+// of this" case. Same reasoning/allowance as add-service above: never
+// touches what was already printed/delivered, only appends a line, so it's
+// allowed regardless of payment status.
+app.post('/api/admin/orders/:id/add-print-line', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  const { pageSize, paperType, printMode, printSide, quantity } = req.body || {}
+  const pricingConfig = db.getPricing()
+  const pageSizeIds = (pricingConfig.pageSizes || []).filter((s) => s.active).map((s) => s.id)
+  if (!pageSizeIds.includes(pageSize)) {
+    return res.status(400).json({ error: 'missing_page_size', message: 'Select a page size.' })
+  }
+  const paperTypeRow = (pricingConfig.rates[pageSize] || []).find((t) => t.id === paperType)
+  if (!paperTypeRow) {
+    return res.status(400).json({ error: 'missing_paper_type', message: 'Select a paper type.' })
+  }
+  const VALID_MODES = ['color', 'bw']
+  const mode = VALID_MODES.includes(printMode) ? printMode : 'bw'
+  const side = mode === 'color' ? 'single' : (printSide === 'double' ? 'double' : 'single')
+  const safeQty = Math.max(1, Math.min(999, Math.round(Number(quantity)) || 1))
+  const sizeLabel = (pricingConfig.pageSizes.find((s) => s.id === pageSize) || {}).label || pageSize
+  const modeLabel = mode === 'color' ? 'Color' : (side === 'double' ? 'B&W Double' : 'B&W Single')
+
+  let currentFiles = []
+  try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
+  if (!currentFiles.length && order.file_path) {
+    currentFiles = [{
+      fileId: order.file_path, fileName: order.file_name, fileType: order.file_type,
+      pageCount: order.page_count, colorPageCount: 0,
+      printMode: order.print_mode, orientation: order.orientation,
+      printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type, copies: order.copies
+    }]
+  }
+  const newFiles = [...currentFiles, {
+    itemId: crypto.randomUUID().slice(0, 8),
+    productType: 'document', fileId: null,
+    fileName: sizeLabel + ' · ' + paperTypeRow.label + ' · ' + modeLabel,
+    fileType: null, fileSize: 0,
+    pageCount: 1, colorPageCount: mode === 'color' ? 1 : 0,
+    printMode: mode, orientation: 'portrait', printSide: side, pageSize, paperType, copies: safeQty
+  }]
+
+  const discount = order.discount_type ? { type: order.discount_type, value: order.discount_value, minOrderValue: 0 } : null
+  const calc = pricing.calculate(pricingConfig, {
+    files: newFiles.map(toPricingFile),
+    deliveryMethod: order.delivery_method || 'pickup',
+    deliveryPincode: order.delivery_pincode,
+    discount
+  })
+  newFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+  const productTypesPresent = new Set(newFiles.map((f) => f.productType))
+
+  const updated = db.updateOrder(order.id, {
+    files_json: JSON.stringify(newFiles),
+    product_type: productTypesPresent.size === 1 ? newFiles[0].productType : 'mixed',
+    print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
+    delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
+    gst_amount: calc.gstAmount,
+    total_amount: calc.totalAmount
+  })
+  return res.json({ order: updated })
+})
+
+// Adds a stationery line (a real inventory-tracked product, not a print job)
+// to an already-placed order. Unlike add-print-line/add-service, this has a
+// real stock implication — but db.decrementStockForOrder re-decrements EVERY
+// stationery line's full quantity on each call (it isn't idempotent per-item,
+// see its own comment), so calling it here would double-decrement every line
+// already on the order. Decrements only this new line's own quantity
+// instead, directly, mirroring decrementStockForOrder's per-item logic but
+// scoped to just this one item. Rejects outright on insufficient stock
+// (same as the general PATCH edit route's stationery-quantity check) rather
+// than partially fulfilling, since this is a fresh add, not an
+// already-captured payment that can't be unwound.
+app.post('/api/admin/orders/:id/add-stationery', requireAdmin, requireTab('orders'), express.json(), (req, res) => {
+  const order = db.getOrder(req.params.id)
+  if (!ownsOrder(req, order)) return res.status(404).json({ error: 'not_found' })
+  const { productId, quantity } = req.body || {}
+  const product = productId ? db.getProductById(productId) : null
+  if (!product || !product.active) {
+    return res.status(400).json({ error: 'invalid_product', message: 'Select a valid stationery product.' })
+  }
+  const safeQty = Math.max(1, Math.min(999, Math.round(Number(quantity)) || 1))
+  if (safeQty > product.stock_qty) {
+    return res.status(400).json({ error: 'insufficient_stock', message: `Only ${product.stock_qty} left in stock for "${product.name}".` })
+  }
+
+  let currentFiles = []
+  try { currentFiles = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { currentFiles = [] }
+  if (!currentFiles.length && order.file_path) {
+    currentFiles = [{
+      fileId: order.file_path, fileName: order.file_name, fileType: order.file_type,
+      pageCount: order.page_count, colorPageCount: 0,
+      printMode: order.print_mode, orientation: order.orientation,
+      printSide: order.print_side, pageSize: order.paper_size, paperType: order.paper_type, copies: order.copies
+    }]
+  }
+
+  const newItem = {
+    itemId: crypto.randomUUID().slice(0, 8),
+    productType: 'stationery', fileId: null, fileName: product.name, fileType: null, fileSize: 0,
+    productId: product.id, sku: product.sku, name: product.name, unitPrice: product.price,
+    quantity: safeQty, itemStatus: 'pending', stockDecrementedQty: safeQty
+  }
+  db.decrementStockForNewItem(product.id, safeQty, `${order.id}:${newItem.itemId}`)
+
+  const newFiles = [...currentFiles, newItem]
+  const discount = order.discount_type ? { type: order.discount_type, value: order.discount_value, minOrderValue: 0 } : null
+  const calc = pricing.calculate(db.getPricing(), {
+    files: newFiles.map(toPricingFile),
+    deliveryMethod: order.delivery_method || 'pickup',
+    deliveryPincode: order.delivery_pincode,
+    discount
+  })
+  newFiles.forEach((f, i) => { if (calc.fileBreakdown[i]) Object.assign(f, calc.fileBreakdown[i]) })
+  const productTypesPresent = new Set(newFiles.map((f) => f.productType))
+
+  const updated = db.updateOrder(order.id, {
+    files_json: JSON.stringify(newFiles),
+    product_type: productTypesPresent.size === 1 ? newFiles[0].productType : 'mixed',
+    print_cost: calc.printCost,
+    services_cost: calc.servicesCost,
+    stationery_cost: calc.stationeryCost,
+    stamp_cost: calc.stampCost,
+    delivery_charge: calc.deliveryCharge,
+    handling_charge: calc.handlingCharge,
+    gst_amount: calc.gstAmount,
+    total_amount: calc.totalAmount
+  })
+  return res.json({ order: updated })
+})
+
 // Removes one Additional Service line item added via add-service above.
 // Identified by array index (not serviceId) since an order can carry more
 // than one line for the same service. Unlike add-service, this can only

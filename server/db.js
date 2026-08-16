@@ -1344,6 +1344,22 @@ function decrementStockForOrder(order) {
   return { shortfalls }
 }
 
+// Decrements stock for exactly one item — used when staff add a stationery
+// line to an order that's already been confirmed (and already had its
+// original lines decremented via decrementStockForOrder above). That
+// function re-decrements every stationery line's FULL quantity on each
+// call rather than skipping ones already accounted for, so calling it again
+// here would double-decrement every pre-existing line; this instead touches
+// only the one product/quantity/reference the caller passes in. The caller
+// is expected to have already rejected an over-quantity request — this
+// always decrements the full requested amount (no partial/shortfall
+// handling, unlike decrementStockForOrder's payment-already-captured case).
+function decrementStockForNewItem(productId, quantity, reference) {
+  db.prepare('UPDATE products SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?').run(quantity, Date.now(), productId)
+  db.prepare(`INSERT INTO stock_ledger (id, product_id, delta, reason, reference, admin_id, note, created_at)
+    VALUES (?, ?, ?, 'order', ?, NULL, NULL, ?)`).run(crypto.randomUUID(), productId, -quantity, reference, Date.now())
+}
+
 // Symmetric to decrementStockForOrder — restores exactly what was actually
 // decremented for each item (stockDecrementedQty), never the original
 // requested quantity, so a previously-undersold order (see shortfalls above)
@@ -2145,6 +2161,7 @@ module.exports = {
   adjustStock,
   listStockLedger,
   decrementStockForOrder,
+  decrementStockForNewItem,
   restoreStockForOrder,
   createStampProof,
   getLatestStampProofForItem,

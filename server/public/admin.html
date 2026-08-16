@@ -486,6 +486,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .no-file-table select,.no-file-table input{width:100%;border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);}
 .no-file-table .no-file-remove{border:none;background:none;color:var(--ink3);cursor:pointer;font-size:15px;}
 .no-file-table .no-file-remove:hover{color:var(--red,#c0392b);}
+/* Edit-order's Files table specifically — wider than the New Order tables
+   above so the Size/Paper dropdowns (e.g. "Normal (70–75 GSM)") have room
+   to actually show their selected text instead of being crushed to an
+   unreadable sliver. */
+.edit-order-modal{max-width:900px;}
+#eoFileTable{min-width:760px;}
+#eoFileTable .eo-f-size{min-width:110px;}
+#eoFileTable .eo-f-paper{min-width:190px;}
+#eoFileTable .eo-f-mode,#eoFileTable .eo-f-side{min-width:90px;}
+#eoFileTable .eo-row-summary{color:var(--ink);font-size:12.5px;}
+#eoFileTable .eo-row-summary .opt{color:var(--ink3);}
+#eoFileTable .eo-f-qty{width:70px;}
 .no-stamp-card{border:1.5px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--card);}
 .no-stamp-card .field-grid{margin-bottom:8px;}
 .no-stamp-card textarea{width:100%;border:1.5px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:12.5px;background:var(--card);color:var(--ink);resize:vertical;}
@@ -1253,7 +1265,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 </div>
 
 <div class="modal-overlay hidden" id="editOrderModal">
-  <div class="modal-card blog-modal new-order-modal" role="dialog" aria-modal="true">
+  <div class="modal-card blog-modal new-order-modal edit-order-modal" role="dialog" aria-modal="true">
     <div class="blog-modal-head">
       <h3 class="modal-title">Edit order <span id="eoOrderIdLabel"></span></h3>
       <button class="blog-modal-close" id="editOrderModalClose" type="button" aria-label="Close">✕</button>
@@ -1276,7 +1288,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
-        <label>Files <span class="opt">(print options only — files themselves can't be changed here)</span></label>
+        <label>Files <span class="opt">(existing files' print options and quantities can be edited here — to add a new item, use "Add an item" below)</span></label>
         <div class="table-scroll">
         <table class="no-file-table" id="eoFileTable">
           <thead><tr><th>File</th><th>Size</th><th>Paper</th><th>Mode</th><th>Sides</th><th>Copies</th></tr></thead>
@@ -1344,13 +1356,26 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
 
       <div class="field">
-        <label>Add a service <span class="opt">(e.g. photo editing — adds to the bill immediately, even on a paid order; collect the extra amount separately)</span></label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <select id="eoServiceSelect" style="flex:1;min-width:160px;"></select>
-          <input type="number" id="eoServiceQty" min="1" max="999" value="1" style="width:70px;" />
-          <button type="button" class="btn-file" id="eoAddServiceBtn">+ Add to bill</button>
+        <label>Add an item <span class="opt">(adds to the bill immediately, even on a paid order — collect the extra amount separately)</span></label>
+        <div class="seg-row">
+          <label class="seg-opt"><input type="radio" name="eoAddItemType" value="print" checked /><span>Print line</span></label>
+          <label class="seg-opt"><input type="radio" name="eoAddItemType" value="stationery" /><span>Stationery</span></label>
+          <label class="seg-opt"><input type="radio" name="eoAddItemType" value="service" /><span>Service</span></label>
         </div>
-        <div class="save-message hidden" id="eoServiceMsg"></div>
+        <div id="eoAddPrintFields" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <select id="eoPrintRateSelect" style="flex:1;min-width:220px;"></select>
+          <input type="number" id="eoPrintQty" min="1" max="999" value="1" style="width:70px;" title="Copies" />
+        </div>
+        <div id="eoAddStationeryFields" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <select id="eoStationerySelect" style="flex:1;min-width:220px;"></select>
+          <input type="number" id="eoStationeryQty" min="1" max="999" value="1" style="width:70px;" title="Quantity" />
+        </div>
+        <div id="eoAddServiceFields" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <select id="eoServiceSelect" style="flex:1;min-width:220px;"></select>
+          <input type="number" id="eoServiceQty" min="1" max="999" value="1" style="width:70px;" title="Quantity" />
+        </div>
+        <button type="button" class="btn-file" id="eoAddItemBtn" style="margin-top:10px;">+ Add to bill</button>
+        <div class="save-message hidden" id="eoAddItemMsg"></div>
       </div>
 
       <div class="field">
@@ -6363,9 +6388,47 @@ document.querySelectorAll('input[name=eoDiscountMode]').forEach((r) => r.addEven
   document.getElementById('eoDiscountCustomFields').classList.toggle('hidden', e.target.value !== 'custom');
 }));
 
+// A non-document line (stamp/service/passport-photo) has none of
+// pageSize/paperType/printMode/printSide/copies — rendering the document
+// controls for it showed meaningless defaults (Size/Paper/Mode all
+// snapping to whatever's first in noPageSizeOptions, Copies blank since
+// those items use `quantity`, not `copies`). Describe it instead; only
+// stationery's quantity is actually editable via this general PATCH flow
+// server-side (see server.js's mergedFiles branch), so that's the only
+// non-document field given a live input here.
+function eoStampSummaryText(f){
+  const stamps = (noPricingConfig.stamps || {});
+  const type = (stamps.types || []).find((t) => t.id === f.stampTypeId);
+  const size = type ? (type.sizes || []).find((s) => s.id === f.stampSizeId) : null;
+  const parts = [type ? type.label : 'Custom Stamp', size ? size.label : null].filter(Boolean);
+  return parts.join(' · ') + (f.textLines && f.textLines.length ? ' — "' + f.textLines[0] + '"' : '');
+}
+function eoPassportSummaryText(f){
+  const presets = ((noPricingConfig.passportPhotos || {}).sizePresets || []);
+  const preset = presets.find((s) => s.id === f.sizePresetId);
+  return (preset ? preset.label : 'Passport photo') + (f.packQty ? ' · Pack of ' + f.packQty : '');
+}
+function eoServiceSummaryText(f){
+  const svc = (noPricingConfig.additionalServices || []).find((s) => s.id === f.serviceId);
+  return svc ? svc.label : (f.fileName || 'Service');
+}
 function eoFileRowHtml(f, idx){
-  const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>').join('');
-  const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label) + '</option>').join('');
+  const productType = f.productType || 'document';
+  if (productType === 'stationery') {
+    return '<tr data-idx="' + idx + '">' +
+      '<td colspan="5" class="eo-row-summary">' + escHtml(f.name || f.fileName || 'Stationery') + (f.sku ? ' <span class="opt">(SKU ' + escHtml(f.sku) + ')</span>' : '') + '</td>' +
+      '<td><input type="number" class="eo-f-qty" min="1" max="999" value="' + (f.quantity != null ? f.quantity : 1) + '" /></td>' +
+    '</tr>';
+  }
+  if (productType === 'stamp' || productType === 'service' || productType === 'passport-photo') {
+    const summary = productType === 'stamp' ? eoStampSummaryText(f) : (productType === 'service' ? eoServiceSummaryText(f) : eoPassportSummaryText(f));
+    return '<tr data-idx="' + idx + '">' +
+      '<td colspan="5" class="eo-row-summary">' + escHtml(summary) + ' <span class="opt">(not editable here)</span></td>' +
+      '<td>' + (f.quantity != null ? f.quantity : 1) + '</td>' +
+    '</tr>';
+  }
+  const sizeOptions = noPageSizeOptions.map((s) => '<option value="' + s.id + '"' + (f.pageSize === s.id ? ' selected' : '') + '>' + escHtml(s.label || s.id) + '</option>').join('');
+  const paperOptions = noPaperOptionsForSize(f.pageSize).map((p) => '<option value="' + p.id + '"' + (f.paperType === p.id ? ' selected' : '') + '>' + escHtml(p.label || p.id) + '</option>').join('');
   return '<tr data-idx="' + idx + '">' +
     '<td>' + escHtml(f.fileName || f.fileId || '') + (f.pageCount ? ' <span class="opt">(' + f.pageCount + 'p)</span>' : '') + '</td>' +
     '<td><select class="eo-f-size">' + sizeOptions + '</select></td>' +
@@ -6397,6 +6460,7 @@ document.getElementById('eoFileTableBody').addEventListener('change', (e) => {
   }
   if (e.target.classList.contains('eo-f-side')) f.printSide = e.target.value;
   if (e.target.classList.contains('eo-f-copies')) f.copies = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
+  if (e.target.classList.contains('eo-f-qty')) f.quantity = Math.max(1, Math.min(999, Math.round(Number(e.target.value)) || 1));
 });
 
 document.querySelectorAll('input[name=eoDelivery]').forEach((r) => r.addEventListener('change', (e) => {
@@ -6436,7 +6500,16 @@ async function openEditOrderModal(order){
     if (!noPageSizeOptions.length) noPageSizeOptions = [{ id: 'a4', label: 'A4' }];
     noPaperTypeOptions = ((cfg.rates && cfg.rates.a4) || []).map((t) => ({ id: t.id, label: t.label }));
     if (!noPaperTypeOptions.length) noPaperTypeOptions = [{ id: 'normal', label: 'Normal' }];
+    noQuickRates = buildNoQuickRates();
   } catch (e) { /* keep whatever paper types were already loaded */ }
+  // Best-effort, same as the New Order modal's own product fetch — a branch
+  // admin without Products-tab access just won't see stationery as an
+  // addable item type.
+  try {
+    const res = await adminFetch('/api/admin/products');
+    const data = await res.json();
+    noProductCatalog = (res.ok && Array.isArray(data.products) ? data.products : []).filter((p) => p.active);
+  } catch (e) { noProductCatalog = []; }
   renderEoFileTable();
   if (isPaid) {
     document.querySelectorAll('#eoFileTableBody input, #eoFileTableBody select').forEach((el) => { el.disabled = true; });
@@ -6460,41 +6533,87 @@ async function openEditOrderModal(order){
   document.getElementById('eoDiscountValue').value = order.discount_value || '';
   document.getElementById('eoDiscountReason').value = order.discount_reason || '';
 
+  const printRateSelect = document.getElementById('eoPrintRateSelect');
+  printRateSelect.innerHTML = noQuickRates.length
+    ? noQuickRates.map((r, i) => '<option value="' + i + '">' + escHtml(r.label) + '</option>').join('')
+    : '<option value="">No page sizes/rates configured</option>';
+  document.getElementById('eoPrintQty').value = 1;
+
+  const stationerySelect = document.getElementById('eoStationerySelect');
+  stationerySelect.innerHTML = noProductCatalog.length
+    ? noProductCatalog.map((p, i) => '<option value="' + i + '">' + escHtml(p.name) + ' (SKU ' + escHtml(p.sku) + ') — ₹' + p.price + ' · ' + p.stock_qty + ' in stock</option>').join('')
+    : '<option value="">No stationery products active — add one in Products</option>';
+  document.getElementById('eoStationeryQty').value = 1;
+
   const svcCatalog = (noPricingConfig.additionalServices || []).filter((s) => s.active);
   const svcSelect = document.getElementById('eoServiceSelect');
   svcSelect.innerHTML = svcCatalog.length
     ? svcCatalog.map((s) => '<option value="' + escHtml(s.id) + '">' + escHtml(s.label) + ' — ₹' + s.price + '</option>').join('')
     : '<option value="">No services configured — add one in Pricing</option>';
   document.getElementById('eoServiceQty').value = 1;
-  document.getElementById('eoServiceMsg').classList.add('hidden');
+
+  document.querySelector('input[name=eoAddItemType][value=print]').checked = true;
+  setEoAddItemType('print');
+  document.getElementById('eoAddItemMsg').classList.add('hidden');
 
   const msg = document.getElementById('editOrderModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   editOrderModal.classList.remove('hidden');
   editOrderModal.classList.add('show');
 }
-document.getElementById('eoAddServiceBtn').addEventListener('click', async () => {
+function setEoAddItemType(type){
+  document.getElementById('eoAddPrintFields').style.display = type === 'print' ? 'flex' : 'none';
+  document.getElementById('eoAddStationeryFields').style.display = type === 'stationery' ? 'flex' : 'none';
+  document.getElementById('eoAddServiceFields').style.display = type === 'service' ? 'flex' : 'none';
+}
+document.querySelectorAll('input[name=eoAddItemType]').forEach((r) => r.addEventListener('change', (e) => setEoAddItemType(e.target.value)));
+
+document.getElementById('eoAddItemBtn').addEventListener('click', async () => {
   if (!eoCurrentOrder) return;
-  const serviceId = document.getElementById('eoServiceSelect').value;
-  const svcMsg = document.getElementById('eoServiceMsg');
-  if (!serviceId) { svcMsg.textContent = 'No service selected.'; svcMsg.className = 'save-message error'; svcMsg.classList.remove('hidden'); return; }
-  const quantity = Math.max(1, Math.min(999, Math.round(Number(document.getElementById('eoServiceQty').value)) || 1));
-  const btn = document.getElementById('eoAddServiceBtn');
+  const itemMsg = document.getElementById('eoAddItemMsg');
+  const btn = document.getElementById('eoAddItemBtn');
+  const type = document.querySelector('input[name=eoAddItemType]:checked').value;
+
+  let endpoint, body;
+  if (type === 'print') {
+    const rate = noQuickRates[Number(document.getElementById('eoPrintRateSelect').value)];
+    if (!rate) { itemMsg.textContent = 'No rate selected.'; itemMsg.className = 'save-message error'; itemMsg.classList.remove('hidden'); return; }
+    const quantity = Math.max(1, Math.min(999, Math.round(Number(document.getElementById('eoPrintQty').value)) || 1));
+    endpoint = 'add-print-line';
+    body = { pageSize: rate.pageSize, paperType: rate.paperType, printMode: rate.printMode, printSide: rate.printSide, quantity };
+  } else if (type === 'stationery') {
+    const product = noProductCatalog[Number(document.getElementById('eoStationerySelect').value)];
+    if (!product) { itemMsg.textContent = 'No product selected.'; itemMsg.className = 'save-message error'; itemMsg.classList.remove('hidden'); return; }
+    const quantity = Math.max(1, Math.min(999, Math.round(Number(document.getElementById('eoStationeryQty').value)) || 1));
+    endpoint = 'add-stationery';
+    body = { productId: product.id, quantity };
+  } else {
+    const serviceId = document.getElementById('eoServiceSelect').value;
+    if (!serviceId) { itemMsg.textContent = 'No service selected.'; itemMsg.className = 'save-message error'; itemMsg.classList.remove('hidden'); return; }
+    const quantity = Math.max(1, Math.min(999, Math.round(Number(document.getElementById('eoServiceQty').value)) || 1));
+    endpoint = 'add-service';
+    body = { serviceId, quantity };
+  }
+
   btn.disabled = true; btn.textContent = 'Adding…';
   try {
-    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(eoCurrentOrder.id) + '/add-service', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serviceId, quantity })
+    const res = await adminFetch('/api/admin/orders/' + encodeURIComponent(eoCurrentOrder.id) + '/' + endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || 'Could not add service');
+    if (!res.ok) throw new Error(data.message || data.error || 'Could not add item');
     eoCurrentOrder = data.order;
-    svcMsg.textContent = 'Added — new total ₹' + data.order.total_amount + '.';
-    svcMsg.className = 'save-message'; svcMsg.classList.remove('hidden');
+    let files = [];
+    try { files = data.order.files_json ? JSON.parse(data.order.files_json) : []; } catch (e) { files = []; }
+    eoFiles = files.map((f) => ({ ...f }));
+    renderEoFileTable();
+    itemMsg.textContent = 'Added — new total ₹' + data.order.total_amount + '.';
+    itemMsg.className = 'save-message'; itemMsg.classList.remove('hidden');
     loadOrders();
   } catch (err) {
     if (err.message !== 'unauthorized') {
-      svcMsg.textContent = err.message || 'Could not add service.';
-      svcMsg.className = 'save-message error'; svcMsg.classList.remove('hidden');
+      itemMsg.textContent = err.message || 'Could not add item.';
+      itemMsg.className = 'save-message error'; itemMsg.classList.remove('hidden');
     }
   } finally {
     btn.disabled = false; btn.textContent = '+ Add to bill';
@@ -6578,7 +6697,13 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
         delivery_city: deliveryMethod === 'delivery' ? deliveryCity : null,
         delivery_state: deliveryMethod === 'delivery' ? deliveryState : null,
         delivery_pincode: deliveryMethod === 'delivery' ? deliveryPincode : null,
-        files: eoFiles.map((f) => ({ fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies })),
+        // itemId is what the server actually matches overrides against
+        // (server.js's overridesById) — fileId alone is null/shared across
+        // every stationery, stamp, and no-file print line, so without it
+        // edits to any of those silently no-op instead of applying. quantity
+        // rides along for stationery (the only non-document field this
+        // general flow can actually change server-side).
+        files: eoFiles.map((f) => ({ itemId: f.itemId, fileId: f.fileId, printMode: f.printMode, printSide: f.printSide, pageSize: f.pageSize, paperType: f.paperType, copies: f.copies, quantity: f.quantity })),
         notes: document.getElementById('eoNotes').value.trim() || null,
         ...discountFields
       };
