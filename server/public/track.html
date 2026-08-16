@@ -159,6 +159,16 @@ function heroIcon(status, attention, done){
   return '🕐';
 }
 
+// The online "Pay Now" prompt is only offered once the order is actually
+// about to change hands — Awaiting Customer Pickup or Out For Delivery —
+// not while it's still queued/printing (too early to nag) or once it's
+// Completed (too late to matter). Same substring-matching convention as
+// isWrongFulfilmentStage below, so admin-renamed stages still match.
+function isPayNowEligibleStage(status){
+  const s = String(status || '').toLowerCase();
+  return s.includes('pickup') || s.includes('deliver');
+}
+
 // A stage name that's clearly about the *other* fulfilment path — "Awaiting
 // Customer Pickup" on a home-delivery order, or "Out For Delivery" on a
 // shop-pickup order — never applies to this order, so it's excluded rather
@@ -391,7 +401,7 @@ async function loadStatus(){
       '</div>' +
     '</div>';
 
-    const canPayNow = data.payment_status !== 'paid' && data.total_amount != null && data.total_amount > 0;
+    const canPayNow = isPayNowEligibleStage(data.order_status) && data.payment_status !== 'paid' && data.total_amount != null && data.total_amount > 0;
     if (canPayNow) html += payNowHtml(data);
 
     if (!attention) html += renderTimeline(data.stages, data.stage_index, data.delivery_method);
