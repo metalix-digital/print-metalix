@@ -1525,6 +1525,13 @@ let currentAdmin = null;
 const BRANCH_TAB_KEYS = ['orders', 'customers', 'archive', 'feedback'];
 const BRANCH_TAB_LABELS = { orders: 'Orders', customers: 'Customers', archive: 'Archive', feedback: 'Feedback' };
 
+// Remembers which top-level tab (and, if Settings, which sub-tab) was open
+// so a reload lands back where the admin was instead of always resetting to
+// Orders — see the restore logic in showDash() and the two click handlers
+// below that write these.
+const ADMIN_TAB_KEY = 'metalix_admin_tab';
+const ADMIN_SETTINGS_TAB_KEY = 'metalix_admin_settings_tab';
+
 async function showDash(){
   document.getElementById('loginWrap').classList.add('hidden');
   document.getElementById('dashWrap').classList.remove('hidden');
@@ -1558,23 +1565,34 @@ async function showDash(){
   // A branch admin can never see the sub-nav's default ("General"), which is
   // super-admin-only — point them at whichever of Archive/Feedback is
   // actually visible to them instead, so opening Settings never lands on a
-  // blank sub-panel.
+  // blank sub-panel. Overridden just below if they have a valid saved
+  // sub-tab of their own.
   if (isBranch) {
     const firstSettingsSub = document.querySelector('.settings-subnav-btn:not(.hidden)');
     if (firstSettingsSub) showSettingsSection(firstSettingsSub.dataset.settingsTab);
   }
-  // If the active tab just got hidden (super-only fallback, or this staff
-  // member's allowedTabs no longer includes it), fall back to the first tab
-  // that's actually visible to them.
+  // Restore whichever top-level tab was open before a reload, so refreshing
+  // the page doesn't dump the admin back on Orders every time. Falls back to
+  // the first tab actually visible to this admin's permissions if the saved
+  // one is missing, was removed, or this admin can no longer see it (e.g. a
+  // branch admin whose allowedTabs changed since they last had it open).
+  const savedTab = localStorage.getItem(ADMIN_TAB_KEY);
+  const savedTabBtn = savedTab && document.querySelector('.tab-btn[data-tab="' + savedTab + '"]:not(.hidden)');
   const activeTab = document.querySelector('.tab-btn.active');
-  if (!activeTab || activeTab.classList.contains('hidden')) {
+  const wantedTabBtn = savedTabBtn || ((!activeTab || activeTab.classList.contains('hidden')) ? document.querySelector('.tab-btn:not(.hidden)') : null);
+  if (wantedTabBtn && wantedTabBtn !== activeTab) {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-    const firstVisible = document.querySelector('.tab-btn:not(.hidden)');
-    if (firstVisible) {
-      firstVisible.classList.add('active');
-      document.getElementById('panel-' + firstVisible.dataset.tab).classList.add('active');
-    }
+    wantedTabBtn.classList.add('active');
+    document.getElementById('panel-' + wantedTabBtn.dataset.tab).classList.add('active');
+  }
+  // Same restore, one level deeper, for whichever Settings sub-tab was open
+  // — only relevant once Settings itself is the active top-level tab.
+  const landedTab = (wantedTabBtn || activeTab || {}).dataset;
+  if (landedTab && landedTab.tab === 'settingshub') {
+    const savedSubTab = localStorage.getItem(ADMIN_SETTINGS_TAB_KEY);
+    const savedSubBtn = savedSubTab && document.querySelector('.settings-subnav-btn[data-settings-tab="' + savedSubTab + '"]:not(.hidden)');
+    if (savedSubBtn) showSettingsSection(savedSubTab);
   }
 
   // Only loadOrders() needs orderStages/feedbackByOrderId populated first (for
@@ -1702,6 +1720,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    localStorage.setItem(ADMIN_TAB_KEY, btn.dataset.tab);
   });
 });
 
@@ -1715,7 +1734,10 @@ function showSettingsSection(key){
   document.querySelectorAll('.settings-subpanel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + key));
 }
 document.querySelectorAll('.settings-subnav-btn').forEach((btn) => {
-  btn.addEventListener('click', () => showSettingsSection(btn.dataset.settingsTab));
+  btn.addEventListener('click', () => {
+    showSettingsSection(btn.dataset.settingsTab);
+    localStorage.setItem(ADMIN_SETTINGS_TAB_KEY, btn.dataset.settingsTab);
+  });
 });
 
 /* -- ORDERS -- */
