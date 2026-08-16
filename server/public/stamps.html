@@ -227,6 +227,17 @@ function currentSequence(){
   return seq;
 }
 
+// A customer sent here from /order's "Add a stamp" quick-add link (which
+// can't reproduce this whole type/size/text-or-artwork wizard inline) via
+// ?returnTo=/order — once they've added their stamp, send them straight
+// back there instead of resetting the wizard for another one. Restricted to
+// an internal relative path (single leading slash, not "//host/...") so a
+// crafted link can't turn this into an open redirect.
+var returnTo = (function(){
+  var v = new URLSearchParams(location.search).get('returnTo');
+  return (v && /^\/(?!\/)/.test(v)) ? v : null;
+})();
+
 var stampConfig = null;
 var state = {
   step: 'type',
@@ -415,7 +426,7 @@ function render(){
     '<div class="wizard-actions">' +
       '<button type="button" class="btn-ghost" id="backBtn"' + (state.step === seq[0] ? ' disabled' : '') + '>← Back</button>' +
       (isLast
-        ? '<button type="button" class="btn-primary" id="addToCartBtn">Add to Cart →</button>'
+        ? '<button type="button" class="btn-primary" id="addToCartBtn">' + (returnTo ? 'Add & return to order →' : 'Add to Cart →') + '</button>'
         : '<button type="button" class="btn-primary" id="nextBtn"' + (canAdvance() ? '' : ' disabled') + '>Next →</button>') +
     '</div>';
   bindStepEvents();
@@ -521,6 +532,11 @@ function addToCart(){
     unitPrice: price.total,
     quantity: state.quantity
   });
+  if (returnTo) {
+    showToast('Stamp added — taking you back to your order…');
+    setTimeout(function(){ window.location.href = returnTo; }, 700);
+    return;
+  }
   Cart.renderCrossSellStrip(document.getElementById('crossSellStrip'), 'productType:stamp');
   state = { step: 'type', stampTypeId: null, stampSizeId: null, designMode: null, textLines: [''], artworkFileId: null, artworkFileName: null, artworkObjectUrl: null, artworkUploading: false, quantity: 1 };
   render();

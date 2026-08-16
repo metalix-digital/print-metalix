@@ -197,15 +197,13 @@ __GTM_HEAD__
   .ordering-as .oa-change:hover{ background:var(--surface); }
   .opt-label{ font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.09em; margin-bottom:12px; display:block; }
   .opt-label.center{ text-align:center; }
-  .print-job-toggle{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface); border:1.5px dashed var(--line-strong); border-radius:12px; padding:13px 16px; margin-top:18px; font-family:'Roboto',sans-serif; font-size:14px; font-weight:700; color:var(--ink); cursor:pointer; transition:border-color .15s ease; }
+  .print-job-toggle{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface); border:1.5px dashed var(--line-strong); border-radius:12px; padding:13px 16px; margin-top:18px; font-family:'Roboto',sans-serif; font-size:14px; font-weight:700; color:var(--ink); cursor:pointer; text-decoration:none; transition:border-color .15s ease; }
   .print-job-toggle:hover{ border-color:var(--orange); }
   .print-job-toggle .opt-sub{ font-weight:500; color:var(--ink-soft); font-size:12.5px; text-transform:none; letter-spacing:normal; }
   .print-job-toggle .pjt-chevron{ transition:transform .2s ease; color:var(--ink-soft); }
   .print-job-toggle.expanded .pjt-chevron{ transform:rotate(180deg); }
   #printJobWrap{ display:none; }
   #printJobWrap.expanded{ display:block; }
-  #stampWrap{ display:none; }
-  #stampWrap.expanded{ display:block; }
   #stationeryWrap{ display:none; }
   #stationeryWrap.expanded{ display:block; }
   .stationery-row-thumb{ width:38px; height:38px; border-radius:10px; flex-shrink:0; object-fit:cover; background:var(--paper-dim); border:1px solid var(--line); }
@@ -551,39 +549,18 @@ __GTM_NOSCRIPT__
         <div class="delivery-note" id="stationeryEmptyNote" style="display:none;">No stationery items available right now — check back soon.</div>
       </div><!-- /#stationeryWrap -->
 
-      <!-- Same collapsed-by-default standing as Add a print job above — a
-           quick way to add a stamp to THIS order without leaving the page,
-           for the common case (typed text). Custom artwork still goes
-           through the full /stamps designer, linked below. Added stamps go
-           through the same shared Cart.add() as /stamps itself, so they
-           show up in the cart list above, the mini-cart drawer, and the
-           final order payload with zero extra wiring — see buildOrderPayload. -->
-      <button type="button" class="print-job-toggle" id="stampToggle">
+      <!-- Stamps need their own type/size/text-or-artwork wizard (see
+           /stamps) — too much to reproduce inline here, so this just hands
+           off to the full designer and brings the customer straight back
+           once they've added it to cart (see /stamps' returnTo handling).
+           Added stamps go through the same shared Cart.add() as /stamps
+           itself, so they show up in the cart list above, the mini-cart
+           drawer, and the final order payload with zero extra wiring — see
+           buildOrderPayload. -->
+      <a class="print-job-toggle" id="stampToggle" href="/stamps?returnTo=%2Forder">
         <span>🔖 Add a stamp <span class="opt-sub">(self-inking, pre-inked &amp; more)</span></span>
-        <span class="pjt-chevron" id="stampChevron">▾</span>
-      </button>
-      <div id="stampWrap">
-        <div class="opt-group">
-          <span class="opt-label">Stamp type</span>
-          <select class="fselect" id="stampTypeSelect"></select>
-        </div>
-        <div class="opt-group">
-          <span class="opt-label">Size</span>
-          <select class="fselect" id="stampSizeSelect"></select>
-        </div>
-        <div class="field">
-          <label>Stamp text <span style="text-transform:none;font-weight:500;">— one line per row, up to 6</span></label>
-          <textarea id="stampTextArea" rows="3" maxlength="400" placeholder="e.g. Company Name&#10;Address&#10;GSTIN"></textarea>
-        </div>
-        <div class="field" style="max-width:120px;">
-          <label>Quantity</label>
-          <input type="number" id="stampQtyInput" min="1" max="999" value="1" />
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" type="button" id="addStampBtn">Add stamp to cart — ₹<span id="stampPricePreview">0</span></button>
-        </div>
-        <div class="delivery-note">Need your own artwork instead of typed text? Use the full <a href="/stamps" style="color:var(--orange-deep);font-weight:600;">stamp designer →</a></div>
-      </div><!-- /#stampWrap -->
+        <span class="pjt-chevron">↗</span>
+      </a>
 
       <div class="opt-group">
         <span class="opt-label">Delivery</span>
@@ -1150,12 +1127,13 @@ fetchPricing();
 (function(){
   const shopNav = document.querySelector('.shop-nav');
   const cartLink = document.getElementById('headerCartLink');
+  const stampToggle = document.getElementById('stampToggle');
   function hide(href){ if (!shopNav) return; const el = shopNav.querySelector('a[href="' + href + '"]'); if (el) el.style.display = 'none'; }
   fetch('/api/settings').then(r => r.json()).then(s => {
     const stationeryOn = !!s && s.stationeryEnabled === true;
     const stampsOn = !!s && s.stampsEnabled === true;
     if (!stationeryOn) hide('/stationery');
-    if (!stampsOn) hide('/stamps');
+    if (!stampsOn) { hide('/stamps'); if (stampToggle) stampToggle.style.display = 'none'; }
     if (!stationeryOn && !stampsOn && cartLink) cartLink.style.display = 'none';
     if (s && s.phone) {
       const phoneEl = document.getElementById('footerPhone');
@@ -1165,7 +1143,7 @@ fetchPricing();
       const emailEl = document.getElementById('footerEmail');
       if (emailEl) { emailEl.href = 'mailto:' + s.email; emailEl.textContent = '✉️ ' + s.email; }
     }
-  }).catch(() => { hide('/stationery'); hide('/stamps'); if (cartLink) cartLink.style.display = 'none'; });
+  }).catch(() => { hide('/stationery'); hide('/stamps'); if (stampToggle) stampToggle.style.display = 'none'; if (cartLink) cartLink.style.display = 'none'; });
 })();
 
 // Printing is one of several things a customer can add on this page, same
@@ -1180,83 +1158,10 @@ function setPrintJobExpanded(expanded){
 }
 printJobToggle.addEventListener('click', () => setPrintJobExpanded(!printJobWrap.classList.contains('expanded')));
 
-// Quick "add a stamp to this order" panel — same collapse pattern as Add a
-// print job above. Reads its type/size options from pricingConfig.stamps
-// (already fetched by fetchPricing() for the document-pricing estimate;
-// stamp sizes live inside their own type, see today's per-type restructure
-// — see db.js normalizeStampTypes) rather than a second network request.
-const stampToggle = document.getElementById('stampToggle');
-const stampWrap = document.getElementById('stampWrap');
-const stampTypeSelect = document.getElementById('stampTypeSelect');
-const stampSizeSelect = document.getElementById('stampSizeSelect');
-const stampTextArea = document.getElementById('stampTextArea');
-const stampQtyInput = document.getElementById('stampQtyInput');
-const stampPricePreview = document.getElementById('stampPricePreview');
-function setStampExpanded(expanded){
-  stampToggle.classList.toggle('expanded', expanded);
-  stampWrap.classList.toggle('expanded', expanded);
-}
-stampToggle.addEventListener('click', () => setStampExpanded(!stampWrap.classList.contains('expanded')));
-
-function activeStampTypes(){ return ((pricingConfig && pricingConfig.stamps && pricingConfig.stamps.types) || []).filter((t) => t.active); }
-function selectedStampType(){ return activeStampTypes().find((t) => t.id === stampTypeSelect.value); }
-function activeStampSizes(){ const t = selectedStampType(); return ((t && t.sizes) || []).filter((s) => s.active); }
-function selectedStampSize(){ return activeStampSizes().find((s) => s.id === stampSizeSelect.value); }
-
-function populateStampSizeOptions(){
-  const sizes = activeStampSizes();
-  stampSizeSelect.innerHTML = sizes.map((s) => {
-    const mod = s.priceModifier > 0 ? ` (+₹${s.priceModifier})` : (s.priceModifier < 0 ? ` (−₹${Math.abs(s.priceModifier)})` : '');
-    const code = s.code ? `Code ${s.code} — ` : '';
-    return `<option value="${escapeAttr(s.id)}">${escapeAttr(code + s.label)} · ${s.widthMm}×${s.heightMm}mm${mod}</option>`;
-  }).join('');
-  updateStampPricePreview();
-}
-function populateStampTypeOptions(){
-  const types = activeStampTypes();
-  stampTypeSelect.innerHTML = types.map((t) => `<option value="${escapeAttr(t.id)}">${escapeAttr(t.label)} — from ₹${t.basePrice}</option>`).join('');
-  populateStampSizeOptions();
-}
-function updateStampPricePreview(){
-  const type = selectedStampType(), size = selectedStampSize();
-  const base = type ? Number(type.basePrice) || 0 : 0;
-  const sizeMod = size ? Number(size.priceModifier) || 0 : 0;
-  const extraQty = ((pricingConfig && pricingConfig.stamps && pricingConfig.stamps.extraQuantityPrice) || 0) * Math.max(0, (Number(stampQtyInput.value) || 1) - 1);
-  stampPricePreview.textContent = Math.round(base + sizeMod + extraQty);
-}
-stampTypeSelect.addEventListener('change', populateStampSizeOptions);
-stampSizeSelect.addEventListener('change', updateStampPricePreview);
-stampQtyInput.addEventListener('input', updateStampPricePreview);
-
-document.getElementById('addStampBtn').addEventListener('click', () => {
-  const type = selectedStampType(), size = selectedStampSize();
-  if (!type || !size) { showToast('Pick a stamp type and size first'); return; }
-  const textLines = stampTextArea.value.split('\n').map((l) => l.trim().slice(0, 60)).filter(Boolean).slice(0, 6);
-  if (!textLines.length) { showToast('Enter the text for your stamp'); return; }
-  const quantity = Math.max(1, Math.min(999, Math.round(Number(stampQtyInput.value)) || 1));
-  const sizeMod = Number(size.priceModifier) || 0;
-  const extraQty = ((pricingConfig.stamps.extraQuantityPrice) || 0) * (quantity - 1);
-  const unitPrice = Math.round((Number(type.basePrice) || 0) + sizeMod + extraQty);
-  Cart.add({
-    productType: 'stamp',
-    name: type.label + ' · ' + size.label,
-    stampTypeId: type.id,
-    stampTypeLabel: type.label,
-    stampSizeId: size.id,
-    stampSizeLabel: size.label,
-    textLines,
-    unitPrice,
-    quantity
-  });
-  stampTextArea.value = '';
-  stampQtyInput.value = 1;
-  updateStampPricePreview();
-  recalc();
-});
-
-// Quick "add stationery to this order" panel — same collapse pattern and
-// shared-cart integration as Add a stamp above. Fetches its own product
-// list (stationery is its own catalog, not part of pricingConfig) — a 404
+// Quick "add stationery to this order" panel — same collapse pattern as
+// Add a print job above, and shares Cart.add() with /stamps. Fetches its
+// own product list (stationery is its own catalog, not part of
+// pricingConfig) — a 404
 // here means Stationery is soft-launch-disabled, same reasoning as the
 // settings-fetch check that hides the .shop-nav Stationery pill, so the
 // whole panel just hides rather than showing a broken empty state.
