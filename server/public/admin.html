@@ -111,6 +111,15 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .range-btn{background:var(--card);border:1.5px solid var(--line);color:var(--ink2);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Roboto',sans-serif;transition:.15s;}
 .range-btn:hover{border-color:var(--line-hover);}
 .range-btn.active{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d);}
+
+/* -- REPORTS -- */
+.report-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.report-custom-range{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink3);margin-left:4px;}
+.report-custom-range input[type=date]{border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;color:var(--ink);background:var(--card);}
+.report-columns-label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px;}
+.report-columns-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 14px;}
+.report-col-check{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ink2);cursor:pointer;}
+.report-col-check input{margin:0;}
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -614,6 +623,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn active" data-tab="orders">Orders</button>
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
+    <button class="tab-btn" data-tab="reports" data-super-only>Reports</button>
     <!-- Everything else lives under this one umbrella tab now, as a sub-nav
          inside panel-settingshub below — see showSettingsSection() and the
          branch-admin visibility logic in showDash(). Not data-super-only:
@@ -692,6 +702,43 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="viz-root chart-card">
         <h3 class="chart-title">Payment method split</h3>
         <div class="chart-wrap" id="paymentSplitChart"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-reports">
+      <div class="stages-wrap" style="max-width:none;">
+        <h2>Line-item sales report</h2>
+        <p class="hint">One row per purchased line item (print jobs, stationery, stamps, services — plus delivery/handling when charged) across paid orders in a date range: customer, item, type, price, GST, and price including GST. Sourced from BigQuery — refreshed daily by the sync timer, or on demand with "Sync now" below.</p>
+
+        <div class="report-filters">
+          <button class="range-btn" data-range="today">Today</button>
+          <button class="range-btn" data-range="7">Last 7 days</button>
+          <button class="range-btn active" data-range="30">Last 30 days</button>
+          <button class="range-btn" data-range="month">This month</button>
+          <button class="range-btn" data-range="lastmonth">Last month</button>
+          <span class="report-custom-range">
+            <input type="date" id="reportFrom" />
+            <span>to</span>
+            <input type="date" id="reportTo" />
+          </span>
+        </div>
+
+        <div class="report-columns">
+          <div class="report-columns-label">Extra columns (optional)</div>
+          <div class="report-columns-grid" id="reportExtraColumns"></div>
+        </div>
+
+        <div class="discounts-actions" style="margin-top:20px;">
+          <button type="button" class="rate-add" id="reportSyncBtn">↻ Sync now</button>
+          <button class="save-btn" type="button" id="reportPreviewBtn">Preview</button>
+          <button class="save-btn" type="button" id="reportExportBtn">⬇ Export CSV</button>
+        </div>
+        <div class="save-message hidden" id="reportMessage"></div>
+        <p class="subtle" id="reportSyncStatus" style="margin-top:8px;"></p>
+      </div>
+
+      <div class="stages-wrap" style="max-width:none;margin-top:20px;" id="reportPreviewWrap">
+        <p class="subtle">Run Preview to see a sample of the report here before exporting.</p>
       </div>
     </div>
 
@@ -2860,6 +2907,145 @@ async function loadAnalytics(days){
 }
 document.querySelectorAll('.range-btn').forEach((btn) => {
   btn.addEventListener('click', () => loadAnalytics(btn.dataset.days === 'today' ? 'today' : Number(btn.dataset.days)));
+});
+
+/* -- REPORTS (line-item sales export, BigQuery-backed) -- */
+// Keys must match server.js's REPORT_EXTRA_COLUMNS exactly — they're sent
+// back as the `columns` query param and interpolated into the BigQuery
+// SELECT list there.
+const REPORT_EXTRA_COLUMNS = [
+  { key: 'customer_mobile', label: 'Customer Mobile' },
+  { key: 'customer_email', label: 'Customer Email' },
+  { key: 'location_name', label: 'Branch' },
+  { key: 'payment_method', label: 'Payment Method' },
+  { key: 'payment_status', label: 'Payment Status' },
+  { key: 'order_status', label: 'Order Status' },
+  { key: 'delivery_method', label: 'Delivery Method' },
+  { key: 'discount_amount', label: 'Discount (₹)' },
+  { key: 'discount_code', label: 'Discount Code' },
+  { key: 'razorpay_payment_id', label: 'Razorpay Payment ID' }
+];
+(function renderReportColumnsCheckboxes(){
+  document.getElementById('reportExtraColumns').innerHTML = REPORT_EXTRA_COLUMNS.map((c) =>
+    '<label class="report-col-check"><input type="checkbox" value="' + c.key + '" /> ' + escHtml(c.label) + '</label>'
+  ).join('');
+})();
+
+function reportRangeToDates(mode){
+  const now = new Date();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  if (mode === 'today') return { from: new Date(now.getFullYear(), now.getMonth(), now.getDate()), to: endOfToday };
+  if (mode === 'month') return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: endOfToday };
+  if (mode === 'lastmonth') return {
+    from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    to: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+  };
+  const days = Number(mode) || 30;
+  return { from: new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1)), to: endOfToday };
+}
+const toDateInputValue = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+function applyReportRange(mode){
+  document.querySelectorAll('#panel-reports .range-btn').forEach((b) => b.classList.toggle('active', b.dataset.range === mode));
+  const { from, to } = reportRangeToDates(mode);
+  document.getElementById('reportFrom').value = toDateInputValue(from);
+  document.getElementById('reportTo').value = toDateInputValue(to);
+}
+document.querySelectorAll('#panel-reports .range-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyReportRange(btn.dataset.range));
+});
+// Hand-editing either date is its own choice of range — drop the quick-range
+// highlight so it doesn't keep claiming "Last 30 days" once it no longer
+// matches.
+['reportFrom', 'reportTo'].forEach((id) => {
+  document.getElementById(id).addEventListener('change', () => {
+    document.querySelectorAll('#panel-reports .range-btn').forEach((b) => b.classList.remove('active'));
+  });
+});
+applyReportRange('30');
+
+function getReportRangeMs(){
+  const fromStr = document.getElementById('reportFrom').value;
+  const toStr = document.getElementById('reportTo').value;
+  if (!fromStr || !toStr) return null;
+  const from = new Date(fromStr + 'T00:00:00').getTime();
+  const to = new Date(toStr + 'T23:59:59.999').getTime();
+  if (!(from <= to)) return null;
+  return { from, to };
+}
+const getReportExtraColumns = () => Array.from(document.querySelectorAll('#reportExtraColumns input:checked')).map((el) => el.value);
+
+document.getElementById('reportSyncBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('reportSyncBtn');
+  const status = document.getElementById('reportSyncStatus');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Syncing…'; status.textContent = ''; status.style.color = '';
+  try {
+    const res = await adminFetch('/api/admin/reports/sync-bq', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { status.textContent = data.message || 'Sync failed.'; status.style.color = 'var(--err)'; return; }
+    status.textContent = 'Synced just now, ' + new Date(data.syncedAt).toLocaleTimeString() + '.';
+  } catch (err) {
+    if (err.message !== 'unauthorized') { status.textContent = 'Sync failed.'; status.style.color = 'var(--err)'; }
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
+
+async function previewReport(){
+  const range = getReportRangeMs();
+  const wrap = document.getElementById('reportPreviewWrap');
+  if (!range) { wrap.innerHTML = '<p class="subtle">Pick a valid From/To date range first.</p>'; return; }
+  wrap.innerHTML = '<p class="subtle">Loading preview…</p>';
+  const qs = new URLSearchParams({ from: range.from, to: range.to, format: 'json', columns: getReportExtraColumns().join(',') });
+  try {
+    const res = await adminFetch('/api/admin/reports/line-items?' + qs.toString());
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { wrap.innerHTML = '<p class="subtle">' + escHtml(data.message || 'Could not load preview.') + '</p>'; return; }
+    if (!data.rows.length) { wrap.innerHTML = '<p class="subtle">No paid orders in this range.</p>'; return; }
+    const headers = Object.keys(data.rows[0]);
+    const shown = data.rows.slice(0, 200);
+    wrap.innerHTML =
+      '<p class="subtle" style="margin-bottom:10px;">' + data.rows.length + ' line item(s) across ' + data.orderCount + ' order(s)' + (data.rows.length > 200 ? ' — showing first 200' : '') + '.</p>' +
+      '<div class="table-scroll"><table class="rate-table"><thead><tr>' + headers.map((h) => '<th>' + escHtml(h) + '</th>').join('') + '</tr></thead><tbody>' +
+      shown.map((r) => '<tr>' + headers.map((h) => '<td>' + escHtml(r[h]) + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table></div>';
+  } catch (err) {
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle">Could not load preview.</p>';
+  }
+}
+document.getElementById('reportPreviewBtn').addEventListener('click', previewReport);
+
+document.getElementById('reportExportBtn').addEventListener('click', async () => {
+  const range = getReportRangeMs();
+  const msg = document.getElementById('reportMessage');
+  msg.classList.add('hidden');
+  if (!range) { msg.textContent = 'Pick a valid From/To date range first.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+  const btn = document.getElementById('reportExportBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Exporting…';
+  const qs = new URLSearchParams({ from: range.from, to: range.to, format: 'csv', columns: getReportExtraColumns().join(',') });
+  try {
+    const res = await adminFetch('/api/admin/reports/line-items?' + qs.toString());
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      msg.textContent = d.message || 'Could not export report.'; msg.className = 'save-message error'; msg.classList.remove('hidden');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'line-items-' + document.getElementById('reportFrom').value + '_to_' + document.getElementById('reportTo').value + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = 'Could not export report.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 });
 
 /* -- LOCATIONS (branches) -- */

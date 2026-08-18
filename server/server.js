@@ -236,6 +236,8 @@ const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads } = require('./fileRetention')
 const { buildInvoicePdf } = require('./invoice')
 const { formatRupees } = require('./format')
+const { BigQuery } = require('@google-cloud/bigquery')
+const { runSync: runBqSync, DATASET: BQ_DATASET, LOCATION: BQ_LOCATION } = require('./scripts/bqSync')
 const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
 
 // pdf-lib's Standard fonts (used by the job sheet's text pages below) are
@@ -2926,6 +2928,153 @@ app.get('/api/admin/customers', requireAdmin, requireTab('customers'), (req, res
 app.get('/api/admin/analytics/sales', requireSuperAdmin, (req, res) => {
   const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
   return res.json(db.getSalesAnalytics(days))
+})
+
+// ---- Line-item report (BigQuery-backed) ----
+// Reads from BigQuery rather than the live SQLite DB, per how this report is
+// meant to be used: an accounting/GST export, not a live operational view —
+// BigQuery is the system of record for "what actually got sold," refreshed
+// daily by metalix-bqsync.timer or on demand via the sync route below.
+let bqClient = null
+function getBq() {
+  if (!bqClient) bqClient = new BigQuery({ location: BQ_LOCATION })
+  return bqClient
+}
+
+// Raw per-order BigQuery columns an admin can opt into as extra report
+// columns, beyond the fixed Order Date/ID/Customer/Item/Type/Price/GST/Total
+// set — every key here must be a real column in BQ_DATASET.orders (see
+// scripts/bqSync.js's TABLES[0].schema) since it's interpolated straight into
+// the SELECT list.
+const REPORT_EXTRA_COLUMNS = {
+  customer_mobile: 'Customer Mobile',
+  customer_email: 'Customer Email',
+  location_name: 'Branch',
+  payment_method: 'Payment Method',
+  payment_status: 'Payment Status',
+  order_status: 'Order Status',
+  delivery_method: 'Delivery Method',
+  discount_amount: 'Discount (₹)',
+  discount_code: 'Discount Code',
+  razorpay_payment_id: 'Razorpay Payment ID'
+}
+
+const REPORT_PRODUCT_TYPE_LABELS = {
+  document: 'Print', stationery: 'Stationery', stamp: 'Stamp',
+  service: 'Service', 'passport-photo': 'Passport Photo'
+}
+
+// Splits one order into its purchasable line items (files_json — already
+// carries a baked-in per-item `amount` from pricing.js's fileBreakdown, see
+// the Object.assign(f, calc.fileBreakdown[i]) call sites) plus synthetic
+// Delivery/Handling lines when those charges are non-zero.
+//
+// GST isn't tracked per line item anywhere in this app — pricing.js computes
+// one flat gst_amount for the whole order (same as the real PDF invoice's
+// single "GST" row) — so each item's GST here is its price's share of the
+// order's actual gst_amount, at the order's own effective rate
+// (gst_amount / (total_amount - gst_amount), reconstructed from the stored
+// totals rather than today's live settings, so it's still correct for old
+// orders even if the configured GST% has since changed). On an order with a
+// discount code, item prices are pre-discount, so allocated-GST here will run
+// slightly high relative to the order's real gst_amount — a known
+// approximation, fine for a line-item breakdown, not exact enough to be the
+// GST-filing source of truth for discounted orders.
+function flattenOrderToLineItems(order) {
+  let files = []
+  try { files = order.files_json ? JSON.parse(order.files_json) : [] } catch (err) { files = [] }
+  const totalAmount = Number(order.total_amount) || 0
+  const gstAmount = Number(order.gst_amount) || 0
+  const taxableAmount = totalAmount - gstAmount
+  const effectiveRate = taxableAmount > 0 ? gstAmount / taxableAmount : 0
+
+  const items = []
+  const pushItem = (name, type, price) => {
+    const p = Math.round(Number(price) || 0)
+    if (!p) return
+    const gst = Math.round(p * effectiveRate)
+    items.push({ item: name || type, type, price: p, gst, total: p + gst })
+  }
+
+  files.forEach((f) => {
+    const productType = f.productType || 'document'
+    const type = REPORT_PRODUCT_TYPE_LABELS[productType] || productType
+    const name = productType === 'document' ? (f.fileName || f.paperLabel || 'Document') : (f.name || f.paperLabel || type)
+    pushItem(name, type, f.amount)
+  })
+  pushItem('Delivery charge', 'Delivery', order.delivery_charge)
+  pushItem('Handling charge', 'Handling', order.handling_charge)
+  return items
+}
+
+// On-demand counterpart to metalix-bqsync.timer's daily run, so an admin
+// pulling a report right now doesn't have to wait up to 24h for today's
+// orders to show up in BigQuery.
+app.post('/api/admin/reports/sync-bq', requireSuperAdmin, async (req, res) => {
+  try {
+    await runBqSync()
+    return res.json({ ok: true, syncedAt: Date.now() })
+  } catch (err) {
+    console.error('Manual BQ sync error:', err)
+    return res.status(502).json({ error: 'sync_failed', message: err.message || 'Could not sync to BigQuery.' })
+  }
+})
+
+app.get('/api/admin/reports/line-items', requireSuperAdmin, async (req, res) => {
+  const from = Number(req.query.from)
+  const to = Number(req.query.to)
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+    return res.status(400).json({ error: 'invalid_range', message: 'Provide a valid from/to time range.' })
+  }
+  const extraKeys = String(req.query.columns || '').split(',').map((s) => s.trim()).filter((k) => REPORT_EXTRA_COLUMNS[k])
+  const format = req.query.format === 'json' ? 'json' : 'csv'
+
+  try {
+    const bq = getBq()
+    const selectCols = Array.from(new Set([
+      'id', 'customer_name', 'files_json', 'gst_amount', 'total_amount',
+      'delivery_charge', 'handling_charge', 'created_at', ...extraKeys
+    ]))
+    const sql = `SELECT ${selectCols.map((c) => `\`${c}\``).join(', ')} FROM \`${BQ_DATASET}.orders\`
+      WHERE created_at BETWEEN @from AND @to AND payment_status = 'paid'
+      ORDER BY created_at`
+    const [orders] = await bq.query({ query: sql, location: BQ_LOCATION, params: { from, to } })
+
+    const lineRows = []
+    orders.forEach((order) => {
+      flattenOrderToLineItems(order).forEach((li) => {
+        const row = {
+          'Order Date': new Date(Number(order.created_at)).toISOString(),
+          'Order ID': order.id,
+          'Customer Name': order.customer_name || '',
+          'Item': li.item,
+          'Type': li.type,
+          'Price (₹)': li.price,
+          'GST (₹)': li.gst,
+          'Price incl. GST (₹)': li.total
+        }
+        extraKeys.forEach((k) => { row[REPORT_EXTRA_COLUMNS[k]] = order[k] == null ? '' : order[k] })
+        lineRows.push(row)
+      })
+    })
+
+    if (format === 'json') {
+      return res.json({ rows: lineRows, orderCount: orders.length })
+    }
+    const headers = ['Order Date', 'Order ID', 'Customer Name', 'Item', 'Type', 'Price (₹)', 'GST (₹)', 'Price incl. GST (₹)', ...extraKeys.map((k) => REPORT_EXTRA_COLUMNS[k])]
+    const escapeCsvCell = (v) => {
+      const s = String(v == null ? '' : v)
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const csv = [headers, ...lineRows.map((r) => headers.map((h) => r[h]))]
+      .map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="line-items-${new Date(from).toISOString().slice(0, 10)}_to_${new Date(to).toISOString().slice(0, 10)}.csv"`)
+    return res.send('\uFEFF' + csv)
+  } catch (err) {
+    console.error('Line-item report error:', err)
+    return res.status(502).json({ error: 'report_failed', message: 'Could not query BigQuery. Try "Sync now" first, or check server logs.' })
+  }
 })
 
 app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab('orders'), (req, res) => {

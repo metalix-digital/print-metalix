@@ -42,6 +42,7 @@ const TABLES = [
         delivery_timing, scheduled_at,
         location_id, location_name,
         print_cost, delivery_charge, handling_charge, gst_amount, total_amount,
+        discount_amount, discount_code,
         razorpay_order_id, razorpay_payment_id, payment_status, payment_method, payment_mode, order_status, failure_reason,
         created_at, updated_at, completed_at, files_deleted_at
       FROM orders WHERE archived_at IS NULL`,
@@ -76,6 +77,8 @@ const TABLES = [
       { name: 'handling_charge', type: 'INTEGER' },
       { name: 'gst_amount', type: 'INTEGER' },
       { name: 'total_amount', type: 'INTEGER' },
+      { name: 'discount_amount', type: 'INTEGER' },
+      { name: 'discount_code', type: 'STRING' },
       { name: 'razorpay_order_id', type: 'STRING' },
       { name: 'razorpay_payment_id', type: 'STRING' },
       { name: 'payment_status', type: 'STRING' },
@@ -225,7 +228,11 @@ async function syncTable(bq, dataset, db, table) {
   console.log(`[bqsync] ${DATASET}.${table.name}: +${inserted} inserted, ~${updated} updated, -${deleted} deleted (from ${rows.length} staged)`)
 }
 
-async function main() {
+// Exported so the admin "Sync now" button (server.js) can run this in-process
+// on demand, instead of admins waiting for the next daily timer to see fresh
+// data in a BigQuery-backed report. The CLI entrypoint below is now a thin
+// wrapper over the same function.
+async function runSync() {
   if (!fs.existsSync(SQLITE_PATH)) {
     throw new Error(`SQLite database not found at ${SQLITE_PATH}`)
   }
@@ -243,7 +250,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[bqsync] failed:', err.message)
-  process.exit(1)
-})
+module.exports = { runSync, DATASET, LOCATION }
+
+if (require.main === module) {
+  runSync().catch((err) => {
+    console.error('[bqsync] failed:', err.message)
+    process.exit(1)
+  })
+}
