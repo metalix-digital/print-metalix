@@ -1928,6 +1928,23 @@ function getSalesAnalytics(days) {
   return { daily, summary, today }
 }
 
+// Backs the admin Reports tab's line-item export — same "what counts as a
+// sale" filter as getSalesAnalytics above (paid, or COD regardless of
+// collection status, excluding archived orders) so the two stay consistent.
+// Selects every column (not just the ones the report currently flattens/
+// offers as extras) so server.js can read any order field without a matching
+// schema change here — this is the live DB, not a hand-maintained BigQuery
+// mirror.
+function getOrdersForLineItemReport(fromMs, toMs) {
+  return db.prepare(`
+    SELECT * FROM orders
+    WHERE (payment_status = 'paid' OR payment_method = 'cod')
+      AND archived_at IS NULL
+      AND created_at BETWEEN ? AND ?
+    ORDER BY created_at
+  `).all(fromMs, toMs)
+}
+
 function createPrintJob(orderId) {
   const now = Date.now()
   const info = db.prepare('INSERT INTO print_jobs (order_id, status, created_at, updated_at) VALUES (?, ?, ?, ?)')
@@ -2114,6 +2131,7 @@ module.exports = {
   countCouponUses,
   findUserByMobileOrEmail,
   getSalesAnalytics,
+  getOrdersForLineItemReport,
   createPrintJob,
   updatePrintJob,
   getLatestPrintJobForOrder,

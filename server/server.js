@@ -236,8 +236,6 @@ const { convertToPdf } = require('./docConvert')
 const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOrphanedUploads } = require('./fileRetention')
 const { buildInvoicePdf } = require('./invoice')
 const { formatRupees } = require('./format')
-const { BigQuery } = require('@google-cloud/bigquery')
-const { runSync: runBqSync, DATASET: BQ_DATASET, LOCATION: BQ_LOCATION } = require('./scripts/bqSync')
 const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
 
 // pdf-lib's Standard fonts (used by the job sheet's text pages below) are
@@ -2930,22 +2928,17 @@ app.get('/api/admin/analytics/sales', requireSuperAdmin, (req, res) => {
   return res.json(db.getSalesAnalytics(days))
 })
 
-// ---- Line-item report (BigQuery-backed) ----
-// Reads from BigQuery rather than the live SQLite DB, per how this report is
-// meant to be used: an accounting/GST export, not a live operational view —
-// BigQuery is the system of record for "what actually got sold," refreshed
-// daily by metalix-bqsync.timer or on demand via the sync route below.
-let bqClient = null
-function getBq() {
-  if (!bqClient) bqClient = new BigQuery({ location: BQ_LOCATION })
-  return bqClient
-}
-
-// Raw per-order BigQuery columns an admin can opt into as extra report
-// columns, beyond the fixed Order Date/ID/Customer/Item/Type/Price/GST/Total
-// set — every key here must be a real column in BQ_DATASET.orders (see
-// scripts/bqSync.js's TABLES[0].schema) since it's interpolated straight into
-// the SELECT list.
+// ---- Line-item report ----
+// Reads the live SQLite DB (via db.getOrdersForLineItemReport) rather than
+// the daily BigQuery mirror — an admin pulling a report wants this morning's
+// orders in it, not whatever the last sync happened to catch. BigQuery stays
+// in place separately (scripts/bqSync.js, still running on its daily timer)
+// for ad-hoc SQL/BI access; this report just doesn't route through it.
+//
+// Raw per-order columns an admin can opt into as extra report columns,
+// beyond the fixed Order Date/ID/Customer/Item/Type/Price/GST/Total set —
+// every key here must be a real `orders` column (see db.js's CREATE TABLE /
+// ensureColumn calls), since it's used to read straight off each row.
 const REPORT_EXTRA_COLUMNS = {
   customer_mobile: 'Customer Mobile',
   customer_email: 'Customer Email',
@@ -3007,20 +3000,7 @@ function flattenOrderToLineItems(order) {
   return items
 }
 
-// On-demand counterpart to metalix-bqsync.timer's daily run, so an admin
-// pulling a report right now doesn't have to wait up to 24h for today's
-// orders to show up in BigQuery.
-app.post('/api/admin/reports/sync-bq', requireSuperAdmin, async (req, res) => {
-  try {
-    await runBqSync()
-    return res.json({ ok: true, syncedAt: Date.now() })
-  } catch (err) {
-    console.error('Manual BQ sync error:', err)
-    return res.status(502).json({ error: 'sync_failed', message: err.message || 'Could not sync to BigQuery.' })
-  }
-})
-
-app.get('/api/admin/reports/line-items', requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/reports/line-items', requireSuperAdmin, (req, res) => {
   const from = Number(req.query.from)
   const to = Number(req.query.to)
   if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
@@ -3030,16 +3010,7 @@ app.get('/api/admin/reports/line-items', requireSuperAdmin, async (req, res) => 
   const format = req.query.format === 'json' ? 'json' : 'csv'
 
   try {
-    const bq = getBq()
-    const selectCols = Array.from(new Set([
-      'id', 'customer_name', 'files_json', 'gst_amount', 'total_amount',
-      'delivery_charge', 'handling_charge', 'created_at', ...extraKeys
-    ]))
-    const sql = `SELECT ${selectCols.map((c) => `\`${c}\``).join(', ')} FROM \`${BQ_DATASET}.orders\`
-      WHERE created_at BETWEEN @from AND @to AND payment_status = 'paid'
-      ORDER BY created_at`
-    const [orders] = await bq.query({ query: sql, location: BQ_LOCATION, params: { from, to } })
-
+    const orders = db.getOrdersForLineItemReport(from, to)
     const lineRows = []
     orders.forEach((order) => {
       flattenOrderToLineItems(order).forEach((li) => {
@@ -3073,7 +3044,7 @@ app.get('/api/admin/reports/line-items', requireSuperAdmin, async (req, res) => 
     return res.send('\uFEFF' + csv)
   } catch (err) {
     console.error('Line-item report error:', err)
-    return res.status(502).json({ error: 'report_failed', message: 'Could not query BigQuery. Try "Sync now" first, or check server logs.' })
+    return res.status(500).json({ error: 'report_failed', message: 'Could not generate the report. Check server logs.' })
   }
 })
 

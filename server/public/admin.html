@@ -113,13 +113,35 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .range-btn.active{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d);}
 
 /* -- REPORTS -- */
-.report-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.report-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
 .report-custom-range{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink3);margin-left:4px;}
 .report-custom-range input[type=date]{border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;color:var(--ink);background:var(--card);}
 .report-columns-label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px;}
 .report-columns-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 14px;}
 .report-col-check{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ink2);cursor:pointer;}
 .report-col-check input{margin:0;}
+
+/* Gear-icon column picker, same spot/affordance as Pipedrive's list-view
+   column config — a toggle button with a popover, not an always-open block,
+   so the filter row stays short. */
+.pd-gear-wrap{position:relative;margin-left:auto;}
+.pd-gear-btn{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--ink3);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:.15s;}
+.pd-gear-btn:hover,.pd-gear-btn.active{border-color:var(--orange);color:var(--orange-d);background:var(--orange-soft);}
+.pd-col-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:420px;max-width:520px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,.16);padding:14px 16px;z-index:200;}
+.pd-col-menu.hidden{display:none;}
+
+/* Pipedrive-style list table: bold sentence-case headers (not the app's
+   usual uppercase small-caps), a checkbox column, and a sort arrow that only
+   appears on the active column. */
+.pd-toolbar{display:flex;align-items:center;justify-content:space-between;padding:14px 4px;}
+.pd-table{width:100%;border-collapse:collapse;background:var(--card);font-size:13.5px;}
+.pd-table th{text-align:left;text-transform:none;letter-spacing:normal;font-size:13px;font-weight:700;color:var(--ink);background:var(--paper);padding:10px 14px;border-bottom:1px solid var(--line);border-top:1px solid var(--line);white-space:nowrap;user-select:none;}
+.pd-table th.sortable{cursor:pointer;}
+.pd-table th.sortable:hover{color:var(--orange-d);}
+.pd-table th .pd-sort-arrow{display:inline-block;width:12px;margin-left:2px;font-size:11px;color:var(--orange-d);}
+.pd-table td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.pd-table tbody tr:hover{background:var(--surface-hover);}
+.pd-table th.cbcol,.pd-table td.cbcol{width:40px;padding-left:16px;padding-right:0;}
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -708,7 +730,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="panel" id="panel-reports">
       <div class="stages-wrap" style="max-width:none;">
         <h2>Line-item sales report</h2>
-        <p class="hint">One row per purchased line item (print jobs, stationery, stamps, services — plus delivery/handling when charged) across paid orders in a date range: customer, item, type, price, GST, and price including GST. Sourced from BigQuery — refreshed daily by the sync timer, or on demand with "Sync now" below.</p>
+        <p class="hint">One row per purchased line item (print jobs, stationery, stamps, services — plus delivery/handling when charged) across paid orders in a date range: customer, item, type, price, GST, and price including GST. Reads the live database — no separate sync step.</p>
 
         <div class="report-filters">
           <button class="range-btn" data-range="today">Today</button>
@@ -721,24 +743,24 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
             <span>to</span>
             <input type="date" id="reportTo" />
           </span>
+          <div class="pd-gear-wrap">
+            <button type="button" class="pd-gear-btn" id="reportColGearBtn" title="Choose columns">⚙</button>
+            <div class="pd-col-menu hidden" id="reportColMenu">
+              <div class="report-columns-label">Extra columns (optional)</div>
+              <div class="report-columns-grid" id="reportExtraColumns"></div>
+            </div>
+          </div>
         </div>
 
-        <div class="report-columns">
-          <div class="report-columns-label">Extra columns (optional)</div>
-          <div class="report-columns-grid" id="reportExtraColumns"></div>
-        </div>
-
-        <div class="discounts-actions" style="margin-top:20px;">
-          <button type="button" class="rate-add" id="reportSyncBtn">↻ Sync now</button>
+        <div class="discounts-actions" style="margin-top:14px;">
           <button class="save-btn" type="button" id="reportPreviewBtn">Preview</button>
           <button class="save-btn" type="button" id="reportExportBtn">⬇ Export CSV</button>
         </div>
         <div class="save-message hidden" id="reportMessage"></div>
-        <p class="subtle" id="reportSyncStatus" style="margin-top:8px;"></p>
       </div>
 
-      <div class="stages-wrap" style="max-width:none;margin-top:20px;" id="reportPreviewWrap">
-        <p class="subtle">Run Preview to see a sample of the report here before exporting.</p>
+      <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="reportPreviewWrap">
+        <p class="subtle" style="padding:20px;">Run Preview to see the report here before exporting.</p>
       </div>
     </div>
 
@@ -2909,10 +2931,10 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
   btn.addEventListener('click', () => loadAnalytics(btn.dataset.days === 'today' ? 'today' : Number(btn.dataset.days)));
 });
 
-/* -- REPORTS (line-item sales export, BigQuery-backed) -- */
+/* -- REPORTS (line-item sales export, reads the live DB) -- */
 // Keys must match server.js's REPORT_EXTRA_COLUMNS exactly — they're sent
-// back as the `columns` query param and interpolated into the BigQuery
-// SELECT list there.
+// back as the `columns` query param and used to pick which order fields to
+// include.
 const REPORT_EXTRA_COLUMNS = [
   { key: 'customer_mobile', label: 'Customer Mobile' },
   { key: 'customer_email', label: 'Customer Email' },
@@ -2930,6 +2952,19 @@ const REPORT_EXTRA_COLUMNS = [
     '<label class="report-col-check"><input type="checkbox" value="' + c.key + '" /> ' + escHtml(c.label) + '</label>'
   ).join('');
 })();
+
+// Gear icon toggles the column-picker popover (Pipedrive's list-view
+// pattern) instead of it sitting permanently open in the filter row.
+document.getElementById('reportColGearBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('reportColMenu').classList.toggle('hidden');
+  document.getElementById('reportColGearBtn').classList.toggle('active');
+});
+document.getElementById('reportColMenu').addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', () => {
+  document.getElementById('reportColMenu').classList.add('hidden');
+  document.getElementById('reportColGearBtn').classList.remove('active');
+});
 
 function reportRangeToDates(mode){
   const now = new Date();
@@ -2975,52 +3010,129 @@ function getReportRangeMs(){
 }
 const getReportExtraColumns = () => Array.from(document.querySelectorAll('#reportExtraColumns input:checked')).map((el) => el.value);
 
-document.getElementById('reportSyncBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('reportSyncBtn');
-  const status = document.getElementById('reportSyncStatus');
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Syncing…'; status.textContent = ''; status.style.color = '';
-  try {
-    const res = await adminFetch('/api/admin/reports/sync-bq', { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { status.textContent = data.message || 'Sync failed.'; status.style.color = 'var(--err)'; return; }
-    status.textContent = 'Synced just now, ' + new Date(data.syncedAt).toLocaleTimeString() + '.';
-  } catch (err) {
-    if (err.message !== 'unauthorized') { status.textContent = 'Sync failed.'; status.style.color = 'var(--err)'; }
-  } finally {
-    btn.disabled = false; btn.textContent = orig;
-  }
-});
+// Preview state — kept around after a fetch so sorting and "export selected"
+// work entirely client-side against the already-loaded rows, no re-fetch.
+let reportRows = [];
+let reportHeaders = [];
+let reportSort = { col: null, dir: 1 };
+let reportTruncated = false;
+
+function reportCsvValueFor(v){ return v == null ? '' : v; }
+
+function renderReportTable(){
+  const wrap = document.getElementById('reportPreviewWrap');
+  if (!reportRows.length) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">No orders in this range.</p>'; return; }
+  const sorted = reportSort.col ? reportRows.slice().sort((a, b) => {
+    const av = a[reportSort.col], bv = b[reportSort.col];
+    const an = Number(av), bn = Number(bv);
+    const cmp = (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') ? an - bn : String(av).localeCompare(String(bv));
+    return cmp * reportSort.dir;
+  }) : reportRows;
+
+  const theadCells = reportHeaders.map((h) => {
+    const active = reportSort.col === h;
+    const arrow = active ? (reportSort.dir === 1 ? '▲' : '▼') : '';
+    return '<th class="sortable" data-col="' + escHtml(h) + '">' + escHtml(h) + '<span class="pd-sort-arrow">' + arrow + '</span></th>';
+  }).join('');
+  const bodyRows = sorted.map((r, i) =>
+    '<tr data-i="' + i + '"><td class="cbcol"><input type="checkbox" class="cb report-row-cb" /></td>' +
+    reportHeaders.map((h) => '<td>' + escHtml(reportCsvValueFor(r[h])) + '</td>').join('') + '</tr>'
+  ).join('');
+
+  wrap.innerHTML =
+    '<div class="pd-toolbar"><span class="pd-count">' + reportRows.length + ' line item(s)' + (reportTruncated ? ' — showing first 500, export for the full range' : '') + '</span>' +
+    '<span class="subtle" id="reportSelectedCount"></span></div>' +
+    '<div class="table-scroll"><table class="pd-table"><thead><tr><th class="cbcol"><input type="checkbox" class="cb" id="reportSelectAll" /></th>' + theadCells + '</tr></thead>' +
+    '<tbody id="reportTableBody">' + bodyRows + '</tbody></table></div>';
+
+  // sorted array's index i maps back into `sorted`, not the original
+  // reportRows order — stash it so the checkbox handlers below read the
+  // right row regardless of sort state.
+  wrap.dataset.sortedRef = 'x';
+  renderReportTable.currentSorted = sorted;
+
+  document.querySelectorAll('#reportPreviewWrap th.sortable').forEach((th) => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      reportSort = reportSort.col === col ? { col, dir: -reportSort.dir } : { col, dir: 1 };
+      renderReportTable();
+    });
+  });
+  document.getElementById('reportSelectAll').addEventListener('change', (e) => {
+    document.querySelectorAll('.report-row-cb').forEach((cb) => { cb.checked = e.target.checked; });
+    updateReportSelectedCount();
+  });
+  document.getElementById('reportTableBody').addEventListener('change', (e) => {
+    if (e.target.classList.contains('report-row-cb')) updateReportSelectedCount();
+  });
+  updateReportSelectedCount();
+}
+function getReportSelectedRows(){
+  const sorted = renderReportTable.currentSorted || reportRows;
+  return Array.from(document.querySelectorAll('#reportTableBody tr')).filter((tr, idx) =>
+    tr.querySelector('.report-row-cb').checked
+  ).map((tr) => sorted[Number(tr.dataset.i)]);
+}
+function updateReportSelectedCount(){
+  const n = document.querySelectorAll('.report-row-cb:checked').length;
+  document.getElementById('reportSelectedCount').textContent = n ? n + ' selected' : '';
+  document.getElementById('reportExportBtn').textContent = n ? '⬇ Export ' + n + ' selected' : '⬇ Export CSV';
+}
+
+function reportRowsToCsv(headers, rows){
+  const escapeCsvCell = (v) => {
+    const s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return '\uFEFF' + [headers, ...rows.map((r) => headers.map((h) => r[h]))]
+    .map((row) => row.map(escapeCsvCell).join(',')).join('\r\n');
+}
+function downloadCsv(csv, filename){
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 
 async function previewReport(){
   const range = getReportRangeMs();
   const wrap = document.getElementById('reportPreviewWrap');
-  if (!range) { wrap.innerHTML = '<p class="subtle">Pick a valid From/To date range first.</p>'; return; }
-  wrap.innerHTML = '<p class="subtle">Loading preview…</p>';
+  if (!range) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">Pick a valid From/To date range first.</p>'; return; }
+  wrap.innerHTML = '<p class="subtle" style="padding:20px;">Loading preview…</p>';
   const qs = new URLSearchParams({ from: range.from, to: range.to, format: 'json', columns: getReportExtraColumns().join(',') });
   try {
     const res = await adminFetch('/api/admin/reports/line-items?' + qs.toString());
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { wrap.innerHTML = '<p class="subtle">' + escHtml(data.message || 'Could not load preview.') + '</p>'; return; }
-    if (!data.rows.length) { wrap.innerHTML = '<p class="subtle">No paid orders in this range.</p>'; return; }
-    const headers = Object.keys(data.rows[0]);
-    const shown = data.rows.slice(0, 200);
-    wrap.innerHTML =
-      '<p class="subtle" style="margin-bottom:10px;">' + data.rows.length + ' line item(s) across ' + data.orderCount + ' order(s)' + (data.rows.length > 200 ? ' — showing first 200' : '') + '.</p>' +
-      '<div class="table-scroll"><table class="rate-table"><thead><tr>' + headers.map((h) => '<th>' + escHtml(h) + '</th>').join('') + '</tr></thead><tbody>' +
-      shown.map((r) => '<tr>' + headers.map((h) => '<td>' + escHtml(r[h]) + '</td>').join('') + '</tr>').join('') +
-      '</tbody></table></div>';
+    if (!res.ok) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">' + escHtml(data.message || 'Could not load preview.') + '</p>'; return; }
+    reportTruncated = data.rows.length > 500;
+    reportRows = data.rows.slice(0, 500);
+    reportHeaders = reportRows.length ? Object.keys(reportRows[0]) : [];
+    reportSort = { col: null, dir: 1 };
+    renderReportTable();
   } catch (err) {
-    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle">Could not load preview.</p>';
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle" style="padding:20px;">Could not load preview.</p>';
   }
 }
 document.getElementById('reportPreviewBtn').addEventListener('click', previewReport);
 
+// Selected rows (checked in the preview table) export instantly client-side
+// from already-loaded data. With nothing selected, export falls back to the
+// server route for the full date range — not capped at the 500-row preview.
 document.getElementById('reportExportBtn').addEventListener('click', async () => {
   const range = getReportRangeMs();
   const msg = document.getElementById('reportMessage');
   msg.classList.add('hidden');
   if (!range) { msg.textContent = 'Pick a valid From/To date range first.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+  const filename = 'line-items-' + document.getElementById('reportFrom').value + '_to_' + document.getElementById('reportTo').value + '.csv';
+
+  const selected = document.querySelectorAll('.report-row-cb:checked').length ? getReportSelectedRows() : null;
+  if (selected) {
+    downloadCsv(reportRowsToCsv(reportHeaders, selected), filename);
+    return;
+  }
+
   const btn = document.getElementById('reportExportBtn');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Exporting…';
@@ -3036,7 +3148,7 @@ document.getElementById('reportExportBtn').addEventListener('click', async () =>
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'line-items-' + document.getElementById('reportFrom').value + '_to_' + document.getElementById('reportTo').value + '.csv';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
