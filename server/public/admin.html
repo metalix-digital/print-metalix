@@ -142,6 +142,7 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .pd-table td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .pd-table tbody tr:hover{background:var(--surface-hover);}
 .pd-table th.cbcol,.pd-table td.cbcol{width:40px;padding-left:16px;padding-right:0;}
+.pd-totals-row td{font-weight:700;color:var(--ink);background:var(--paper);border-top:2px solid var(--line);border-bottom:none;}
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -3019,6 +3020,21 @@ let reportTruncated = false;
 
 function reportCsvValueFor(v){ return v == null ? '' : v; }
 
+// Any column labelled "... (₹)" is a summable measure (Price, GST, Price
+// incl. GST, and whichever extra ₹ columns — e.g. Discount — are switched
+// on) — detecting by the label instead of a hardcoded list means a future
+// extra column follows this automatically as long as it's named the same way.
+const isReportMoneyColumn = (h) => h.indexOf('(₹)') !== -1;
+function sumReportColumns(rows, headers){
+  const sums = {};
+  headers.forEach((h) => {
+    if (!isReportMoneyColumn(h)) return;
+    sums[h] = rows.reduce((s, r) => s + (Number(r[h]) || 0), 0);
+  });
+  return sums;
+}
+const fmtReportMoney = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+
 function renderReportTable(){
   const wrap = document.getElementById('reportPreviewWrap');
   if (!reportRows.length) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">No orders in this range.</p>'; return; }
@@ -3039,11 +3055,21 @@ function renderReportTable(){
     reportHeaders.map((h) => '<td>' + escHtml(reportCsvValueFor(r[h])) + '</td>').join('') + '</tr>'
   ).join('');
 
+  // Totals row — sums every "(₹)" column over all loaded rows (the same set
+  // shown in the table; if truncated at 500, the row count note above
+  // already flags that this isn't the full range's total).
+  const totals = sumReportColumns(reportRows, reportHeaders);
+  const totalCells = reportHeaders.map((h, i) =>
+    '<td>' + (i === 0 ? 'Total' : '') + (h in totals ? fmtReportMoney(totals[h]) : '') + '</td>'
+  ).join('');
+
   wrap.innerHTML =
     '<div class="pd-toolbar"><span class="pd-count">' + reportRows.length + ' line item(s)' + (reportTruncated ? ' — showing first 500, export for the full range' : '') + '</span>' +
     '<span class="subtle" id="reportSelectedCount"></span></div>' +
     '<div class="table-scroll"><table class="pd-table"><thead><tr><th class="cbcol"><input type="checkbox" class="cb" id="reportSelectAll" /></th>' + theadCells + '</tr></thead>' +
-    '<tbody id="reportTableBody">' + bodyRows + '</tbody></table></div>';
+    '<tbody id="reportTableBody">' + bodyRows + '</tbody>' +
+    '<tfoot><tr class="pd-totals-row"><td class="cbcol"></td>' + totalCells + '</tr></tfoot>' +
+    '</table></div>';
 
   // sorted array's index i maps back into `sorted`, not the original
   // reportRows order — stash it so the checkbox handlers below read the
@@ -3075,8 +3101,12 @@ function getReportSelectedRows(){
 }
 function updateReportSelectedCount(){
   const n = document.querySelectorAll('.report-row-cb:checked').length;
-  document.getElementById('reportSelectedCount').textContent = n ? n + ' selected' : '';
-  document.getElementById('reportExportBtn').textContent = n ? '⬇ Export ' + n + ' selected' : '⬇ Export CSV';
+  const label = document.getElementById('reportSelectedCount');
+  if (!n) { label.textContent = ''; document.getElementById('reportExportBtn').textContent = '⬇ Export CSV'; return; }
+  const totals = sumReportColumns(getReportSelectedRows(), reportHeaders);
+  const totalCol = reportHeaders.find((h) => h.toLowerCase().indexOf('incl. gst') !== -1) || reportHeaders.find(isReportMoneyColumn);
+  label.textContent = n + ' selected' + (totalCol ? ' · ' + fmtReportMoney(totals[totalCol] || 0) : '');
+  document.getElementById('reportExportBtn').textContent = '⬇ Export ' + n + ' selected';
 }
 
 function reportRowsToCsv(headers, rows){
