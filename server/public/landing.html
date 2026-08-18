@@ -192,6 +192,13 @@ nav a.active{color:var(--orange-text);}
      cart link would just be a redundant, cramped addition to the hamburger/
      branch-picker/theme-toggle row that's already tight on space here. */
   .cart-link-header{display:none;}
+  /* Menu icon reads left-to-right as "open the site menu" first, so it goes
+     before the logo — the standard mobile placement — instead of trailing
+     everything on the far right. The branch picker moves below (see its own
+     media query further down) rather than sharing this row, since a tap
+     target that important shouldn't be squeezed to a truncated pill. */
+  .header-inner{flex-wrap:wrap;}
+  .hamburger{order:-1;}
   .hamburger{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:36px;height:36px;flex-shrink:0;}
   .hamburger span{display:block;width:22px;height:2px;background:var(--ink);border-radius:2px;flex-shrink:0;transition:transform .2s,opacity .2s;}
   .mobile-menu{
@@ -634,9 +641,27 @@ __GTM_NOSCRIPT__
 .branch-opt.closed{cursor:default;opacity:.55;}
 .branch-opt.closed:hover{background:none;}
 .branch-opt .b-closed-tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--red);background:var(--red-tint);border-radius:999px;padding:2px 7px;vertical-align:middle;}
-@media(max-width:760px){ .branch-btn .lbl{max-width:96px;} .branch-picker{margin-right:8px;} }
-@media(max-width:420px){ .branch-btn .lbl{max-width:56px;} .branch-picker{margin-right:2px;} .branch-btn{padding:7px 10px;gap:5px;} }
-@media(max-width:340px){ .logo-sub{display:none;} .branch-btn .lbl{max-width:34px;} .theme-toggle{width:32px;height:32px;} }
+/* Below 1200px the picker drops out of the cramped top-row pill (where the
+   branch name was truncating to as little as 34px) and becomes its own
+   full-width bar under the logo/menu row — same "Branch" + location pattern
+   delivery apps use, so it reads as a deliberate, tappable setting rather
+   than a squeezed leftover. */
+@media(max-width:1200px){
+  .branch-picker{order:5;flex:0 0 100%;margin:10px 0 2px;}
+  .branch-btn{
+    width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+    border-radius:12px;padding:10px 14px;background:var(--surface-hover);
+  }
+  .branch-btn::before{
+    content:'Branch';order:-1;flex:0 0 100%;
+    font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);
+  }
+  .branch-btn .lbl{max-width:none;flex:1;text-align:left;overflow:visible;text-overflow:unset;order:1;}
+  .branch-btn .chev{order:2;margin-left:auto;}
+  .branch-btn.unset::before{color:var(--orange-d);}
+  .branch-menu{left:0;right:0;width:100%;max-width:none;}
+}
+@media(max-width:340px){ .logo-sub{display:none;} .theme-toggle{width:32px;height:32px;} }
 </style>
 <!-- Starts hidden — populated from whichever coupon is currently marked
      Active in Admin > Discounts (see the fetch('/api/coupons/featured')
