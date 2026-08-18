@@ -2709,6 +2709,24 @@ app.post('/api/admin/orders/bulk-delete', requireAdmin, requireTab('orders'), ex
   return res.json({ archived })
 })
 
+// Registered ahead of the /:mobile routes below — Express matches in
+// registration order, and "marketing-opt-in" would otherwise be swallowed
+// as a :mobile value by the PATCH route further down (it was, briefly).
+//
+// The only way to grant marketing consent right now besides a customer's own
+// signup-time checkbox — for someone who agreed another way (phone, in
+// person, an old account from before that checkbox existed). Resolves to an
+// actual account by mobile/email same as login does; a guest/walk-in
+// customer with no account has no consent to manage, hence 404 rather than
+// silently no-op-ing.
+app.patch('/api/admin/customers/marketing-opt-in', requireAdmin, requireTab('customers'), express.json(), (req, res) => {
+  const { mobile, email, optIn } = req.body || {}
+  const user = (mobile && db.findUserByIdentifier(mobile)) || (email && db.findUserByIdentifier(email))
+  if (!user) return res.status(404).json({ error: 'no_account', message: "This customer doesn't have an account, so there's no consent to manage." })
+  db.setMarketingOptIn(user.id, !!optIn)
+  return res.json({ ok: true, marketingOptIn: !!optIn })
+})
+
 // Archive a customer (identified by mobile) — archives all their orders.
 app.delete('/api/admin/customers/:mobile', requireAdmin, requireTab('customers'), (req, res) => {
   const orders = db.archiveCustomerByMobile(req.params.mobile, scopeLocation(req))

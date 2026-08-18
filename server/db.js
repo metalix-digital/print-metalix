@@ -1893,21 +1893,29 @@ function countCouponUses(code) {
   return row ? row.n : 0
 }
 
+// LEFT JOINs users on a mobile/email match so each row can show whether
+// there's an actual account behind it and, if so, its marketing consent —
+// this list is grouped by customer_mobile from orders (walk-in/guest
+// checkouts included), not from users, so plenty of rows have no matching
+// account at all and consent simply isn't manageable for them.
 function listCustomers(locationId) {
-  const clauses = ["(payment_status = 'paid' OR payment_method = 'cod')", 'archived_at IS NULL']
+  const clauses = ["(o.payment_status = 'paid' OR o.payment_method = 'cod')", 'o.archived_at IS NULL']
   const params = []
-  if (locationId) { clauses.push('location_id = ?'); params.push(locationId) }
+  if (locationId) { clauses.push('o.location_id = ?'); params.push(locationId) }
   return db.prepare(`
     SELECT
-      customer_mobile,
-      customer_name,
-      customer_email,
+      o.customer_mobile,
+      o.customer_name,
+      o.customer_email,
       COUNT(*) as order_count,
-      SUM(total_amount) as total_spent,
-      MAX(created_at) as last_order_at
-    FROM orders
+      SUM(o.total_amount) as total_spent,
+      MAX(o.created_at) as last_order_at,
+      MAX(u.id) as user_id,
+      MAX(u.marketing_opt_in) as marketing_opt_in
+    FROM orders o
+    LEFT JOIN users u ON (o.customer_mobile IS NOT NULL AND u.mobile = o.customer_mobile) OR (o.customer_email IS NOT NULL AND u.email = o.customer_email)
     WHERE ${clauses.join(' AND ')}
-    GROUP BY customer_mobile
+    GROUP BY o.customer_mobile
     ORDER BY last_order_at DESC
   `).all(params)
 }

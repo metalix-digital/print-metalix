@@ -201,6 +201,13 @@ label.report-col-check:has(input:checked){border-color:var(--orange) !important;
 .camp-channel-pick label .camp-channel-icon{font-size:20px;}
 .camp-channel-pick label:has(input:checked){border-color:var(--orange);background:var(--orange-soft);color:var(--orange-d);}
 .camp-channel-pick input{position:absolute;opacity:0;width:0;height:0;}
+
+/* Customers tab's per-row marketing-consent toggle. */
+.opt-in-toggle{border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Roboto',sans-serif;white-space:nowrap;transition:.15s;}
+.opt-in-toggle.opt-in-yes{background:var(--ok-bg);color:var(--ok);border:1.5px solid transparent;}
+.opt-in-toggle.opt-in-yes:hover{background:var(--err-bg);color:var(--err);}
+.opt-in-toggle.opt-in-no{background:none;color:var(--ink3);border:1.5px solid var(--line);}
+.opt-in-toggle.opt-in-no:hover{border-color:var(--orange);color:var(--orange-d);background:var(--orange-soft);}
 .camp-status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 .camp-status-draft{background:var(--line2);color:var(--ink3);}
 .camp-status-sending{background:var(--warn-bg);color:var(--warn);}
@@ -762,9 +769,9 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <table>
           <thead><tr>
             <th class="cbcol"><input type="checkbox" class="cb" id="custSelectAll" title="Select all" /></th>
-            <th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th></th>
+            <th>Name</th><th>Mobile</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Marketing</th><th></th>
           </tr></thead>
-          <tbody id="customersBody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
+          <tbody id="customersBody"><tr><td colspan="9" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -4119,7 +4126,7 @@ function updateCustBulkBar(){
 function renderCustomers(customers){
   const body = document.getElementById('customersBody');
   if (!customers.length){
-    body.innerHTML = '<tr><td colspan="8" class="empty">' + (allCustomers.length ? 'No customers match your search' : 'No customers yet') + '</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty">' + (allCustomers.length ? 'No customers match your search' : 'No customers yet') + '</td></tr>';
     return;
   }
   body.innerHTML = customers.map((c) => {
@@ -4132,6 +4139,7 @@ function renderCustomers(customers){
       '<td class="num">' + escHtml(c.order_count) + '</td>' +
       '<td class="amt">₹' + escHtml(c.total_spent) + '</td>' +
       '<td class="placed">' + (c.last_order_at ? escHtml(new Date(c.last_order_at).toLocaleDateString()) : '—') + '</td>' +
+      '<td>' + marketingOptInCell(c) + '</td>' +
       '<td class="cust-actions">' +
         '<button class="edit-cust-btn" data-mobile="' + escHtml(mobile) + '">✎ Edit</button>' +
         '<button class="del-cust-btn" data-mobile="' + escHtml(mobile) + '" data-name="' + escHtml(c.customer_name || '') + '" data-count="' + escHtml(c.order_count) + '">Archive</button>' +
@@ -4150,6 +4158,37 @@ function renderCustomers(customers){
       updateCustBulkBar();
     });
   });
+  body.querySelectorAll('.opt-in-toggle').forEach((btn) => btn.addEventListener('click', () => toggleCustomerOptIn(btn)));
+}
+
+// No account behind this row (a guest/walk-in order never tied to a
+// signup) -> there's no verifiable identity to hold consent for, so it's
+// shown as a plain dash rather than a toggle that would silently do nothing.
+function marketingOptInCell(c){
+  if (!c.user_id) return '<span class="subtle">No account</span>';
+  const optedIn = !!c.marketing_opt_in;
+  return '<button type="button" class="opt-in-toggle ' + (optedIn ? 'opt-in-yes' : 'opt-in-no') + '" ' +
+    'data-mobile="' + escHtml(c.customer_mobile || '') + '" data-email="' + escHtml(c.customer_email || '') + '" data-optin="' + optedIn + '">' +
+    (optedIn ? '✓ Opted in' : 'Opted out') + '</button>';
+}
+async function toggleCustomerOptIn(btn){
+  const next = btn.dataset.optin !== 'true';
+  btn.disabled = true;
+  try {
+    const res = await adminFetch('/api/admin/customers/marketing-opt-in', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile: btn.dataset.mobile, email: btn.dataset.email, optIn: next })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.message || 'Could not update.'); btn.disabled = false; return; }
+    btn.dataset.optin = String(next);
+    btn.className = 'opt-in-toggle ' + (next ? 'opt-in-yes' : 'opt-in-no');
+    btn.textContent = next ? '✓ Opted in' : 'Opted out';
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not update.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* -- EDIT CUSTOMER (modal) -- */
