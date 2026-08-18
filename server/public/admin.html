@@ -4464,9 +4464,15 @@ function renderCrossSellTable(){
     '<div class="table-scroll"><table class="rate-table"><thead><tr>' +
       '<th>When this happens</th><th>Recommend</th><th>Order</th><th>Active</th><th></th>' +
     '</tr></thead><tbody id="crossSellRows">' + crossSellRulesList.map(crossSellRowHtml).join('') + '</tbody></table></div>' +
-    '<button type="button" class="rate-add" id="addCrossSellRule">+ Add rule</button>' +
-    '<div class="save-message hidden" id="crossSellMessage"></div>' +
-    '<button class="save-btn" type="button" id="saveCrossSellBtn" style="margin-top:14px;">Save cross-sell rules</button>';
+    // Same nothing-block-level-between-them case as the Discounts tab's
+    // "+ Add coupon"/"Save coupons" row (see the comment there) — wrap in
+    // .discounts-actions for the gap instead of leaving them to render
+    // touching each other.
+    '<div class="discounts-actions">' +
+      '<button type="button" class="rate-add" id="addCrossSellRule">+ Add rule</button>' +
+      '<button class="save-btn" type="button" id="saveCrossSellBtn">Save cross-sell rules</button>' +
+    '</div>' +
+    '<div class="save-message hidden" id="crossSellMessage"></div>';
 
   document.getElementById('addCrossSellRule').addEventListener('click', () => {
     document.getElementById('crossSellRows').insertAdjacentHTML('beforeend', crossSellRowHtml(null));
