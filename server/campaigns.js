@@ -20,19 +20,22 @@ function getSecret() {
   return process.env.ADMIN_JWT_SECRET || 'dev-only-insecure-secret'
 }
 
-// Unsubscribe links have to keep working indefinitely (a customer might not
-// open an email for weeks), so this is a plain HMAC rather than a JWT with
-// an expiry — no expiry to get wrong.
-function unsubscribeToken(userId) {
-  return crypto.createHmac('sha256', getSecret()).update(userId).digest('hex').slice(0, 24)
+// Keyed by the actual contact (email), not a users.id — the "All past
+// customers" audience source below reaches plenty of people with no account
+// at all, and unsubscribe has to work for them too. Links have to keep
+// working indefinitely (a customer might not open an email for weeks), so
+// this is a plain HMAC rather than a JWT with an expiry — no expiry to get
+// wrong. Case-folded to match marketing_suppressions' own lookup.
+function unsubscribeToken(contact) {
+  return crypto.createHmac('sha256', getSecret()).update(contact.toLowerCase()).digest('hex').slice(0, 24)
 }
-function verifyUnsubscribeToken(userId, token) {
-  const expected = unsubscribeToken(userId)
+function verifyUnsubscribeToken(contact, token) {
+  const expected = unsubscribeToken(contact)
   if (!token || token.length !== expected.length) return false
   return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))
 }
-function buildUnsubscribeUrl(userId) {
-  return `${PROD_HOST}/unsubscribe?u=${encodeURIComponent(userId)}&t=${unsubscribeToken(userId)}`
+function buildUnsubscribeUrl(contact) {
+  return `${PROD_HOST}/unsubscribe?c=${encodeURIComponent(contact)}&t=${unsubscribeToken(contact)}`
 }
 
 // Best-effort physical business address for the email compliance footer —
@@ -53,9 +56,16 @@ async function runCampaignSend(campaignId) {
   const campaign = db.getCampaign(campaignId)
   if (!campaign || campaign.status !== 'draft') throw new Error('Campaign is not in a sendable state')
 
+  // "All past customers" is email-only by construction (see
+  // getPastCustomersAudience) — updateCampaign already refuses to set this
+  // source on a non-email campaign, this is the belt-and-suspenders check
+  // at the point it actually matters.
+  const usePastCustomers = campaign.audience_source === 'past_customers' && campaign.channel === 'email'
+  const audience = usePastCustomers
+    ? db.getPastCustomersAudience(campaign.audienceFilter)
+    : db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
   const contactField = campaign.channel === 'email' ? 'email' : 'mobile'
-  const audience = db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
-  const recipients = db.insertCampaignRecipients(campaignId, audience.map((c) => ({ id: c.id, contact: c[contactField] })))
+  const recipients = db.insertCampaignRecipients(campaignId, audience.map((c) => ({ id: c.id || null, name: c.name, contact: c[contactField] })))
 
   db.setCampaignStatus(campaignId, 'sending')
 
@@ -79,7 +89,7 @@ async function runCampaignSend(campaignId) {
         if (campaign.channel === 'email') {
           ok = await mailer.sendCampaignEmail({
             to: r.contact, subject: campaign.subject, bodyHtml: campaign.body_html,
-            unsubscribeUrl: buildUnsubscribeUrl(r.customer_id), businessAddress
+            unsubscribeUrl: buildUnsubscribeUrl(r.contact), businessAddress
           })
         } else if (campaign.channel === 'whatsapp') {
           ok = await whatsapp.sendCampaignWhatsapp(r.contact, template.content_sid, campaign.templateVars)

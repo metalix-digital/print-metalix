@@ -371,6 +371,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign_id ON campaign_recipients(campaign_id);
 `)
+ensureColumn('campaigns', 'audience_source', "TEXT DEFAULT 'optin'") // 'optin' | 'past_customers' (email-only — see getPastCustomersAudience)
+ensureColumn('campaign_recipients', 'customer_name', 'TEXT') // snapshot at send time — a guest recipient's name only ever lived on their order, not a users row, so this can't be recovered by joining users later
+// A permanent, contact-keyed opt-out record — independent of whether an
+// account exists, unlike users.marketing_opt_in. This is what makes
+// unsubscribe work for the "All past customers" audience source below
+// (guest checkouts with no account to flip a flag on) and is checked by
+// every audience source, including the strict opt-in one, as a floor no
+// send can bypass.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS marketing_suppressions (
+    contact TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER,
+    PRIMARY KEY (contact, channel)
+  );
+`)
 
 // Paper types are an admin-managed list: each entry is
 // { id, label, bw: { single, double }, color: { single } }. The `id` is a
@@ -2052,16 +2069,17 @@ function hydrateCampaign(r) {
 function getCampaign(id) {
   return hydrateCampaign(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id))
 }
-function createCampaign({ name, channel, subject, bodyHtml, templateId, templateVars, audienceFilter, createdBy }) {
+function createCampaign({ name, channel, subject, bodyHtml, templateId, templateVars, audienceFilter, audienceSource, createdBy }) {
   const id = crypto.randomUUID()
   const now = Date.now()
   db.prepare(`INSERT INTO campaigns
-      (id, name, channel, status, subject, body_html, template_id, template_vars, audience_filter, stats, created_by, created_at, updated_at)
-    VALUES (@id,@name,@channel,'draft',@subject,@bodyHtml,@templateId,@templateVars,@audienceFilter,@stats,@createdBy,@now,@now)`)
+      (id, name, channel, status, subject, body_html, template_id, template_vars, audience_filter, audience_source, stats, created_by, created_at, updated_at)
+    VALUES (@id,@name,@channel,'draft',@subject,@bodyHtml,@templateId,@templateVars,@audienceFilter,@audienceSource,@stats,@createdBy,@now,@now)`)
     .run({
       id, name, channel, subject: subject || null, bodyHtml: bodyHtml || null,
       templateId: templateId || null, templateVars: JSON.stringify(templateVars || {}),
-      audienceFilter: JSON.stringify(audienceFilter || {}), stats: JSON.stringify({ total: 0, sent: 0, failed: 0, skipped: 0 }),
+      audienceFilter: JSON.stringify(audienceFilter || {}), audienceSource: audienceSource === 'past_customers' ? 'past_customers' : 'optin',
+      stats: JSON.stringify({ total: 0, sent: 0, failed: 0, skipped: 0 }),
       createdBy: createdBy || null, now
     })
   return getCampaign(id)
@@ -2081,6 +2099,15 @@ function updateCampaign(id, updates) {
   if (updates.templateId !== undefined) { fields.push('template_id = @templateId'); params.templateId = updates.templateId }
   if (updates.templateVars !== undefined) { fields.push('template_vars = @templateVars'); params.templateVars = JSON.stringify(updates.templateVars) }
   if (updates.audienceFilter !== undefined) { fields.push('audience_filter = @audienceFilter'); params.audienceFilter = JSON.stringify(updates.audienceFilter) }
+  // Email-only, enforced here too (not just in the UI/route) — "All past
+  // customers" skips the marketing_opt_in gate, which is only defensible
+  // for email's existing-customer-relationship + mandatory-unsubscribe
+  // model; WhatsApp/SMS need real prior consent regardless of what this
+  // field is set to.
+  if (updates.audienceSource !== undefined) {
+    params.audienceSource = (updates.audienceSource === 'past_customers' && current.channel === 'email') ? 'past_customers' : 'optin'
+    fields.push('audience_source = @audienceSource')
+  }
   if (!fields.length) return current
   fields.push('updated_at = @now')
   db.prepare(`UPDATE campaigns SET ${fields.join(', ')} WHERE id = @id`).run(params)
@@ -2102,21 +2129,34 @@ function setCampaignStatus(id, status, extra) {
     WHERE id = @id`).run(params)
 }
 
+function addMarketingSuppression(contact, channel, reason) {
+  if (!contact) return
+  db.prepare('INSERT OR REPLACE INTO marketing_suppressions (contact, channel, reason, created_at) VALUES (?,?,?,?)')
+    .run(contact.toLowerCase(), channel, reason || null, Date.now())
+}
+function isMarketingSuppressed(contact, channel) {
+  if (!contact) return false
+  return !!db.prepare('SELECT 1 FROM marketing_suppressions WHERE contact = ? AND channel = ?').get(contact.toLowerCase(), channel)
+}
+
 // Every campaign audience query enforces marketing_opt_in = 1 itself — never
 // left to the caller — plus a non-empty contact field for the channel being
 // sent on (a customer opted in but who never gave an email can't receive an
-// email campaign). Optional filters narrow further: locationId (customers
-// who've ordered from that branch), sinceOrderDays (ordered within the last
-// N days), minOrders (order count at least this many).
+// email campaign) and no matching suppression (an unsubscribe always wins,
+// even over an account that still shows opted-in for some other reason).
+// Optional filters narrow further: locationId (customers who've ordered
+// from that branch), sinceOrderDays (ordered within the last N days),
+// minOrders (order count at least this many).
 function getCampaignAudience(channel, filter) {
   filter = filter || {}
   const contactCol = channel === 'email' ? 'u.email' : 'u.mobile'
-  const params = {}
+  const params = { channel }
   let sql = `
     SELECT u.id, u.name, u.email, u.mobile, COUNT(o.id) as orderCount, MAX(o.created_at) as lastOrderAt
     FROM users u
     JOIN orders o ON o.customer_id = u.id AND o.archived_at IS NULL
     WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''
+      AND NOT EXISTS (SELECT 1 FROM marketing_suppressions s WHERE s.contact = LOWER(${contactCol}) AND s.channel = @channel)
   `
   if (filter.locationId) { sql += ' AND o.location_id = @locationId'; params.locationId = filter.locationId }
   if (filter.sinceOrderDays) {
@@ -2124,6 +2164,34 @@ function getCampaignAudience(channel, filter) {
     sql += ' AND o.created_at >= @since'
   }
   sql += ' GROUP BY u.id'
+  if (filter.minOrders) { sql += ' HAVING orderCount >= @minOrders'; params.minOrders = Number(filter.minOrders) }
+  sql += ' ORDER BY lastOrderAt DESC'
+  return db.prepare(sql).all(params)
+}
+
+// Email-only audience source that doesn't require an account or opt-in flag
+// at all — every distinct email address that's ever completed an order,
+// minus anyone who's unsubscribed. This is the "existing customer
+// relationship" model (paired with the mandatory unsubscribe footer every
+// campaign email already carries), not a consent gate — it deliberately
+// isn't offered for WhatsApp/SMS, where platform policy (Meta) and carrier-
+// level DLT routing require real prior opt-in, not just an existing order.
+function getPastCustomersAudience(filter) {
+  filter = filter || {}
+  const params = {}
+  let sql = `
+    SELECT o.customer_email as email, MAX(o.customer_name) as name, COUNT(*) as orderCount, MAX(o.created_at) as lastOrderAt
+    FROM orders o
+    WHERE o.customer_email IS NOT NULL AND o.customer_email != ''
+      AND o.archived_at IS NULL AND (o.payment_status = 'paid' OR o.payment_method = 'cod')
+      AND NOT EXISTS (SELECT 1 FROM marketing_suppressions s WHERE s.contact = LOWER(o.customer_email) AND s.channel = 'email')
+  `
+  if (filter.locationId) { sql += ' AND o.location_id = @locationId'; params.locationId = filter.locationId }
+  if (filter.sinceOrderDays) {
+    params.since = Date.now() - Number(filter.sinceOrderDays) * 24 * 60 * 60 * 1000
+    sql += ' AND o.created_at >= @since'
+  }
+  sql += ' GROUP BY o.customer_email'
   if (filter.minOrders) { sql += ' HAVING orderCount >= @minOrders'; params.minOrders = Number(filter.minOrders) }
   sql += ' ORDER BY lastOrderAt DESC'
   return db.prepare(sql).all(params)
@@ -2151,9 +2219,13 @@ function getCampaignAudienceStats(channel) {
   return { totalOptedIn, withOrders }
 }
 
+// customer_id is stored NOT NULL (kept as-is rather than migrating a live
+// production table) — a guest with no account gets a synthetic
+// 'guest:<email>' id instead of a real users.id. customer_name is snapshotted
+// per row since a guest's name only ever lived on their order.
 function insertCampaignRecipients(campaignId, customers) {
-  const insert = db.prepare('INSERT INTO campaign_recipients (campaign_id, customer_id, contact, status) VALUES (?,?,?,\'pending\')')
-  const tx = db.transaction((rows) => { rows.forEach((c) => insert.run(campaignId, c.id, c.contact)) })
+  const insert = db.prepare('INSERT INTO campaign_recipients (campaign_id, customer_id, customer_name, contact, status) VALUES (?,?,?,?,\'pending\')')
+  const tx = db.transaction((rows) => { rows.forEach((c) => insert.run(campaignId, c.id || ('guest:' + c.contact), c.name || null, c.contact)) })
   tx(customers)
   return db.prepare('SELECT * FROM campaign_recipients WHERE campaign_id = ?').all(campaignId)
 }
@@ -2162,7 +2234,7 @@ function updateCampaignRecipient(id, { status, error, sentAt }) {
     .run(status, error || null, sentAt || null, id)
 }
 function getCampaignRecipients(campaignId) {
-  return db.prepare('SELECT cr.*, u.name as customer_name FROM campaign_recipients cr JOIN users u ON u.id = cr.customer_id WHERE cr.campaign_id = ? ORDER BY cr.id').all(campaignId)
+  return db.prepare('SELECT * FROM campaign_recipients WHERE campaign_id = ? ORDER BY id').all(campaignId)
 }
 
 function createPrintJob(orderId) {
@@ -2367,7 +2439,10 @@ module.exports = {
   deleteCampaign,
   setCampaignStatus,
   getCampaignAudience,
+  getPastCustomersAudience,
   getCampaignAudienceStats,
+  addMarketingSuppression,
+  isMarketingSuppressed,
   insertCampaignRecipients,
   updateCampaignRecipient,
   getCampaignRecipients,

@@ -3124,8 +3124,8 @@ app.post('/api/admin/campaigns', requireSuperAdmin, express.json(), (req, res) =
   return res.json({ campaign })
 })
 app.patch('/api/admin/campaigns/:id', requireSuperAdmin, express.json(), (req, res) => {
-  const { name, subject, bodyHtml, templateId, templateVars, audienceFilter } = req.body || {}
-  const campaign = db.updateCampaign(req.params.id, { name, subject, bodyHtml, templateId, templateVars, audienceFilter })
+  const { name, subject, bodyHtml, templateId, templateVars, audienceFilter, audienceSource } = req.body || {}
+  const campaign = db.updateCampaign(req.params.id, { name, subject, bodyHtml, templateId, templateVars, audienceFilter, audienceSource })
   if (!campaign) return res.status(404).json({ error: 'not_found' })
   return res.json({ campaign })
 })
@@ -3136,15 +3136,21 @@ app.delete('/api/admin/campaigns/:id', requireSuperAdmin, (req, res) => {
 })
 
 // Audience size + a small sample, computed from the campaign's currently
-// saved filter (not a request body) — always enforces marketing_opt_in
-// itself, same as the actual send, so what an admin previews here is
-// exactly who a real send would reach.
+// saved filter and source (not a request body) — always enforces the same
+// gates the actual send does, so what an admin previews here is exactly who
+// a real send would reach.
 app.get('/api/admin/campaigns/:id/audience', requireSuperAdmin, (req, res) => {
   const campaign = db.getCampaign(req.params.id)
   if (!campaign) return res.status(404).json({ error: 'not_found' })
-  const audience = db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
-  const stats = db.getCampaignAudienceStats(campaign.channel)
-  return res.json({ count: audience.length, sample: audience.slice(0, 20), totalOptedIn: stats.totalOptedIn, totalOptedInWithOrders: stats.withOrders })
+  const usePastCustomers = campaign.audience_source === 'past_customers' && campaign.channel === 'email'
+  const audience = usePastCustomers
+    ? db.getPastCustomersAudience(campaign.audienceFilter)
+    : db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
+  const stats = usePastCustomers ? null : db.getCampaignAudienceStats(campaign.channel)
+  return res.json({
+    count: audience.length, sample: audience.slice(0, 20),
+    totalOptedIn: stats ? stats.totalOptedIn : null, totalOptedInWithOrders: stats ? stats.withOrders : null
+  })
 })
 
 app.get('/api/admin/campaigns/:id/recipients', requireSuperAdmin, (req, res) => {
@@ -3201,10 +3207,19 @@ app.post('/api/admin/campaigns/:id/send', requireSuperAdmin, (req, res) => {
 
 // Public, no auth — the link every campaign email carries. GET (not POST) so
 // it works as a plain click from any mail client, no JS/fetch required.
+// Keyed by contact (c), not a users.id — the "All past customers" audience
+// reaches plenty of people with no account, and this has to work for them
+// too. Suppression is recorded by contact regardless; if an account happens
+// to exist for that email, its marketing_opt_in is also cleared so the
+// Customers tab stays in sync with the real, permanent suppression record.
 app.get('/unsubscribe', (req, res) => {
-  const { u, t } = req.query
-  const ok = u && t && campaigns.verifyUnsubscribeToken(String(u), String(t))
-  if (ok) db.setMarketingOptIn(String(u), false)
+  const { c, t } = req.query
+  const ok = c && t && campaigns.verifyUnsubscribeToken(String(c), String(t))
+  if (ok) {
+    db.addMarketingSuppression(String(c), 'email', 'unsubscribe_link')
+    const user = db.findUserByIdentifier(String(c))
+    if (user) db.setMarketingOptIn(user.id, false)
+  }
   res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${ok ? 'Unsubscribed' : 'Link invalid'} — Metalix Print</title>
     <style>body{font-family:Arial,Helvetica,sans-serif;background:#F4F4F5;margin:0;padding:60px 20px;text-align:center;color:#18181B;}

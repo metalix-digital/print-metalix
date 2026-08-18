@@ -208,6 +208,15 @@ label.report-col-check:has(input:checked){border-color:var(--orange) !important;
 .opt-in-toggle.opt-in-yes:hover{background:var(--err-bg);color:var(--err);}
 .opt-in-toggle.opt-in-no{background:none;color:var(--ink3);border:1.5px solid var(--line);}
 .opt-in-toggle.opt-in-no:hover{border-color:var(--orange);color:var(--orange-d);background:var(--orange-soft);}
+
+/* Campaign editor's audience-source picker (email-only "All past customers"
+   option vs the default strict opt-in one). */
+.aud-source-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.aud-source-pick label{position:relative;border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;font-size:12.5px;color:var(--ink3);line-height:1.5;cursor:pointer;display:block;background:var(--card);transition:.15s;}
+.aud-source-pick label b{color:var(--ink2);font-size:13px;}
+.aud-source-pick label:has(input:checked){border-color:var(--orange);background:var(--orange-soft);}
+.aud-source-pick label:has(input:checked) b{color:var(--orange-d);}
+.aud-source-pick input{position:absolute;top:12px;right:12px;margin:0;}
 .camp-status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 .camp-status-draft{background:var(--line2);color:var(--ink3);}
 .camp-status-sending{background:var(--warn-bg);color:var(--warn);}
@@ -886,8 +895,16 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <div id="campaignEditor" class="hidden">
             <div class="camp-section">
               <div class="camp-section-title">🎯 Audience</div>
-              <p class="camp-section-hint">Only customers who've opted in to marketing are ever included, no matter what's set below.</p>
-              <div class="camp-field-row">
+              <p class="camp-section-hint" id="audSourceHint">Only customers who've opted in to marketing are ever included, no matter what's set below.</p>
+
+              <div id="audSourcePick" class="hidden">
+                <div class="aud-source-pick">
+                  <label><input type="radio" name="audSource" value="optin" checked /><span><b>Opted-in accounts</b><br>Strict — only customers who've explicitly consented.</span></label>
+                  <label><input type="radio" name="audSource" value="past_customers" /><span><b>All past customers</b><br>Anyone who's ordered before, account or not. Email only — every send still carries the unsubscribe link.</span></label>
+                </div>
+              </div>
+
+              <div class="camp-field-row" style="margin-top:14px;">
                 <div class="field"><label>Branch</label><select id="audLocation"><option value="">All branches</option></select></div>
                 <div class="field"><label>Minimum past orders</label><input type="number" id="audMinOrders" min="0" placeholder="Any" /></div>
                 <div class="field"><label>Ordered within (days)</label><input type="number" id="audSinceDays" min="0" placeholder="Any time" /></div>
@@ -3596,6 +3613,15 @@ async function renderCampaignEditor(campaign){
   document.getElementById('campMessage').classList.add('hidden');
 
   const isEmail = campaign.channel === 'email';
+  // "All past customers" only exists for email — the underlying audience
+  // source is email-only server-side too (getPastCustomersAudience), this
+  // just keeps the picker from being shown somewhere it can't apply.
+  document.getElementById('audSourcePick').classList.toggle('hidden', !isEmail);
+  document.getElementById('audSourceHint').textContent = isEmail
+    ? "Pick who this reaches below — the strict opted-in list, or everyone who's ordered before."
+    : "Only customers who've opted in to marketing are ever included, no matter what's set below.";
+  document.querySelectorAll('input[name=audSource]').forEach((r) => { r.checked = r.value === (isEmail ? (campaign.audience_source || 'optin') : 'optin'); });
+
   document.getElementById('emailEditor').classList.toggle('hidden', !isEmail);
   document.getElementById('templateEditor').classList.toggle('hidden', isEmail);
   if (isEmail) {
@@ -3648,8 +3674,9 @@ function collectCampaignContentPatch(){
 }
 
 async function saveCampaignDraft(){
+  const sourceEl = document.querySelector('input[name=audSource]:checked');
   const patch = Object.assign(
-    { name: currentCampaign.name, audienceFilter: collectCampaignAudienceFilter() },
+    { name: currentCampaign.name, audienceFilter: collectCampaignAudienceFilter(), audienceSource: sourceEl ? sourceEl.value : 'optin' },
     collectCampaignContentPatch()
   );
   const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id), {
@@ -3661,6 +3688,10 @@ async function saveCampaignDraft(){
   return currentCampaign;
 }
 
+document.querySelectorAll('input[name=audSource]').forEach((r) => r.addEventListener('change', () => {
+  document.getElementById('audResult').textContent = '';
+}));
+
 document.getElementById('audPreviewBtn').addEventListener('click', async () => {
   const result = document.getElementById('audResult');
   result.textContent = 'Loading…';
@@ -3668,8 +3699,17 @@ document.getElementById('audPreviewBtn').addEventListener('click', async () => {
     await saveCampaignDraft();
     const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/audience');
     const data = await res.json();
+    const sourceEl = document.querySelector('input[name=audSource]:checked');
+    const isPastCustomers = sourceEl && sourceEl.value === 'past_customers';
+    const label = isPastCustomers ? 'past customer(s)' : 'opted-in customer(s)';
     if (data.count > 0) {
-      result.textContent = data.count + ' opted-in customer(s) — e.g. ' + data.sample.slice(0, 5).map((c) => c.name).join(', ') + (data.count > 5 ? ', …' : '.');
+      result.textContent = data.count + ' ' + label + ' — e.g. ' + data.sample.slice(0, 5).map((c) => c.name).join(', ') + (data.count > 5 ? ', …' : '.');
+    } else if (isPastCustomers) {
+      // totalOptedIn/totalOptedInWithOrders aren't meaningful for this
+      // source (it doesn't gate on the opt-in flag at all) — zero here just
+      // means the filters excluded everyone, or nobody with a matching
+      // order exists yet.
+      result.textContent = 'No past customers match these filters — try widening the branch/min-orders/date filters.';
     } else if (data.totalOptedIn === 0) {
       // The most common reason this is empty: opt-in is a brand-new field
       // that defaults OFF for every existing account, so "nobody yet" is
@@ -3728,7 +3768,7 @@ document.getElementById('campSendBtn').addEventListener('click', async () => {
       return;
     }
     const ok = await showConfirmModal(
-      '<h3 class="modal-title">Send this campaign now?</h3><p class="modal-sub">This will message ' + aud.count + ' opted-in customer(s) on ' + escHtml(currentCampaign.channel) + '. This can\'t be undone.</p>',
+      '<h3 class="modal-title">Send this campaign now?</h3><p class="modal-sub">This will message ' + aud.count + ' ' + (currentCampaign.audience_source === 'past_customers' ? 'past customer(s)' : 'opted-in customer(s)') + ' on ' + escHtml(currentCampaign.channel) + '. This can\'t be undone.</p>',
       'Send now', false
     );
     if (!ok) return;
