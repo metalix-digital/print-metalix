@@ -179,6 +179,28 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 label.report-col-check:has(input:checked){border-color:var(--orange) !important;background:var(--orange-soft);}
 #campDeleteBtn{background:none;border:1.5px dashed var(--err);color:var(--err);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Roboto',sans-serif;}
 #campDeleteBtn:hover{background:var(--err);color:#fff;}
+/* Used for the campaign composer's back/secondary buttons — was referenced
+   in the markup but never actually defined, so those rendered as bare
+   unstyled buttons; this is the .logout-btn look (same neutral outline
+   pattern already used elsewhere) generalized into a reusable class. */
+.btn-ghost-sm{background:var(--card);border:1.5px solid var(--line);color:var(--ink2);border-radius:9px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:'Roboto',sans-serif;transition:.15s;}
+.btn-ghost-sm:hover{border-color:var(--line-hover);background:var(--surface-hover);}
+
+/* Campaign composer: each step (audience/content/test&send) as its own
+   tinted card with an icon+title header, rather than a flat run of labels
+   and inputs — same "clear step, then the next" feel as Mailchimp's
+   campaign builder, and gives fields a bounded, readable width instead of
+   stretching across the full panel. */
+.camp-section{background:var(--surface-hover);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:16px;max-width:720px;}
+.camp-section-title{font-size:14.5px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px;margin:0 0 4px;}
+.camp-section-hint{font-size:12.5px;color:var(--ink3);margin:0 0 14px;}
+.camp-field-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;}
+.camp-field-row .field{flex:1;min-width:150px;margin-top:0;}
+.camp-channel-pick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:520px;margin-top:10px;}
+.camp-channel-pick label{position:relative;border:1.5px solid var(--line);border-radius:10px;padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;text-align:center;transition:.15s;}
+.camp-channel-pick label .camp-channel-icon{font-size:20px;}
+.camp-channel-pick label:has(input:checked){border-color:var(--orange);background:var(--orange-soft);color:var(--orange-d);}
+.camp-channel-pick input{position:absolute;opacity:0;width:0;height:0;}
 .camp-status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
 .camp-status-draft{background:var(--line2);color:var(--ink3);}
 .camp-status-sending{background:var(--warn-bg);color:var(--warn);}
@@ -837,55 +859,68 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <h2 id="campaignFormTitle" style="margin-top:14px;">New campaign</h2>
 
           <div id="campaignNameStep">
-            <div class="field" style="max-width:420px;margin-top:10px;">
-              <label>Campaign name (internal — customers never see this)</label>
-              <input type="text" id="campaignName" placeholder="e.g. August pen discount" />
+            <div class="camp-section">
+              <div class="camp-section-title">📝 Name your campaign</div>
+              <p class="camp-section-hint">Internal only — customers never see this.</p>
+              <div class="field" style="max-width:420px;">
+                <label>Campaign name</label>
+                <input type="text" id="campaignName" placeholder="e.g. August pen discount" />
+              </div>
+              <div class="camp-section-title" style="margin-top:20px;">📡 Choose a channel</div>
+              <div class="camp-channel-pick">
+                <label><input type="radio" name="campaignChannel" value="email" checked /><span class="camp-channel-icon">✉️</span>Email</label>
+                <label><input type="radio" name="campaignChannel" value="whatsapp" /><span class="camp-channel-icon">💬</span>WhatsApp</label>
+                <label><input type="radio" name="campaignChannel" value="sms" /><span class="camp-channel-icon">📱</span>SMS</label>
+              </div>
+              <button class="save-btn" type="button" id="campaignCreateBtn" style="margin-top:18px;">Create draft →</button>
             </div>
-            <div class="report-columns-grid" style="grid-template-columns:repeat(3,1fr);max-width:520px;margin-top:14px;">
-              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="email" checked /> Email</label>
-              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="whatsapp" /> WhatsApp</label>
-              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="sms" /> SMS</label>
-            </div>
-            <button class="save-btn" type="button" id="campaignCreateBtn" style="margin-top:16px;">Create draft →</button>
           </div>
 
           <div id="campaignEditor" class="hidden">
-            <div class="report-columns-label" style="margin-top:18px;">Audience</div>
-            <div class="report-filters" style="margin-bottom:8px;">
-              <select id="audLocation"><option value="">All branches</option></select>
-              <input type="number" id="audMinOrders" min="0" placeholder="Min past orders" style="width:150px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-              <input type="number" id="audSinceDays" min="0" placeholder="Ordered in last N days" style="width:170px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-              <button class="rate-add" type="button" id="audPreviewBtn">Preview audience</button>
+            <div class="camp-section">
+              <div class="camp-section-title">🎯 Audience</div>
+              <p class="camp-section-hint">Only customers who've opted in to marketing are ever included, no matter what's set below.</p>
+              <div class="camp-field-row">
+                <div class="field"><label>Branch</label><select id="audLocation"><option value="">All branches</option></select></div>
+                <div class="field"><label>Minimum past orders</label><input type="number" id="audMinOrders" min="0" placeholder="Any" /></div>
+                <div class="field"><label>Ordered within (days)</label><input type="number" id="audSinceDays" min="0" placeholder="Any time" /></div>
+                <button class="btn-ghost-sm" type="button" id="audPreviewBtn">Preview audience</button>
+              </div>
+              <p class="subtle" id="audResult" style="margin-top:10px;"></p>
             </div>
-            <p class="subtle" id="audResult"></p>
 
-            <div id="emailEditor" class="hidden">
-              <div class="report-columns-label" style="margin-top:18px;">Email content</div>
-              <div class="field" style="margin-top:8px;"><label>Subject</label><input type="text" id="campSubject" placeholder="Subject line" /></div>
-              <div class="field" style="margin-top:10px;">
-                <label>Body (HTML — a footer with your address and an unsubscribe link is added automatically and can't be removed)</label>
+            <div id="emailEditor" class="hidden camp-section">
+              <div class="camp-section-title">✉️ Email content</div>
+              <p class="camp-section-hint">A footer with your business address and an unsubscribe link is added automatically and can't be removed.</p>
+              <div class="field"><label>Subject</label><input type="text" id="campSubject" placeholder="Subject line" /></div>
+              <div class="field" style="margin-top:12px;">
+                <label>Body (HTML)</label>
                 <textarea id="campBodyHtml" rows="10" style="width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:13.5px/1.6 'Roboto',sans-serif;box-sizing:border-box;" placeholder="&lt;p&gt;Hi there — here's 10% off your next order...&lt;/p&gt;"></textarea>
               </div>
             </div>
 
-            <div id="templateEditor" class="hidden">
-              <div class="report-columns-label" style="margin-top:18px;">Message template</div>
-              <select id="campTemplateId" style="max-width:420px;"></select>
-              <div id="campTemplateVars" style="margin-top:10px;"></div>
+            <div id="templateEditor" class="hidden camp-section">
+              <div class="camp-section-title">💬 Message template</div>
+              <p class="camp-section-hint">WhatsApp and SMS marketing can only use a pre-approved template — pick one and fill in its variables.</p>
+              <div class="field" style="max-width:420px;"><label>Template</label><select id="campTemplateId"></select></div>
+              <div id="campTemplateVars"></div>
               <p class="subtle" id="noTemplatesNote" style="margin-top:8px;"></p>
             </div>
 
-            <div class="report-columns-label" style="margin-top:22px;">Test &amp; send</div>
-            <div class="report-filters">
-              <input type="text" id="campTestContact" placeholder="Your email or 10-digit mobile" style="width:220px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-              <button class="rate-add" type="button" id="campTestSendBtn">Send test</button>
+            <div class="camp-section">
+              <div class="camp-section-title">🧪 Test &amp; send</div>
+              <p class="camp-section-hint">Always send yourself a test first — it skips the audience filter entirely and goes only to the contact below.</p>
+              <div class="camp-field-row">
+                <div class="field"><label>Test contact</label><input type="text" id="campTestContact" placeholder="Your email or 10-digit mobile" /></div>
+                <button class="btn-ghost-sm" type="button" id="campTestSendBtn">Send test</button>
+              </div>
+              <div class="discounts-actions" style="margin-top:18px;">
+                <button class="btn-ghost-sm" type="button" id="campSaveBtn">Save draft</button>
+                <button class="save-btn" type="button" id="campSendBtn">🚀 Send now</button>
+                <button class="b-del" type="button" id="campDeleteBtn">Delete draft</button>
+              </div>
+              <div class="save-message hidden" id="campMessage"></div>
             </div>
-            <div class="discounts-actions" style="margin-top:14px;">
-              <button class="save-btn" type="button" id="campSaveBtn">Save draft</button>
-              <button class="save-btn" type="button" id="campSendBtn" style="background:var(--ok, #16A34A);">Send now</button>
-              <button class="b-del" type="button" id="campDeleteBtn">Delete draft</button>
-            </div>
-            <div class="save-message hidden" id="campMessage"></div>
           </div>
 
           <div id="campaignResults" class="hidden">
