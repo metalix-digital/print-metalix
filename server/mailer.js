@@ -453,4 +453,42 @@ async function sendStampProofReadyEmail(order, trackUrl) {
   await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to: order.customer_email, subject, html, text })
 }
 
-module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail, sendInvoiceEmail, sendStampProofReadyEmail }
+// ---- Campaigns (Marketing) -----------------------------------------------
+// The one email type here whose footer isn't optional — every transactional
+// template above just signs off "automated message, please don't reply";
+// this one appends a sender identity + a real unsubscribe link that the
+// admin's composed content can't touch or omit, same as Mailchimp bakes an
+// unsubscribe footer into every campaign regardless of what's in the editor.
+function campaignEmailTemplate({ subject, bodyHtml, unsubscribeUrl, businessAddress }) {
+  const cardHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:36px 40px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:${BRAND.body};">
+      ${bodyHtml}
+    </td></tr>
+  </table>`
+  const footerHtml = `<p style="margin:0 0 6px 0;font-size:12px;line-height:1.6;color:${BRAND.muted};">
+      ${businessAddress ? `Metalix Print, ${businessAddress}<br>` : 'Metalix Print<br>'}
+      You're receiving this because you're a Metalix Print customer who opted in to offers and updates.
+    </p>
+    <p style="margin:0;font-size:12px;"><a href="${unsubscribeUrl}" style="color:${BRAND.orangeDark};">Unsubscribe from these emails</a></p>`
+  const html = renderEmailShell({ preheader: subject, badge: 'Offer', cardHtml, footerHtml })
+  const strip = (s) => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const text = [strip(bodyHtml), '', businessAddress ? `Metalix Print, ${businessAddress}` : 'Metalix Print', `Unsubscribe: ${unsubscribeUrl}`].join('\n')
+  return { html, text }
+}
+
+async function sendCampaignEmail({ to, subject, bodyHtml, unsubscribeUrl, businessAddress }) {
+  if (!to) return false
+  const { html, text } = campaignEmailTemplate({ subject, bodyHtml, unsubscribeUrl, businessAddress })
+  const transporter = getTransporter()
+  if (!transporter) {
+    console.log(`[mailer] stub -> ${to}: ${subject}`)
+    return false
+  }
+  await transporter.sendMail({ from: `"Metalix Print" <${process.env.GMAIL_USER}>`, to, subject, html, text })
+  return true
+}
+function isConfigured() {
+  return !!getTransporter()
+}
+
+module.exports = { sendPasswordResetEmail, sendAdminPasswordResetEmail, sendOrderStatusEmail, sendContactMessageEmail, sendNewOrderAlertEmail, sendOrderConfirmationEmail, sendInvoiceEmail, sendStampProofReadyEmail, sendCampaignEmail, isConfigured }

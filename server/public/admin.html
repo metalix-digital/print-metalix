@@ -173,6 +173,18 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
    size/padding and hardcoding it would drift out of sync. */
 #reportPreviewWrap .pd-table thead tr:first-child th{position:sticky;top:0;z-index:6;}
 #reportPreviewWrap .pd-totals-row td{position:sticky;z-index:5;}
+
+/* -- CAMPAIGNS -- */
+.report-col-check input[type=radio]{margin:0;}
+label.report-col-check:has(input:checked){border-color:var(--orange) !important;background:var(--orange-soft);}
+#campDeleteBtn{background:none;border:1.5px dashed var(--err);color:var(--err);border-radius:8px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Roboto',sans-serif;}
+#campDeleteBtn:hover{background:var(--err);color:#fff;}
+.camp-status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.camp-status-draft{background:var(--line2);color:var(--ink3);}
+.camp-status-sending{background:var(--warn-bg);color:var(--warn);}
+.camp-status-sent{background:var(--ok-bg);color:var(--ok);}
+.camp-status-failed{background:var(--err-bg);color:var(--err);}
+
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -677,6 +689,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn" data-tab="customers">Customers</button>
     <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
     <button class="tab-btn" data-tab="reports" data-super-only>Reports</button>
+    <button class="tab-btn" data-tab="campaigns" data-super-only>Campaigns</button>
     <!-- Everything else lives under this one umbrella tab now, as a sub-nav
          inside panel-settingshub below — see showSettingsSection() and the
          branch-admin visibility logic in showDash(). Not data-super-only:
@@ -799,6 +812,105 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 
       <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="reportPreviewWrap">
         <p class="subtle" style="padding:20px;">Run Preview to see the report here before exporting.</p>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-campaigns">
+      <div id="campaignListView">
+        <div class="stages-wrap" style="max-width:none;">
+          <h2>Campaigns</h2>
+          <p class="hint">Email, WhatsApp, and SMS campaigns to opted-in customers only — nobody is messaged without having consented. WhatsApp/SMS need a pre-approved message template (Meta/DLT template review happens outside this app); until one's registered below, those channels send nothing.</p>
+          <div class="discounts-actions" style="margin-top:14px;">
+            <button class="save-btn" type="button" id="newCampaignBtn" style="margin-top:0;">+ New campaign</button>
+            <button class="rate-add" type="button" id="manageTemplatesBtn">Message templates</button>
+          </div>
+          <p class="subtle" id="channelStatusLine" style="margin-top:12px;"></p>
+        </div>
+        <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="campaignsTableWrap">
+          <p class="subtle" style="padding:20px;">Loading…</p>
+        </div>
+      </div>
+
+      <div id="campaignFormView" class="hidden">
+        <div class="stages-wrap" style="max-width:none;">
+          <button class="btn-ghost-sm" type="button" id="campaignBackBtn">← Back to campaigns</button>
+          <h2 id="campaignFormTitle" style="margin-top:14px;">New campaign</h2>
+
+          <div id="campaignNameStep">
+            <div class="field" style="max-width:420px;margin-top:10px;">
+              <label>Campaign name (internal — customers never see this)</label>
+              <input type="text" id="campaignName" placeholder="e.g. August pen discount" />
+            </div>
+            <div class="report-columns-grid" style="grid-template-columns:repeat(3,1fr);max-width:520px;margin-top:14px;">
+              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="email" checked /> Email</label>
+              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="whatsapp" /> WhatsApp</label>
+              <label class="report-col-check" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;"><input type="radio" name="campaignChannel" value="sms" /> SMS</label>
+            </div>
+            <button class="save-btn" type="button" id="campaignCreateBtn" style="margin-top:16px;">Create draft →</button>
+          </div>
+
+          <div id="campaignEditor" class="hidden">
+            <div class="report-columns-label" style="margin-top:18px;">Audience</div>
+            <div class="report-filters" style="margin-bottom:8px;">
+              <select id="audLocation"><option value="">All branches</option></select>
+              <input type="number" id="audMinOrders" min="0" placeholder="Min past orders" style="width:150px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+              <input type="number" id="audSinceDays" min="0" placeholder="Ordered in last N days" style="width:170px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+              <button class="rate-add" type="button" id="audPreviewBtn">Preview audience</button>
+            </div>
+            <p class="subtle" id="audResult"></p>
+
+            <div id="emailEditor" class="hidden">
+              <div class="report-columns-label" style="margin-top:18px;">Email content</div>
+              <div class="field" style="margin-top:8px;"><label>Subject</label><input type="text" id="campSubject" placeholder="Subject line" /></div>
+              <div class="field" style="margin-top:10px;">
+                <label>Body (HTML — a footer with your address and an unsubscribe link is added automatically and can't be removed)</label>
+                <textarea id="campBodyHtml" rows="10" style="width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:13.5px/1.6 'Roboto',sans-serif;box-sizing:border-box;" placeholder="&lt;p&gt;Hi there — here's 10% off your next order...&lt;/p&gt;"></textarea>
+              </div>
+            </div>
+
+            <div id="templateEditor" class="hidden">
+              <div class="report-columns-label" style="margin-top:18px;">Message template</div>
+              <select id="campTemplateId" style="max-width:420px;"></select>
+              <div id="campTemplateVars" style="margin-top:10px;"></div>
+              <p class="subtle" id="noTemplatesNote" style="margin-top:8px;"></p>
+            </div>
+
+            <div class="report-columns-label" style="margin-top:22px;">Test &amp; send</div>
+            <div class="report-filters">
+              <input type="text" id="campTestContact" placeholder="Your email or 10-digit mobile" style="width:220px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+              <button class="rate-add" type="button" id="campTestSendBtn">Send test</button>
+            </div>
+            <div class="discounts-actions" style="margin-top:14px;">
+              <button class="save-btn" type="button" id="campSaveBtn">Save draft</button>
+              <button class="save-btn" type="button" id="campSendBtn" style="background:var(--ok, #16A34A);">Send now</button>
+              <button class="b-del" type="button" id="campDeleteBtn">Delete draft</button>
+            </div>
+            <div class="save-message hidden" id="campMessage"></div>
+          </div>
+
+          <div id="campaignResults" class="hidden">
+            <div class="stat-tiles" id="campaignStats" style="margin-top:18px;"></div>
+            <div class="stages-wrap" style="max-width:none;margin-top:16px;padding:0;" id="campaignRecipientsWrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="templatesView" class="hidden">
+        <div class="stages-wrap" style="max-width:none;">
+          <button class="btn-ghost-sm" type="button" id="templatesBackBtn">← Back to campaigns</button>
+          <h2 style="margin-top:14px;">Message templates</h2>
+          <p class="hint">Register a Twilio Content SID here once it's approved (WhatsApp: Meta template review via Twilio; SMS: DLT template registration) — campaigns pick from this list rather than composing free text, since neither channel allows that for marketing sends.</p>
+          <div class="report-filters">
+            <select id="newTplChannel"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select>
+            <input type="text" id="newTplName" placeholder="Template name" style="width:200px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+            <input type="text" id="newTplSid" placeholder="Content SID (HXxxxxxxxx…)" style="width:220px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+            <input type="text" id="newTplVars" placeholder="Variables, comma-separated (e.g. name,code)" style="width:240px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
+            <button class="rate-add" type="button" id="addTplBtn">+ Add template</button>
+          </div>
+        </div>
+        <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="templatesTableWrap">
+          <p class="subtle" style="padding:20px;">Loading…</p>
+        </div>
       </div>
     </div>
 
@@ -3317,6 +3429,342 @@ document.getElementById('reportExportBtn').addEventListener('click', async () =>
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }
+});
+
+/* -- CAMPAIGNS -- */
+let currentCampaign = null;
+let campaignTemplatesCache = [];
+let campaignPollTimer = null;
+
+function showCampaignListView(){
+  document.getElementById('campaignListView').classList.remove('hidden');
+  document.getElementById('campaignFormView').classList.add('hidden');
+  document.getElementById('templatesView').classList.add('hidden');
+  if (campaignPollTimer) { clearTimeout(campaignPollTimer); campaignPollTimer = null; }
+}
+function showCampaignFormView(){
+  document.getElementById('campaignListView').classList.add('hidden');
+  document.getElementById('campaignFormView').classList.remove('hidden');
+  document.getElementById('templatesView').classList.add('hidden');
+}
+function showTemplatesView(){
+  document.getElementById('campaignListView').classList.add('hidden');
+  document.getElementById('campaignFormView').classList.add('hidden');
+  document.getElementById('templatesView').classList.remove('hidden');
+}
+
+async function loadChannelStatus(){
+  try {
+    const res = await adminFetch('/api/admin/campaigns/channel-status');
+    const status = await res.json();
+    document.getElementById('channelStatusLine').textContent =
+      'Email: ' + (status.email ? 'ready' : 'not configured') +
+      '  ·  WhatsApp: ' + (status.whatsapp ? 'ready' : 'not configured') +
+      '  ·  SMS: ' + (status.sms ? 'ready' : 'not configured');
+  } catch (err) { /* non-fatal status line */ }
+}
+
+const campStatusPill = (status) => '<span class="camp-status-pill camp-status-' + status + '">' + escHtml(status) + '</span>';
+
+async function loadCampaignsList(){
+  const wrap = document.getElementById('campaignsTableWrap');
+  try {
+    const res = await adminFetch('/api/admin/campaigns');
+    const data = await res.json();
+    if (!data.campaigns.length) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">No campaigns yet — create one to get started.</p>'; return; }
+    wrap.innerHTML = '<div class="table-scroll"><table class="pd-table"><thead><tr>' +
+      '<th>Name</th><th>Channel</th><th>Status</th><th>Audience</th><th>Sent</th><th>Failed</th><th>Created</th>' +
+      '</tr></thead><tbody>' +
+      data.campaigns.map((c) => {
+        const stats = c.stats || {};
+        return '<tr class="camp-row" data-id="' + c.id + '" style="cursor:pointer;">' +
+          '<td>' + escHtml(c.name) + '</td>' +
+          '<td style="text-transform:capitalize;">' + escHtml(c.channel) + '</td>' +
+          '<td>' + campStatusPill(c.status) + '</td>' +
+          '<td>' + (stats.total || 0) + '</td>' +
+          '<td>' + (stats.sent || 0) + '</td>' +
+          '<td>' + (stats.failed || 0) + '</td>' +
+          '<td>' + new Date(c.created_at).toLocaleDateString() + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table></div>';
+    wrap.querySelectorAll('.camp-row').forEach((tr) => tr.addEventListener('click', () => openCampaign(tr.dataset.id)));
+  } catch (err) {
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle" style="padding:20px;">Could not load campaigns.</p>';
+  }
+}
+
+document.querySelector('.tab-btn[data-tab="campaigns"]').addEventListener('click', () => {
+  showCampaignListView();
+  loadCampaignsList();
+  loadChannelStatus();
+});
+
+document.getElementById('newCampaignBtn').addEventListener('click', () => {
+  currentCampaign = null;
+  document.getElementById('campaignFormTitle').textContent = 'New campaign';
+  document.getElementById('campaignName').value = '';
+  document.querySelectorAll('input[name=campaignChannel]').forEach((r) => { r.checked = r.value === 'email'; r.disabled = false; });
+  document.getElementById('campaignNameStep').classList.remove('hidden');
+  document.getElementById('campaignEditor').classList.add('hidden');
+  document.getElementById('campaignResults').classList.add('hidden');
+  showCampaignFormView();
+});
+document.getElementById('campaignBackBtn').addEventListener('click', () => { showCampaignListView(); loadCampaignsList(); });
+
+document.getElementById('campaignCreateBtn').addEventListener('click', async () => {
+  const name = document.getElementById('campaignName').value.trim();
+  if (!name) { alert('Give the campaign a name first.'); return; }
+  const channel = document.querySelector('input[name=campaignChannel]:checked').value;
+  try {
+    const res = await adminFetch('/api/admin/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, channel }) });
+    const data = await res.json();
+    if (!res.ok) { alert(data.message || 'Could not create campaign.'); return; }
+    await openCampaign(data.campaign.id);
+  } catch (err) { if (err.message !== 'unauthorized') alert('Could not create campaign.'); }
+});
+
+async function openCampaign(id){
+  try {
+    const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) { alert(data.message || 'Could not load campaign.'); return; }
+    currentCampaign = data.campaign;
+    showCampaignFormView();
+    document.getElementById('campaignFormTitle').textContent = currentCampaign.name;
+    document.getElementById('campaignNameStep').classList.add('hidden');
+    if (currentCampaign.status === 'draft') {
+      document.getElementById('campaignEditor').classList.remove('hidden');
+      document.getElementById('campaignResults').classList.add('hidden');
+      await renderCampaignEditor(currentCampaign);
+    } else {
+      document.getElementById('campaignEditor').classList.add('hidden');
+      document.getElementById('campaignResults').classList.remove('hidden');
+      loadCampaignResults(currentCampaign.id, currentCampaign.status === 'sending');
+    }
+  } catch (err) { if (err.message !== 'unauthorized') alert('Could not load campaign.'); }
+}
+
+async function renderCampaignEditor(campaign){
+  document.getElementById('audLocation').innerHTML = '<option value="">All branches</option>' +
+    locationsDraft.map((l) => '<option value="' + l.id + '">' + escHtml(l.name) + '</option>').join('');
+  document.getElementById('audLocation').value = campaign.audienceFilter.locationId || '';
+  document.getElementById('audMinOrders').value = campaign.audienceFilter.minOrders || '';
+  document.getElementById('audSinceDays').value = campaign.audienceFilter.sinceOrderDays || '';
+  document.getElementById('audResult').textContent = '';
+  document.getElementById('campMessage').classList.add('hidden');
+
+  const isEmail = campaign.channel === 'email';
+  document.getElementById('emailEditor').classList.toggle('hidden', !isEmail);
+  document.getElementById('templateEditor').classList.toggle('hidden', isEmail);
+  if (isEmail) {
+    document.getElementById('campSubject').value = campaign.subject || '';
+    document.getElementById('campBodyHtml').value = campaign.body_html || '';
+  } else {
+    const res = await adminFetch('/api/admin/message-templates?channel=' + campaign.channel);
+    const data = await res.json();
+    campaignTemplatesCache = data.templates;
+    const sel = document.getElementById('campTemplateId');
+    sel.innerHTML = '<option value="">Choose a template…</option>' + campaignTemplatesCache.map((t) => '<option value="' + t.id + '">' + escHtml(t.name) + '</option>').join('');
+    sel.value = campaign.template_id || '';
+    document.getElementById('noTemplatesNote').textContent = campaignTemplatesCache.length ? '' : ('No ' + campaign.channel + ' templates registered yet — add one under "Message templates".');
+    renderTemplateVarInputs(campaign.template_id, campaign.templateVars);
+    sel.onchange = () => renderTemplateVarInputs(sel.value, {});
+  }
+}
+
+function renderTemplateVarInputs(templateId, currentVars){
+  currentVars = currentVars || {};
+  const wrap = document.getElementById('campTemplateVars');
+  const template = campaignTemplatesCache.find((t) => t.id === templateId);
+  if (!template || !template.variables.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = template.variables.map((v) =>
+    '<div class="field" style="margin-top:8px;max-width:340px;"><label>' + escHtml(v) + '</label>' +
+    '<input type="text" class="camp-tpl-var" data-key="' + escHtml(v) + '" value="' + escHtml(currentVars[v] || '') + '" /></div>'
+  ).join('');
+}
+function getTemplateVarsFromForm(){
+  const out = {};
+  document.querySelectorAll('.camp-tpl-var').forEach((el) => { out[el.dataset.key] = el.value; });
+  return out;
+}
+
+function collectCampaignAudienceFilter(){
+  const filter = {};
+  const loc = document.getElementById('audLocation').value;
+  const minOrders = document.getElementById('audMinOrders').value;
+  const sinceDays = document.getElementById('audSinceDays').value;
+  if (loc) filter.locationId = loc;
+  if (minOrders) filter.minOrders = Number(minOrders);
+  if (sinceDays) filter.sinceOrderDays = Number(sinceDays);
+  return filter;
+}
+function collectCampaignContentPatch(){
+  if (currentCampaign.channel === 'email') {
+    return { subject: document.getElementById('campSubject').value.trim(), bodyHtml: document.getElementById('campBodyHtml').value };
+  }
+  return { templateId: document.getElementById('campTemplateId').value || null, templateVars: getTemplateVarsFromForm() };
+}
+
+async function saveCampaignDraft(){
+  const patch = Object.assign(
+    { name: currentCampaign.name, audienceFilter: collectCampaignAudienceFilter() },
+    collectCampaignContentPatch()
+  );
+  const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id), {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Could not save campaign.');
+  currentCampaign = data.campaign;
+  return currentCampaign;
+}
+
+document.getElementById('audPreviewBtn').addEventListener('click', async () => {
+  const result = document.getElementById('audResult');
+  result.textContent = 'Loading…';
+  try {
+    await saveCampaignDraft();
+    const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/audience');
+    const data = await res.json();
+    result.textContent = data.count === 0
+      ? 'No opted-in customers match this audience yet.'
+      : data.count + ' opted-in customer(s) — e.g. ' + data.sample.slice(0, 5).map((c) => c.name).join(', ') + (data.count > 5 ? ', …' : '.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') result.textContent = err.message || 'Could not preview audience.';
+  }
+});
+
+document.getElementById('campSaveBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('campMessage');
+  try {
+    await saveCampaignDraft();
+    msg.textContent = 'Draft saved.'; msg.className = 'save-message'; msg.classList.remove('hidden');
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message || 'Could not save draft.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  }
+});
+
+document.getElementById('campTestSendBtn').addEventListener('click', async () => {
+  const contact = document.getElementById('campTestContact').value.trim();
+  const msg = document.getElementById('campMessage');
+  if (!contact) { alert('Enter an email or mobile number to test-send to first.'); return; }
+  const btn = document.getElementById('campTestSendBtn');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await saveCampaignDraft();
+    const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/test-send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contact })
+    });
+    const data = await res.json();
+    if (!res.ok) { msg.textContent = data.message || 'Test send failed.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+    msg.textContent = 'Test sent to ' + contact + '.'; msg.className = 'save-message'; msg.classList.remove('hidden');
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = 'Test send failed.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
+
+document.getElementById('campSendBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('campMessage');
+  try {
+    await saveCampaignDraft();
+    const audRes = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/audience');
+    const aud = await audRes.json();
+    const ok = await showConfirmModal(
+      '<h3 class="modal-title">Send this campaign now?</h3><p class="modal-sub">This will message ' + aud.count + ' opted-in customer(s) on ' + escHtml(currentCampaign.channel) + '. This can\'t be undone.</p>',
+      'Send now', false
+    );
+    if (!ok) return;
+    const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/send', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { msg.textContent = data.message || 'Could not send.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); return; }
+    showFlash('Campaign is sending…');
+    await openCampaign(currentCampaign.id);
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message || 'Could not send.'; msg.className = 'save-message error'; msg.classList.remove('hidden'); }
+  }
+});
+
+document.getElementById('campDeleteBtn').addEventListener('click', async () => {
+  const ok = await showConfirmModal('<h3 class="modal-title">Delete this draft?</h3><p class="modal-sub">This can\'t be undone.</p>', 'Delete', true);
+  if (!ok) return;
+  try {
+    await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id), { method: 'DELETE' });
+    showCampaignListView(); loadCampaignsList();
+  } catch (err) { if (err.message !== 'unauthorized') alert('Could not delete draft.'); }
+});
+
+async function loadCampaignResults(id, keepPolling){
+  try {
+    const [cRes, rRes] = await Promise.all([
+      adminFetch('/api/admin/campaigns/' + encodeURIComponent(id)),
+      adminFetch('/api/admin/campaigns/' + encodeURIComponent(id) + '/recipients')
+    ]);
+    const cData = await cRes.json();
+    const rData = await rRes.json();
+    currentCampaign = cData.campaign;
+    document.getElementById('campaignFormTitle').innerHTML = escHtml(currentCampaign.name) + ' ' + campStatusPill(currentCampaign.status);
+    const stats = currentCampaign.stats || {};
+    document.getElementById('campaignStats').innerHTML = [
+      ['Total', stats.total || 0], ['Sent', stats.sent || 0], ['Failed', stats.failed || 0], ['Skipped', stats.skipped || 0]
+    ].map(([label, val]) => '<div class="stat-tile"><div class="stat-label">' + label + '</div><div class="stat-value">' + val + '</div></div>').join('');
+    const recipients = rData.recipients;
+    const wrap = document.getElementById('campaignRecipientsWrap');
+    wrap.innerHTML = !recipients.length ? '<p class="subtle" style="padding:20px;">No recipients yet.</p>' :
+      '<div class="table-scroll"><table class="pd-table"><thead><tr><th>Customer</th><th>Contact</th><th>Status</th><th>Error</th></tr></thead><tbody>' +
+      recipients.map((r) => '<tr><td>' + escHtml(r.customer_name) + '</td><td>' + escHtml(r.contact) + '</td><td>' + campStatusPill(r.status) + '</td><td>' + escHtml(r.error || '') + '</td></tr>').join('') +
+      '</tbody></table></div>';
+    if (keepPolling && currentCampaign.status === 'sending') {
+      campaignPollTimer = setTimeout(() => loadCampaignResults(id, true), 3000);
+    }
+  } catch (err) {
+    if (err.message !== 'unauthorized') document.getElementById('campaignRecipientsWrap').innerHTML = '<p class="subtle" style="padding:20px;">Could not load results.</p>';
+  }
+}
+
+/* -- MESSAGE TEMPLATES (WhatsApp/SMS, for Campaigns) -- */
+document.getElementById('manageTemplatesBtn').addEventListener('click', () => { showTemplatesView(); loadTemplatesList(); });
+document.getElementById('templatesBackBtn').addEventListener('click', () => { showCampaignListView(); loadCampaignsList(); });
+
+async function loadTemplatesList(){
+  const wrap = document.getElementById('templatesTableWrap');
+  try {
+    const res = await adminFetch('/api/admin/message-templates');
+    const data = await res.json();
+    if (!data.templates.length) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">No templates registered yet.</p>'; return; }
+    wrap.innerHTML = '<div class="table-scroll"><table class="pd-table"><thead><tr><th>Name</th><th>Channel</th><th>Content SID</th><th>Variables</th><th></th></tr></thead><tbody>' +
+      data.templates.map((t) => '<tr data-id="' + t.id + '">' +
+        '<td>' + escHtml(t.name) + '</td><td style="text-transform:capitalize;">' + escHtml(t.channel) + '</td>' +
+        '<td>' + escHtml(t.content_sid) + '</td><td>' + escHtml((t.variables || []).join(', ')) + '</td>' +
+        '<td><button type="button" class="b-del tpl-del-btn">Delete</button></td></tr>'
+      ).join('') + '</tbody></table></div>';
+    wrap.querySelectorAll('.tpl-del-btn').forEach((btn) => btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('tr').dataset.id;
+      const ok = await showConfirmModal('<h3 class="modal-title">Delete this template?</h3><p class="modal-sub">Campaigns already using it will need a new one picked before they can send.</p>', 'Delete', true);
+      if (!ok) return;
+      await adminFetch('/api/admin/message-templates/' + encodeURIComponent(id), { method: 'DELETE' });
+      loadTemplatesList();
+    }));
+  } catch (err) {
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle" style="padding:20px;">Could not load templates.</p>';
+  }
+}
+document.getElementById('addTplBtn').addEventListener('click', async () => {
+  const channel = document.getElementById('newTplChannel').value;
+  const name = document.getElementById('newTplName').value.trim();
+  const contentSid = document.getElementById('newTplSid').value.trim();
+  const variables = document.getElementById('newTplVars').value.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!name || !contentSid) { alert('Name and Content SID are required.'); return; }
+  try {
+    const res = await adminFetch('/api/admin/message-templates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel, name, contentSid, variables })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.message || 'Could not add template.'); return; }
+    document.getElementById('newTplName').value = ''; document.getElementById('newTplSid').value = ''; document.getElementById('newTplVars').value = '';
+    loadTemplatesList();
+  } catch (err) { if (err.message !== 'unauthorized') alert('Could not add template.'); }
 });
 
 /* -- LOCATIONS (branches) -- */

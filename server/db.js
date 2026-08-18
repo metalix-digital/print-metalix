@@ -296,6 +296,13 @@ ensureColumn('orders', 'needs_attention', 'INTEGER DEFAULT 0')
 ensureColumn('orders', 'needs_attention_reason', 'TEXT')
 ensureColumn('users', 'google_id', 'TEXT')
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL")
+// Marketing consent — defaults OFF for every existing and new customer.
+// Nothing in the app may message a customer for marketing purposes without
+// this being 1; campaigns.js enforces it server-side regardless of what an
+// admin's audience filter requests. _updated_at is a lightweight consent
+// audit trail (when they opted in, or opted out via the unsubscribe link).
+ensureColumn('users', 'marketing_opt_in', 'INTEGER DEFAULT 0')
+ensureColumn('users', 'marketing_opt_in_updated_at', 'INTEGER')
 ensureColumn('locations', 'maps_url', 'TEXT')
 // NULL/empty means "all tabs" (every existing branch_admin keeps full access
 // to their existing tab set — this is additive, not a default lockdown).
@@ -313,6 +320,56 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_order_status ON orders(order_status);
   CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
   CREATE INDEX IF NOT EXISTS idx_orders_discount_code ON orders(discount_code);
+`)
+
+// ---- Campaign management (Email/WhatsApp/SMS marketing) ----
+// WhatsApp and SMS can't carry free-composed text the way email can — India's
+// DLT rules block A2P SMS that doesn't match a registered template, and
+// WhatsApp's commerce policy requires a Meta-approved template for any
+// message sent outside a customer-initiated 24h session — so a campaign on
+// either channel points at a pre-approved Twilio Content template (submitted
+// and approved outside this app) rather than a composed body. message_templates
+// is the registry of those already-approved templates; `variables` records
+// what placeholders the template expects so the campaign composer can prompt
+// for them (e.g. a promo code) instead of guessing.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS message_templates (
+    id TEXT PRIMARY KEY,
+    channel TEXT NOT NULL,
+    name TEXT NOT NULL,
+    content_sid TEXT NOT NULL,
+    variables TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    subject TEXT,
+    body_html TEXT,
+    template_id TEXT,
+    template_vars TEXT,
+    audience_filter TEXT,
+    stats TEXT,
+    created_by TEXT,
+    created_at INTEGER,
+    updated_at INTEGER,
+    sent_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS campaign_recipients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    contact TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    sent_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign_id ON campaign_recipients(campaign_id);
 `)
 
 // Paper types are an admin-managed list: each entry is
@@ -1945,6 +2002,139 @@ function getOrdersForLineItemReport(fromMs, toMs) {
   `).all(fromMs, toMs)
 }
 
+function setMarketingOptIn(userId, optIn) {
+  db.prepare('UPDATE users SET marketing_opt_in = ?, marketing_opt_in_updated_at = ? WHERE id = ?')
+    .run(optIn ? 1 : 0, Date.now(), userId)
+}
+
+function listMessageTemplates(channel) {
+  const rows = channel
+    ? db.prepare('SELECT * FROM message_templates WHERE channel = ? ORDER BY created_at DESC').all(channel)
+    : db.prepare('SELECT * FROM message_templates ORDER BY created_at DESC').all()
+  return rows.map((r) => ({ ...r, variables: r.variables ? JSON.parse(r.variables) : [] }))
+}
+function getMessageTemplate(id) {
+  const r = db.prepare('SELECT * FROM message_templates WHERE id = ?').get(id)
+  return r ? { ...r, variables: r.variables ? JSON.parse(r.variables) : [] } : null
+}
+function createMessageTemplate({ channel, name, contentSid, variables }) {
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  db.prepare('INSERT INTO message_templates (id, channel, name, content_sid, variables, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+    .run(id, channel, name, contentSid, JSON.stringify(variables || []), now, now)
+  return getMessageTemplate(id)
+}
+function deleteMessageTemplate(id) {
+  db.prepare('DELETE FROM message_templates WHERE id = ?').run(id)
+}
+
+function listCampaigns() {
+  const rows = db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC').all()
+  return rows.map(hydrateCampaign)
+}
+function hydrateCampaign(r) {
+  if (!r) return null
+  return {
+    ...r,
+    templateVars: r.template_vars ? JSON.parse(r.template_vars) : {},
+    audienceFilter: r.audience_filter ? JSON.parse(r.audience_filter) : {},
+    stats: r.stats ? JSON.parse(r.stats) : { total: 0, sent: 0, failed: 0, skipped: 0 }
+  }
+}
+function getCampaign(id) {
+  return hydrateCampaign(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id))
+}
+function createCampaign({ name, channel, subject, bodyHtml, templateId, templateVars, audienceFilter, createdBy }) {
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  db.prepare(`INSERT INTO campaigns
+      (id, name, channel, status, subject, body_html, template_id, template_vars, audience_filter, stats, created_by, created_at, updated_at)
+    VALUES (@id,@name,@channel,'draft',@subject,@bodyHtml,@templateId,@templateVars,@audienceFilter,@stats,@createdBy,@now,@now)`)
+    .run({
+      id, name, channel, subject: subject || null, bodyHtml: bodyHtml || null,
+      templateId: templateId || null, templateVars: JSON.stringify(templateVars || {}),
+      audienceFilter: JSON.stringify(audienceFilter || {}), stats: JSON.stringify({ total: 0, sent: 0, failed: 0, skipped: 0 }),
+      createdBy: createdBy || null, now
+    })
+  return getCampaign(id)
+}
+// Only draft campaigns are editable — once sending starts, the audience/
+// content that was actually used has to stay a stable record of what
+// customers received, same reasoning as orders locking file/price fields
+// once paid.
+function updateCampaign(id, updates) {
+  const current = getCampaign(id)
+  if (!current || current.status !== 'draft') return current
+  const fields = []
+  const params = { id, now: Date.now() }
+  if (updates.name !== undefined) { fields.push('name = @name'); params.name = updates.name }
+  if (updates.subject !== undefined) { fields.push('subject = @subject'); params.subject = updates.subject }
+  if (updates.bodyHtml !== undefined) { fields.push('body_html = @bodyHtml'); params.bodyHtml = updates.bodyHtml }
+  if (updates.templateId !== undefined) { fields.push('template_id = @templateId'); params.templateId = updates.templateId }
+  if (updates.templateVars !== undefined) { fields.push('template_vars = @templateVars'); params.templateVars = JSON.stringify(updates.templateVars) }
+  if (updates.audienceFilter !== undefined) { fields.push('audience_filter = @audienceFilter'); params.audienceFilter = JSON.stringify(updates.audienceFilter) }
+  if (!fields.length) return current
+  fields.push('updated_at = @now')
+  db.prepare(`UPDATE campaigns SET ${fields.join(', ')} WHERE id = @id`).run(params)
+  return getCampaign(id)
+}
+function deleteCampaign(id) {
+  const current = getCampaign(id)
+  if (!current || current.status !== 'draft') return false
+  db.prepare('DELETE FROM campaign_recipients WHERE campaign_id = ?').run(id)
+  db.prepare('DELETE FROM campaigns WHERE id = ?').run(id)
+  return true
+}
+function setCampaignStatus(id, status, extra) {
+  const now = Date.now()
+  const params = { id, status, now, sentAt: (extra && extra.sentAt) || null, stats: extra && extra.stats ? JSON.stringify(extra.stats) : null }
+  db.prepare(`UPDATE campaigns SET status = @status, updated_at = @now
+      ${params.sentAt ? ', sent_at = @sentAt' : ''}
+      ${params.stats ? ', stats = @stats' : ''}
+    WHERE id = @id`).run(params)
+}
+
+// Every campaign audience query enforces marketing_opt_in = 1 itself — never
+// left to the caller — plus a non-empty contact field for the channel being
+// sent on (a customer opted in but who never gave an email can't receive an
+// email campaign). Optional filters narrow further: locationId (customers
+// who've ordered from that branch), sinceOrderDays (ordered within the last
+// N days), minOrders (order count at least this many).
+function getCampaignAudience(channel, filter) {
+  filter = filter || {}
+  const contactCol = channel === 'email' ? 'u.email' : 'u.mobile'
+  const params = {}
+  let sql = `
+    SELECT u.id, u.name, u.email, u.mobile, COUNT(o.id) as orderCount, MAX(o.created_at) as lastOrderAt
+    FROM users u
+    JOIN orders o ON o.customer_id = u.id AND o.archived_at IS NULL
+    WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''
+  `
+  if (filter.locationId) { sql += ' AND o.location_id = @locationId'; params.locationId = filter.locationId }
+  if (filter.sinceOrderDays) {
+    params.since = Date.now() - Number(filter.sinceOrderDays) * 24 * 60 * 60 * 1000
+    sql += ' AND o.created_at >= @since'
+  }
+  sql += ' GROUP BY u.id'
+  if (filter.minOrders) { sql += ' HAVING orderCount >= @minOrders'; params.minOrders = Number(filter.minOrders) }
+  sql += ' ORDER BY lastOrderAt DESC'
+  return db.prepare(sql).all(params)
+}
+
+function insertCampaignRecipients(campaignId, customers) {
+  const insert = db.prepare('INSERT INTO campaign_recipients (campaign_id, customer_id, contact, status) VALUES (?,?,?,\'pending\')')
+  const tx = db.transaction((rows) => { rows.forEach((c) => insert.run(campaignId, c.id, c.contact)) })
+  tx(customers)
+  return db.prepare('SELECT * FROM campaign_recipients WHERE campaign_id = ?').all(campaignId)
+}
+function updateCampaignRecipient(id, { status, error, sentAt }) {
+  db.prepare('UPDATE campaign_recipients SET status = ?, error = ?, sent_at = ? WHERE id = ?')
+    .run(status, error || null, sentAt || null, id)
+}
+function getCampaignRecipients(campaignId) {
+  return db.prepare('SELECT cr.*, u.name as customer_name FROM campaign_recipients cr JOIN users u ON u.id = cr.customer_id WHERE cr.campaign_id = ? ORDER BY cr.id').all(campaignId)
+}
+
 function createPrintJob(orderId) {
   const now = Date.now()
   const info = db.prepare('INSERT INTO print_jobs (order_id, status, created_at, updated_at) VALUES (?, ?, ?, ?)')
@@ -2034,12 +2224,15 @@ function getFeedbackStats() {
   return { count: row.count || 0, average: row.average || 0 }
 }
 
-function createUser({ id, name, email, mobile, password_hash, google_id }) {
+function createUser({ id, name, email, mobile, password_hash, google_id, marketingOptIn }) {
   const now = Date.now()
   db.prepare(`
-    INSERT INTO users (id, name, email, mobile, password_hash, google_id, created_at, updated_at)
-    VALUES (@id, @name, @email, @mobile, @password_hash, @google_id, @now, @now)
-  `).run({ id, name, email: email || null, mobile: mobile || null, password_hash, google_id: google_id || null, now })
+    INSERT INTO users (id, name, email, mobile, password_hash, google_id, marketing_opt_in, marketing_opt_in_updated_at, created_at, updated_at)
+    VALUES (@id, @name, @email, @mobile, @password_hash, @google_id, @optIn, @optInAt, @now, @now)
+  `).run({
+    id, name, email: email || null, mobile: mobile || null, password_hash, google_id: google_id || null,
+    optIn: marketingOptIn ? 1 : 0, optInAt: marketingOptIn ? now : null, now
+  })
   return getUserById(id)
 }
 
@@ -2132,6 +2325,21 @@ module.exports = {
   findUserByMobileOrEmail,
   getSalesAnalytics,
   getOrdersForLineItemReport,
+  setMarketingOptIn,
+  listMessageTemplates,
+  getMessageTemplate,
+  createMessageTemplate,
+  deleteMessageTemplate,
+  listCampaigns,
+  getCampaign,
+  createCampaign,
+  updateCampaign,
+  deleteCampaign,
+  setCampaignStatus,
+  getCampaignAudience,
+  insertCampaignRecipients,
+  updateCampaignRecipient,
+  getCampaignRecipients,
   createPrintJob,
   updatePrintJob,
   getLatestPrintJobForOrder,

@@ -83,4 +83,31 @@ async function sendOrderCompletedSms(order, invoiceUrl) {
   return true
 }
 
-module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms, sendOrderCompletedSms }
+// Generic sender for the campaign tool — unlike the transactional sends
+// above (each locked to its own fixed DLT template + fixed variable shape),
+// a campaign's template and variables are both chosen by the admin at send
+// time from the message_templates registry, so this just takes them as
+// arguments. Same "no client/SID configured -> return false, caller records
+// it as a skip rather than a send" contract as the rest of this file.
+async function sendCampaignSms(mobile, contentSid, contentVariables) {
+  if (!mobile) return false
+  const client = getClient()
+  if (!client || !contentSid) return false
+  await client.messages.create({
+    to: toE164India(mobile),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+    contentSid,
+    contentVariables: JSON.stringify(contentVariables || {})
+  })
+  return true
+}
+
+// Whether Twilio credentials are present at all — doesn't guarantee any
+// specific contentSid is valid/approved, just that a send attempt won't
+// immediately no-op for lack of a client. The campaign UI uses this to warn
+// before an admin builds a whole SMS campaign around nothing.
+function isConfigured() {
+  return !!getClient()
+}
+
+module.exports = { sendOrderConfirmationSms, sendPaymentLinkSms, sendOrderCompletedSms, sendCampaignSms, isConfigured }

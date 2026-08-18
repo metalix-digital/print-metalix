@@ -1176,6 +1176,15 @@ __GTM_NOSCRIPT__
         <input type="checkbox" id="termsCheck">
         <label for="termsCheck">I agree to the <a href="/policies/terms-of-service" target="_blank" rel="noopener">Terms of Service</a> and <a href="/policies/privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
       </div>
+      <!-- Unchecked by default — creating an account only implies consent to
+           the order/account emails that account itself needs, never
+           marketing. Every campaign send checks this same flag server-side
+           regardless of what's sent here, so this is purely what gets it
+           turned on in the first place. -->
+      <div class="terms-check">
+        <input type="checkbox" id="marketingOptInCheck">
+        <label for="marketingOptInCheck">Send me offers and updates by email, WhatsApp, or SMS (optional — unsubscribe anytime)</label>
+      </div>
       <button class="submit-btn" id="signupSubmitBtn" onclick="realSignup()">Create account</button>
       <div class="modal-footer-text">Already have an account? <a role="button" tabindex="0" onclick="switchTab('login', document.querySelectorAll('.mtab')[0])">Log in</a></div>
     </div>
@@ -1797,6 +1806,7 @@ async function realSignup(){
   const mobile = document.getElementById('signupMobile').value.trim();
   const pass = document.getElementById('signupPass').value;
   const terms = document.getElementById('termsCheck').checked;
+  const marketingOptIn = document.getElementById('marketingOptInCheck').checked;
   if(!name||!email||!mobile||!pass){ showToast('Please fill in all fields','⚠️'); return; }
   if(!/^\d{10}$/.test(mobile)){ showToast('Enter a valid 10-digit mobile number','⚠️'); return; }
   if(!terms){ showToast('Please accept the terms to continue','⚠️'); return; }
@@ -1805,7 +1815,7 @@ async function realSignup(){
   try {
     const res = await fetch('/api/auth/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, mobile, password: pass })
+      body: JSON.stringify({ name, email, mobile, password: pass, marketingOptIn })
     });
     const data = await res.json();
     if(!res.ok){ showToast(data.message || 'Signup failed', '⚠️'); return; }

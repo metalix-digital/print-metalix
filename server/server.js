@@ -237,6 +237,8 @@ const { cleanupExpiredFiles, deleteFilesForOrder, purgeExpiredArchive, cleanupOr
 const { buildInvoicePdf } = require('./invoice')
 const { formatRupees } = require('./format')
 const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
+const campaigns = require('./campaigns')
+const whatsapp = require('./whatsapp')
 
 // pdf-lib's Standard fonts (used by the job sheet's text pages below) are
 // WinAnsi-encoded and can't represent ₹ or most non-Latin1 characters — a
@@ -1296,11 +1298,11 @@ app.delete('/api/admin/cross-sell-rules/:id', requireSuperAdmin, (req, res) => {
 })
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, mobile: user.mobile }
+  return { id: user.id, name: user.name, email: user.email, mobile: user.mobile, marketingOptIn: !!user.marketing_opt_in }
 }
 
 app.post('/api/auth/signup', express.json(), async (req, res) => {
-  const { name, email, mobile, password } = req.body || {}
+  const { name, email, mobile, password, marketingOptIn } = req.body || {}
   if (!name || !email || !mobile || !password) {
     return res.status(400).json({ error: 'missing_fields', message: 'Name, email, mobile, and password are all required.' })
   }
@@ -1308,7 +1310,9 @@ app.post('/api/auth/signup', express.json(), async (req, res) => {
     return res.status(409).json({ error: 'already_exists', message: 'An account with this email or mobile already exists.' })
   }
   const password_hash = await bcrypt.hash(password, 10)
-  const user = db.createUser({ id: crypto.randomUUID(), name, email, mobile, password_hash })
+  // Opt-in defaults off — signup doesn't imply consent to marketing, only to
+  // the transactional order/account emails every account needs regardless.
+  const user = db.createUser({ id: crypto.randomUUID(), name, email, mobile, password_hash, marketingOptIn: !!marketingOptIn })
   const token = jwt.sign({ role: 'customer', sub: user.id }, getJwtSecret(), { expiresIn: '30d' })
   return res.json({ token, user: publicUser(user) })
 })
@@ -3054,6 +3058,142 @@ app.get('/api/admin/reports/line-items', requireSuperAdmin, (req, res) => {
     console.error('Line-item report error:', err)
     return res.status(500).json({ error: 'report_failed', message: 'Could not generate the report. Check server logs.' })
   }
+})
+
+// ---- Campaign management (Email/WhatsApp/SMS marketing) ----
+// Super-admin only, same posture as Analytics/Reports — this reaches every
+// opted-in customer across every branch, not something to expose to a
+// branch-scoped admin.
+
+app.get('/api/admin/message-templates', requireSuperAdmin, (req, res) => {
+  return res.json({ templates: db.listMessageTemplates(req.query.channel || null) })
+})
+app.post('/api/admin/message-templates', requireSuperAdmin, express.json(), (req, res) => {
+  const { channel, name, contentSid, variables } = req.body || {}
+  if (!['whatsapp', 'sms'].includes(channel) || !name || !contentSid) {
+    return res.status(400).json({ error: 'invalid_template', message: 'Channel (whatsapp/sms), name, and Content SID are required.' })
+  }
+  const template = db.createMessageTemplate({ channel, name: String(name).trim().slice(0, 120), contentSid: String(contentSid).trim(), variables })
+  return res.json({ template })
+})
+app.delete('/api/admin/message-templates/:id', requireSuperAdmin, (req, res) => {
+  db.deleteMessageTemplate(req.params.id)
+  return res.json({ ok: true })
+})
+
+// Whether each channel can actually deliver right now — the campaign
+// composer uses this to warn before an admin builds a whole campaign around
+// a channel with nothing configured behind it, rather than let every send
+// silently land as "skipped".
+app.get('/api/admin/campaigns/channel-status', requireSuperAdmin, (req, res) => {
+  return res.json({ email: mailer.isConfigured(), sms: sms.isConfigured(), whatsapp: whatsapp.isConfigured() })
+})
+
+app.get('/api/admin/campaigns', requireSuperAdmin, (req, res) => {
+  return res.json({ campaigns: db.listCampaigns() })
+})
+app.get('/api/admin/campaigns/:id', requireSuperAdmin, (req, res) => {
+  const campaign = db.getCampaign(req.params.id)
+  if (!campaign) return res.status(404).json({ error: 'not_found' })
+  return res.json({ campaign })
+})
+app.post('/api/admin/campaigns', requireSuperAdmin, express.json(), (req, res) => {
+  const { name, channel } = req.body || {}
+  if (!name || !['email', 'whatsapp', 'sms'].includes(channel)) {
+    return res.status(400).json({ error: 'invalid_campaign', message: 'Name and a valid channel (email/whatsapp/sms) are required.' })
+  }
+  const campaign = db.createCampaign({ name: String(name).trim().slice(0, 120), channel, createdBy: req.admin.id })
+  return res.json({ campaign })
+})
+app.patch('/api/admin/campaigns/:id', requireSuperAdmin, express.json(), (req, res) => {
+  const { name, subject, bodyHtml, templateId, templateVars, audienceFilter } = req.body || {}
+  const campaign = db.updateCampaign(req.params.id, { name, subject, bodyHtml, templateId, templateVars, audienceFilter })
+  if (!campaign) return res.status(404).json({ error: 'not_found' })
+  return res.json({ campaign })
+})
+app.delete('/api/admin/campaigns/:id', requireSuperAdmin, (req, res) => {
+  const ok = db.deleteCampaign(req.params.id)
+  if (!ok) return res.status(409).json({ error: 'not_draft', message: 'Only draft campaigns can be deleted.' })
+  return res.json({ ok: true })
+})
+
+// Audience size + a small sample, computed from the campaign's currently
+// saved filter (not a request body) — always enforces marketing_opt_in
+// itself, same as the actual send, so what an admin previews here is
+// exactly who a real send would reach.
+app.get('/api/admin/campaigns/:id/audience', requireSuperAdmin, (req, res) => {
+  const campaign = db.getCampaign(req.params.id)
+  if (!campaign) return res.status(404).json({ error: 'not_found' })
+  const audience = db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
+  return res.json({ count: audience.length, sample: audience.slice(0, 20) })
+})
+
+app.get('/api/admin/campaigns/:id/recipients', requireSuperAdmin, (req, res) => {
+  return res.json({ recipients: db.getCampaignRecipients(req.params.id) })
+})
+
+// Sends to exactly one contact the admin supplies (their own email/phone),
+// bypassing the audience filter entirely — the "does this actually look
+// right" check before committing to the real send. Never touches the
+// campaign's status/recipient rows.
+app.post('/api/admin/campaigns/:id/test-send', requireSuperAdmin, express.json(), async (req, res) => {
+  const campaign = db.getCampaign(req.params.id)
+  if (!campaign) return res.status(404).json({ error: 'not_found' })
+  const { contact } = req.body || {}
+  if (!contact) return res.status(400).json({ error: 'missing_contact', message: 'Provide an email or mobile number to test-send to.' })
+  try {
+    let ok = false
+    if (campaign.channel === 'email') {
+      ok = await mailer.sendCampaignEmail({
+        to: contact, subject: '[TEST] ' + (campaign.subject || campaign.name), bodyHtml: campaign.body_html,
+        unsubscribeUrl: campaigns.buildUnsubscribeUrl(req.admin.id), businessAddress: campaigns.primaryBusinessAddress()
+      })
+    } else {
+      const template = db.getMessageTemplate(campaign.template_id)
+      if (!template) return res.status(400).json({ error: 'no_template', message: 'Pick a message template first.' })
+      ok = campaign.channel === 'whatsapp'
+        ? await whatsapp.sendCampaignWhatsapp(contact, template.content_sid, campaign.templateVars)
+        : await sms.sendCampaignSms(contact, template.content_sid, campaign.templateVars)
+    }
+    if (!ok) return res.status(502).json({ error: 'not_configured', message: `${campaign.channel} isn't configured yet — see server logs for the stub output.` })
+    return res.json({ ok: true })
+  } catch (err) {
+    console.error('Campaign test-send error:', err)
+    return res.status(502).json({ error: 'send_failed', message: err.message })
+  }
+})
+
+// Fire-and-forget, same pattern as notify.js — a real send can take a while
+// (batched, rate-limited) and there's no reason to hold the admin's request
+// open for it. The UI polls GET /api/admin/campaigns/:id for status.
+app.post('/api/admin/campaigns/:id/send', requireSuperAdmin, (req, res) => {
+  const campaign = db.getCampaign(req.params.id)
+  if (!campaign) return res.status(404).json({ error: 'not_found' })
+  if (campaign.status !== 'draft') return res.status(409).json({ error: 'not_draft', message: 'This campaign has already been sent.' })
+  if (campaign.channel !== 'email' && !campaign.template_id) {
+    return res.status(400).json({ error: 'no_template', message: 'Pick a message template before sending.' })
+  }
+  if (campaign.channel === 'email' && !campaign.body_html) {
+    return res.status(400).json({ error: 'no_content', message: 'Write the email content before sending.' })
+  }
+  campaigns.runCampaignSend(campaign.id).catch((err) => console.error(`[campaigns] send failed for ${campaign.id}:`, err.message))
+  return res.json({ ok: true, status: 'sending' })
+})
+
+// Public, no auth — the link every campaign email carries. GET (not POST) so
+// it works as a plain click from any mail client, no JS/fetch required.
+app.get('/unsubscribe', (req, res) => {
+  const { u, t } = req.query
+  const ok = u && t && campaigns.verifyUnsubscribeToken(String(u), String(t))
+  if (ok) db.setMarketingOptIn(String(u), false)
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${ok ? 'Unsubscribed' : 'Link invalid'} — Metalix Print</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;background:#F4F4F5;margin:0;padding:60px 20px;text-align:center;color:#18181B;}
+    .card{max-width:440px;margin:0 auto;background:#fff;border:1px solid #E4E4E7;border-radius:16px;padding:36px 32px;}
+    h1{font-size:20px;margin:0 0 10px;} p{font-size:14px;color:#71717A;line-height:1.6;margin:0;}</style></head>
+    <body><div class="card"><h1>${ok ? "You're unsubscribed" : 'This link is invalid'}</h1>
+    <p>${ok ? "You won't receive any more marketing emails from Metalix Print. You'll still get order-related messages for anything you order." : 'This unsubscribe link is broken or expired. Contact us if you keep receiving emails you want to stop.'}</p>
+    </div></body></html>`)
 })
 
 app.get('/api/admin/orders/:id/files/:fileId/download', requireAdmin, requireTab('orders'), (req, res) => {
