@@ -3125,7 +3125,8 @@ app.get('/api/admin/campaigns/:id/audience', requireSuperAdmin, (req, res) => {
   const campaign = db.getCampaign(req.params.id)
   if (!campaign) return res.status(404).json({ error: 'not_found' })
   const audience = db.getCampaignAudience(campaign.channel, campaign.audienceFilter)
-  return res.json({ count: audience.length, sample: audience.slice(0, 20) })
+  const stats = db.getCampaignAudienceStats(campaign.channel)
+  return res.json({ count: audience.length, sample: audience.slice(0, 20), totalOptedIn: stats.totalOptedIn, totalOptedInWithOrders: stats.withOrders })
 })
 
 app.get('/api/admin/campaigns/:id/recipients', requireSuperAdmin, (req, res) => {

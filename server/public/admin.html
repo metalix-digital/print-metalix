@@ -3661,9 +3661,19 @@ document.getElementById('audPreviewBtn').addEventListener('click', async () => {
     await saveCampaignDraft();
     const res = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/audience');
     const data = await res.json();
-    result.textContent = data.count === 0
-      ? 'No opted-in customers match this audience yet.'
-      : data.count + ' opted-in customer(s) — e.g. ' + data.sample.slice(0, 5).map((c) => c.name).join(', ') + (data.count > 5 ? ', …' : '.');
+    if (data.count > 0) {
+      result.textContent = data.count + ' opted-in customer(s) — e.g. ' + data.sample.slice(0, 5).map((c) => c.name).join(', ') + (data.count > 5 ? ', …' : '.');
+    } else if (data.totalOptedIn === 0) {
+      // The most common reason this is empty: opt-in is a brand-new field
+      // that defaults OFF for every existing account, so "nobody yet" is
+      // the expected starting state, not a bug — say so plainly rather than
+      // leaving an admin to wonder if audience targeting is broken.
+      result.textContent = 'No customers have opted in to marketing yet — opt-in defaults off, so this fills in as new signups check the box (or existing customers do, once there\'s a way for them to) and as you flip it on for customers who\'ve agreed another way.';
+    } else if (data.totalOptedInWithOrders === 0) {
+      result.textContent = data.totalOptedIn + ' customer(s) have opted in, but none has a non-archived order yet — a campaign can only reach customers who\'ve actually ordered.';
+    } else {
+      result.textContent = '0 match these filters. ' + data.totalOptedInWithOrders + ' opted-in customer(s) with an order exist in total — try widening the branch/min-orders/date filters.';
+    }
   } catch (err) {
     if (err.message !== 'unauthorized') result.textContent = err.message || 'Could not preview audience.';
   }
@@ -3706,6 +3716,10 @@ document.getElementById('campSendBtn').addEventListener('click', async () => {
     await saveCampaignDraft();
     const audRes = await adminFetch('/api/admin/campaigns/' + encodeURIComponent(currentCampaign.id) + '/audience');
     const aud = await audRes.json();
+    if (aud.count === 0) {
+      alert('This audience is empty — nothing would send. Click "Preview audience" above to see why (likely: no customers have opted in to marketing yet, or the filters are too narrow).');
+      return;
+    }
     const ok = await showConfirmModal(
       '<h3 class="modal-title">Send this campaign now?</h3><p class="modal-sub">This will message ' + aud.count + ' opted-in customer(s) on ' + escHtml(currentCampaign.channel) + '. This can\'t be undone.</p>',
       'Send now', false

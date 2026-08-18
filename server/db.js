@@ -2121,6 +2121,28 @@ function getCampaignAudience(channel, filter) {
   return db.prepare(sql).all(params)
 }
 
+// getCampaignAudience's result can go to zero for two very different
+// reasons an admin can't otherwise tell apart: nobody's opted in at all
+// (this is a brand-new consent field — every pre-existing account defaults
+// to opted out, so an empty result is the *expected* starting state, not a
+// bug), or filters (branch/min orders/since-days) narrowed a real pool down
+// to nothing. This gives the raw opt-in numbers with no filter applied, so
+// the UI can tell those apart instead of just showing "0" either way.
+function getCampaignAudienceStats(channel) {
+  const contactCol = channel === 'email' ? 'u.email' : 'u.mobile'
+  const totalOptedIn = db.prepare(`SELECT COUNT(*) as c FROM users u WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''`).get().c
+  // The audience query always JOINs orders (a campaign targets customers
+  // who've actually bought something), so an opted-in customer with no
+  // non-archived order can never appear in ANY campaign, filtered or not —
+  // worth surfacing separately from "filters too narrow".
+  const withOrders = db.prepare(`
+    SELECT COUNT(DISTINCT u.id) as c FROM users u
+    JOIN orders o ON o.customer_id = u.id AND o.archived_at IS NULL
+    WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''
+  `).get().c
+  return { totalOptedIn, withOrders }
+}
+
 function insertCampaignRecipients(campaignId, customers) {
   const insert = db.prepare('INSERT INTO campaign_recipients (campaign_id, customer_id, contact, status) VALUES (?,?,?,\'pending\')')
   const tx = db.transaction((rows) => { rows.forEach((c) => insert.run(campaignId, c.id, c.contact)) })
@@ -2337,6 +2359,7 @@ module.exports = {
   deleteCampaign,
   setCampaignStatus,
   getCampaignAudience,
+  getCampaignAudienceStats,
   insertCampaignRecipients,
   updateCampaignRecipient,
   getCampaignRecipients,
