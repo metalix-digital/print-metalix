@@ -2923,9 +2923,16 @@ app.get('/api/admin/customers', requireAdmin, requireTab('customers'), (req, res
 
 // Sales analytics — super-admin only (matches Pricing/Locations/Settings),
 // no branch scoping since there's no branch-restricted UI for it yet.
+// Same explicit from/to range shape as the Reports tab's line-item export,
+// rather than a relative "days back from now" count — the two share one
+// date-range picker (rangeToDates() client-side) and this is what it emits.
 app.get('/api/admin/analytics/sales', requireSuperAdmin, (req, res) => {
-  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30))
-  return res.json(db.getSalesAnalytics(days))
+  const from = Number(req.query.from)
+  const to = Number(req.query.to)
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+    return res.status(400).json({ error: 'invalid_range', message: 'Provide a valid from/to time range.' })
+  }
+  return res.json(db.getSalesAnalytics(from, to))
 })
 
 // ---- Line-item report ----

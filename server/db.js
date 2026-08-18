@@ -1861,10 +1861,10 @@ function listCustomers(locationId) {
 // definition as listOrders/listCustomers: paid online or COD, not archived.
 // Day boundaries are UTC (SQLite's own 'unixepoch' grouping), not IST —
 // close enough for a trend chart, not worth the tz-conversion complexity.
-function getSalesAnalytics(days) {
+function getSalesAnalytics(fromMs, toMs) {
   const now = Date.now()
   const DAY_MS = 24 * 60 * 60 * 1000
-  const since = now - (days - 1) * DAY_MS
+  const days = Math.max(1, Math.round((toMs - fromMs) / DAY_MS) + 1)
 
   const rows = db.prepare(`
     SELECT
@@ -1874,14 +1874,14 @@ function getSalesAnalytics(days) {
     FROM orders
     WHERE (payment_status = 'paid' OR payment_method = 'cod')
       AND archived_at IS NULL
-      AND created_at >= ?
+      AND created_at BETWEEN ? AND ?
     GROUP BY day
-  `).all(since)
+  `).all(fromMs, toMs)
   const byDay = new Map(rows.map((r) => [r.day, r]))
 
   const daily = []
   for (let i = 0; i < days; i++) {
-    const key = new Date(since + i * DAY_MS).toISOString().slice(0, 10)
+    const key = new Date(fromMs + i * DAY_MS).toISOString().slice(0, 10)
     const row = byDay.get(key)
     daily.push({ day: key, revenue: row ? row.revenue : 0, orders: row ? row.orders : 0 })
   }
@@ -1895,8 +1895,8 @@ function getSalesAnalytics(days) {
     FROM orders
     WHERE (payment_status = 'paid' OR payment_method = 'cod')
       AND archived_at IS NULL
-      AND created_at >= ?
-  `).get(since)
+      AND created_at BETWEEN ? AND ?
+  `).get(fromMs, toMs)
   summary.avgOrderValue = summary.totalOrders ? Math.round(summary.totalRevenue / summary.totalOrders) : 0
 
   // "Today" is always the current IST calendar day, independent of the

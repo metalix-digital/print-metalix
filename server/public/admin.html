@@ -134,10 +134,21 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
    usual uppercase small-caps), a checkbox column, and a sort arrow that only
    appears on the active column. */
 .pd-toolbar{display:flex;align-items:center;justify-content:space-between;padding:14px 4px;}
-.pd-table{width:100%;border-collapse:collapse;background:var(--card);font-size:13.5px;}
+/* border-collapse:separate (not collapse) — Chromium/WebKit silently refuse
+   position:sticky on table cells under collapsed borders, which is exactly
+   what the sticky header/totals rows below need. border-spacing:0 keeps the
+   collapsed look with no visible gap between cells. */
+/* overflow:visible overrides the base bare-element table{overflow:hidden}
+   rule (used elsewhere for the Orders table's rounded-corner clipping) —
+   with it inherited, the <table> itself counts as a (non-scrolling)
+   clipping ancestor, so sticky th/td resolve against that dead-end box
+   instead of reaching .table-scroll, the actual scrolling container, one
+   level up. */
+.pd-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);font-size:13.5px;overflow:visible;}
 .pd-table th{text-align:left;text-transform:none;letter-spacing:normal;font-size:13px;font-weight:700;color:var(--ink);background:var(--paper);padding:10px 14px;border-bottom:1px solid var(--line);border-top:1px solid var(--line);white-space:nowrap;user-select:none;}
 .pd-table th.sortable{cursor:pointer;}
 .pd-table th.sortable:hover{color:var(--orange-d);}
+.pd-table th.sortable.drag-over{background:var(--orange-soft);}
 .pd-table th .pd-sort-arrow{display:inline-block;width:12px;margin-left:2px;font-size:11px;color:var(--orange-d);}
 .pd-table td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .pd-table tbody tr:hover{background:var(--surface-hover);}
@@ -148,8 +159,20 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
    overflow-x:auto for every .table-scroll on the page, including this one —
    invisible there since that table's never been wider than its container,
    but this one regularly is once a couple of extra columns are on. Restore
-   scrolling here without touching the shared class everywhere else uses. */
-#reportPreviewWrap .table-scroll{overflow-x:auto;overflow-y:hidden;}
+   scrolling here without touching the shared class everywhere else uses.
+   Bounding its own height (rather than letting it grow with the page) and
+   scrolling internally is what makes the sticky thead below mean anything —
+   position:sticky pins to the nearest scrolling ancestor, and without an
+   overflow:auto container of its own that ancestor would just be the whole
+   page. */
+#reportPreviewWrap .table-scroll{overflow:auto;max-height:min(600px,65vh);}
+/* position:sticky on <thead> itself doesn't reliably stick in table layout
+   across browsers — it has to go on the actual <th>/<td> cells. Two sticky
+   rows (headers, then totals) stack: the totals row's `top` is set inline
+   in JS to the header row's measured height, since that varies with font
+   size/padding and hardcoding it would drift out of sync. */
+#reportPreviewWrap .pd-table thead tr:first-child th{position:sticky;top:0;z-index:6;}
+#reportPreviewWrap .pd-totals-row td{position:sticky;z-index:5;}
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -712,11 +735,18 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     </div>
 
     <div class="panel" id="panel-analytics">
-      <div class="analytics-filters">
-        <button class="range-btn" data-days="today">Today</button>
-        <button class="range-btn" data-days="7">Last 7 days</button>
-        <button class="range-btn active" data-days="30">Last 30 days</button>
-        <button class="range-btn" data-days="90">Last 90 days</button>
+      <div class="analytics-filters report-filters">
+        <button class="range-btn" data-range="today">Today</button>
+        <button class="range-btn" data-range="7">Last 7 days</button>
+        <button class="range-btn active" data-range="30">Last 30 days</button>
+        <button class="range-btn" data-range="90">Last 90 days</button>
+        <button class="range-btn" data-range="month">This month</button>
+        <button class="range-btn" data-range="lastmonth">Last month</button>
+        <span class="report-custom-range">
+          <input type="date" id="analyticsFrom" />
+          <span>to</span>
+          <input type="date" id="analyticsTo" />
+        </span>
       </div>
       <div class="stat-tiles" id="analyticsStats">
         <div class="loading">Loading…</div>
@@ -1686,7 +1716,7 @@ async function showDash(){
   await stagesAndFeedback;
   loadOrders();
   if (!isBranch) {
-    loadAnalytics(analyticsRangeDays);
+    applyAnalyticsRange(analyticsMode);
     loadPricing();
     loadDiscounts();
     loadLocations();
@@ -2738,7 +2768,7 @@ function renderOrders(orders){
 }
 
 /* -- ANALYTICS -- */
-let analyticsRangeDays = 30;
+let analyticsMode = '30';
 
 function fmtCompact(n){
   n = Number(n) || 0;
@@ -2899,16 +2929,13 @@ function renderPaymentSplit(summary){
     '</div>';
 }
 
-async function loadAnalytics(days){
-  analyticsRangeDays = days || analyticsRangeDays;
-  document.querySelectorAll('.range-btn').forEach((b) => b.classList.toggle('active', b.dataset.days === String(analyticsRangeDays)));
-  const isToday = analyticsRangeDays === 'today';
+async function loadAnalytics(from, to, isToday){
   try {
-    // The endpoint always computes `today` regardless of `days` — when
-    // "Today" is the active filter, the `days` query param itself is
-    // irrelevant (just needs to be a valid number), since every tile/chart
+    // The endpoint always computes `today` regardless of the requested
+    // range — when "Today" is the active filter, from/to themselves are
+    // irrelevant (just need to be a valid range), since every tile/chart
     // below reads from data.today instead of data.summary in that mode.
-    const res = await adminFetch('/api/admin/analytics/sales?days=' + (isToday ? 1 : analyticsRangeDays));
+    const res = await adminFetch('/api/admin/analytics/sales?from=' + from + '&to=' + to);
     const data = await res.json();
     const activeSummary = isToday ? data.today : data.summary;
     renderAnalyticsStats(activeSummary, data.today, isToday);
@@ -2935,8 +2962,34 @@ async function loadAnalytics(days){
     }
   }
 }
-document.querySelectorAll('.range-btn').forEach((btn) => {
-  btn.addEventListener('click', () => loadAnalytics(btn.dataset.days === 'today' ? 'today' : Number(btn.dataset.days)));
+// Quick-range pill -> sets both date inputs and fetches. rangeToDates/
+// toDateInputValue are shared with the Reports tab (defined further down,
+// but hoisted as function declarations so the order here doesn't matter).
+function applyAnalyticsRange(mode){
+  analyticsMode = mode;
+  document.querySelectorAll('#panel-analytics .range-btn').forEach((b) => b.classList.toggle('active', b.dataset.range === mode));
+  const { from, to } = rangeToDates(mode);
+  document.getElementById('analyticsFrom').value = toDateInputValue(from);
+  document.getElementById('analyticsTo').value = toDateInputValue(to);
+  loadAnalytics(from.getTime(), to.getTime(), mode === 'today');
+}
+document.querySelectorAll('#panel-analytics .range-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyAnalyticsRange(btn.dataset.range));
+});
+// Hand-editing either date is its own custom range — drop the quick-range
+// highlight so it doesn't keep claiming "Last 30 days" once it no longer
+// matches, same as the Reports tab's date inputs.
+['analyticsFrom', 'analyticsTo'].forEach((id) => {
+  document.getElementById(id).addEventListener('change', () => {
+    document.querySelectorAll('#panel-analytics .range-btn').forEach((b) => b.classList.remove('active'));
+    const fromStr = document.getElementById('analyticsFrom').value;
+    const toStr = document.getElementById('analyticsTo').value;
+    if (!fromStr || !toStr) return;
+    const from = new Date(fromStr + 'T00:00:00').getTime();
+    const to = new Date(toStr + 'T23:59:59.999').getTime();
+    if (from > to) return;
+    loadAnalytics(from, to, false);
+  });
 });
 
 /* -- REPORTS (line-item sales export, reads the live DB) -- */
@@ -2986,7 +3039,9 @@ document.addEventListener('click', () => {
   document.getElementById('reportColGearBtn').classList.remove('active');
 });
 
-function reportRangeToDates(mode){
+// Shared by the Reports and Analytics tabs — same quick-range pills +
+// custom From/To pattern in both places, one date-math implementation.
+function rangeToDates(mode){
   const now = new Date();
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   if (mode === 'today') return { from: new Date(now.getFullYear(), now.getMonth(), now.getDate()), to: endOfToday };
@@ -3002,7 +3057,7 @@ const toDateInputValue = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1)
 
 function applyReportRange(mode){
   document.querySelectorAll('#panel-reports .range-btn').forEach((b) => b.classList.toggle('active', b.dataset.range === mode));
-  const { from, to } = reportRangeToDates(mode);
+  const { from, to } = rangeToDates(mode);
   document.getElementById('reportFrom').value = toDateInputValue(from);
   document.getElementById('reportTo').value = toDateInputValue(to);
 }
@@ -3036,6 +3091,19 @@ let reportRows = [];
 let reportHeaders = [];
 let reportSort = { col: null, dir: 1 };
 let reportTruncated = false;
+// User-dragged column order, remembered across Preview refreshes (a re-fetch
+// naturally produces headers in the server's default order again) — null
+// until the first drag. Checkbox column is never part of this; it's always
+// pinned first.
+let reportColumnOrder = null;
+let reportDragCol = null;
+function applyReportColumnOrder(headers){
+  if (!reportColumnOrder) { reportColumnOrder = headers.slice(); return headers.slice(); }
+  const known = reportColumnOrder.filter((h) => headers.includes(h));
+  const fresh = headers.filter((h) => !known.includes(h));
+  reportColumnOrder = known.concat(fresh);
+  return reportColumnOrder.slice();
+}
 
 function reportCsvValueFor(v){ return v == null ? '' : v; }
 
@@ -3108,10 +3176,40 @@ function renderReportTable(){
   wrap.dataset.sortedRef = 'x';
   renderReportTable.currentSorted = sorted;
 
+  // Stack the sticky totals row directly under the sticky header row —
+  // its own `top` has to be the header row's actual rendered height, which
+  // shifts with font size/zoom, so it's measured rather than hardcoded.
+  const headerRowHeight = document.querySelector('#reportPreviewWrap thead tr:first-child').getBoundingClientRect().height;
+  document.querySelectorAll('#reportPreviewWrap .pd-totals-row td').forEach((td) => { td.style.top = headerRowHeight + 'px'; });
+
   document.querySelectorAll('#reportPreviewWrap th.sortable').forEach((th) => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
       reportSort = reportSort.col === col ? { col, dir: -reportSort.dir } : { col, dir: 1 };
+      renderReportTable();
+    });
+    // Drag a header to reorder columns (checkbox column excluded — it's not
+    // .sortable, so it's never a drag source or target, always pinned
+    // first). A completed native drag doesn't fire a click afterward, so
+    // this doesn't fight with the sort handler above.
+    th.draggable = true;
+    th.addEventListener('dragstart', (e) => {
+      reportDragCol = th.dataset.col;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    th.addEventListener('dragover', (e) => { e.preventDefault(); th.classList.add('drag-over'); });
+    th.addEventListener('dragleave', () => th.classList.remove('drag-over'));
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      th.classList.remove('drag-over');
+      const targetCol = th.dataset.col;
+      if (!reportDragCol || reportDragCol === targetCol) return;
+      const from = reportHeaders.indexOf(reportDragCol);
+      const to = reportHeaders.indexOf(targetCol);
+      reportHeaders.splice(from, 1);
+      reportHeaders.splice(to, 0, reportDragCol);
+      reportColumnOrder = reportHeaders.slice();
+      reportDragCol = null;
       renderReportTable();
     });
   });
@@ -3169,7 +3267,7 @@ async function previewReport(){
     if (!res.ok) { wrap.innerHTML = '<p class="subtle" style="padding:20px;">' + escHtml(data.message || 'Could not load preview.') + '</p>'; return; }
     reportTruncated = data.rows.length > 500;
     reportRows = data.rows.slice(0, 500);
-    reportHeaders = reportRows.length ? Object.keys(reportRows[0]) : [];
+    reportHeaders = reportRows.length ? applyReportColumnOrder(Object.keys(reportRows[0])) : [];
     reportSort = { col: null, dir: 1 };
     renderReportTable();
   } catch (err) {
