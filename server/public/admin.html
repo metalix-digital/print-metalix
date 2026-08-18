@@ -142,7 +142,7 @@ select.branch-assign-select{border:1.5px solid var(--line);border-radius:6px;pad
 .pd-table td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .pd-table tbody tr:hover{background:var(--surface-hover);}
 .pd-table th.cbcol,.pd-table td.cbcol{width:40px;padding-left:16px;padding-right:0;}
-.pd-totals-row td{font-weight:700;color:var(--ink);background:var(--paper);border-top:2px solid var(--line);border-bottom:none;}
+.pd-totals-row td{font-weight:700;color:var(--ink);background:var(--paper);border-bottom:2px solid var(--line);}
 .stat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm);}
 .stat-tile .stat-label{font-size:12px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
@@ -3066,9 +3066,11 @@ function renderReportTable(){
   wrap.innerHTML =
     '<div class="pd-toolbar"><span class="pd-count">' + reportRows.length + ' line item(s)' + (reportTruncated ? ' — showing first 500, export for the full range' : '') + '</span>' +
     '<span class="subtle" id="reportSelectedCount"></span></div>' +
-    '<div class="table-scroll"><table class="pd-table"><thead><tr><th class="cbcol"><input type="checkbox" class="cb" id="reportSelectAll" /></th>' + theadCells + '</tr></thead>' +
+    '<div class="table-scroll"><table class="pd-table"><thead>' +
+    '<tr><th class="cbcol"><input type="checkbox" class="cb" id="reportSelectAll" /></th>' + theadCells + '</tr>' +
+    '<tr class="pd-totals-row"><td class="cbcol"></td>' + totalCells + '</tr>' +
+    '</thead>' +
     '<tbody id="reportTableBody">' + bodyRows + '</tbody>' +
-    '<tfoot><tr class="pd-totals-row"><td class="cbcol"></td>' + totalCells + '</tr></tfoot>' +
     '</table></div>';
 
   // sorted array's index i maps back into `sorted`, not the original
