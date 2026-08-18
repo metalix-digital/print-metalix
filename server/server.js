@@ -2949,6 +2949,7 @@ const REPORT_EXTRA_COLUMNS = {
   delivery_method: 'Delivery Method',
   discount_amount: 'Discount (₹)',
   discount_code: 'Discount Code',
+  total_amount: 'Final Amount (₹)',
   razorpay_payment_id: 'Razorpay Payment ID'
 }
 

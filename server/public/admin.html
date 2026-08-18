@@ -2953,8 +2953,16 @@ const REPORT_EXTRA_COLUMNS = [
   { key: 'delivery_method', label: 'Delivery Method' },
   { key: 'discount_amount', label: 'Discount (₹)' },
   { key: 'discount_code', label: 'Discount Code' },
+  { key: 'total_amount', label: 'Final Amount (₹)' },
   { key: 'razorpay_payment_id', label: 'Razorpay Payment ID' }
 ];
+// Discount and Final Amount are order-level figures, not per-line ones —
+// every line item of the same order repeats the same value (unlike Price/
+// GST/Price incl. GST, which are genuinely per-line and correct to sum row
+// by row). Summing them naively would multiply each order's real figure by
+// however many line items it has, so sumReportColumns below counts each one
+// once per distinct Order ID instead.
+const REPORT_ORDER_LEVEL_LABELS = new Set(['Discount (₹)', 'Final Amount (₹)']);
 (function renderReportColumnsCheckboxes(){
   document.getElementById('reportExtraColumns').innerHTML = REPORT_EXTRA_COLUMNS.map((c) =>
     '<label class="report-col-check"><input type="checkbox" value="' + c.key + '" /> ' + escHtml(c.label) + '</label>'
@@ -3032,15 +3040,25 @@ let reportTruncated = false;
 function reportCsvValueFor(v){ return v == null ? '' : v; }
 
 // Any column labelled "... (₹)" is a summable measure (Price, GST, Price
-// incl. GST, and whichever extra ₹ columns — e.g. Discount — are switched
-// on) — detecting by the label instead of a hardcoded list means a future
-// extra column follows this automatically as long as it's named the same way.
+// incl. GST, and whichever extra ₹ columns — e.g. Discount, Final Amount —
+// are switched on) — detecting by the label instead of a hardcoded list
+// means a future extra column follows this automatically as long as it's
+// named the same way.
 const isReportMoneyColumn = (h) => h.indexOf('(₹)') !== -1;
 function sumReportColumns(rows, headers){
   const sums = {};
   headers.forEach((h) => {
     if (!isReportMoneyColumn(h)) return;
-    sums[h] = rows.reduce((s, r) => s + (Number(r[h]) || 0), 0);
+    if (REPORT_ORDER_LEVEL_LABELS.has(h)) {
+      const seenOrders = new Set();
+      sums[h] = rows.reduce((s, r) => {
+        if (seenOrders.has(r['Order ID'])) return s;
+        seenOrders.add(r['Order ID']);
+        return s + (Number(r[h]) || 0);
+      }, 0);
+    } else {
+      sums[h] = rows.reduce((s, r) => s + (Number(r[h]) || 0), 0);
+    }
   });
   return sums;
 }
