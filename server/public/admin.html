@@ -959,12 +959,15 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
           <button class="btn-ghost-sm" type="button" id="templatesBackBtn">← Back to campaigns</button>
           <h2 style="margin-top:14px;">Message templates</h2>
           <p class="hint">Register a Twilio Content SID here once it's approved (WhatsApp: Meta template review via Twilio; SMS: DLT template registration) — campaigns pick from this list rather than composing free text, since neither channel allows that for marketing sends.</p>
-          <div class="report-filters">
-            <select id="newTplChannel"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select>
-            <input type="text" id="newTplName" placeholder="Template name" style="width:200px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-            <input type="text" id="newTplSid" placeholder="Content SID (HXxxxxxxxx…)" style="width:220px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-            <input type="text" id="newTplVars" placeholder="Variables, comma-separated (e.g. name,code)" style="width:240px;border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;" />
-            <button class="rate-add" type="button" id="addTplBtn">+ Add template</button>
+          <div class="camp-section">
+            <div class="camp-section-title">➕ New template</div>
+            <div class="camp-field-row">
+              <div class="field"><label>Channel</label><select id="newTplChannel"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></div>
+              <div class="field"><label>Template name</label><input type="text" id="newTplName" placeholder="e.g. Order confirmation" /></div>
+              <div class="field"><label>Content SID</label><input type="text" id="newTplSid" placeholder="HXxxxxxxxx…" /></div>
+              <div class="field"><label>Variables</label><input type="text" id="newTplVars" placeholder="comma-separated, e.g. name,code" /></div>
+              <button class="rate-add" type="button" id="addTplBtn" style="margin-top:0;">+ Add template</button>
+            </div>
           </div>
         </div>
         <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="templatesTableWrap">
