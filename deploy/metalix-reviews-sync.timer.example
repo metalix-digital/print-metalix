@@ -1,0 +1,17 @@
+# Periodic trigger for metalix-reviews-sync.service. Install to
+# /etc/systemd/system/metalix-reviews-sync.timer, then:
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now metalix-reviews-sync.timer
+#   systemctl list-timers metalix-reviews-sync.timer   # confirm next run
+#
+[Unit]
+Description=Run Metalix Google reviews sync every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true   # run a missed sync after the VM was off
+RandomizedDelaySec=2m
+
+[Install]
+WantedBy=timers.target

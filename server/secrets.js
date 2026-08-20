@@ -9,6 +9,8 @@ async function loadSecretsIntoEnv() {
     ['ADMIN_PASSWORD', 'admin-password'],
     ['ADMIN_JWT_SECRET', 'admin-jwt-secret'],
     ['GOOGLE_CLIENT_ID', 'google-client-id'],
+    ['GOOGLE_CLIENT_SECRET', 'google-client-secret'],
+    ['ANTHROPIC_API_KEY', 'anthropic-api-key'],
     ['GMAIL_USER', 'gmail-user'],
     ['GMAIL_APP_PASSWORD', 'gmail-app-password'],
     ['TWILIO_ACCOUNT_SID', 'twilio-account-sid'],

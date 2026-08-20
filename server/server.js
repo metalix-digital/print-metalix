@@ -239,6 +239,9 @@ const { formatRupees } = require('./format')
 const { computeGridLayout: computePassportGridLayout } = require('./passportLayout')
 const campaigns = require('./campaigns')
 const whatsapp = require('./whatsapp')
+const googleBusinessAuth = require('./googleBusinessAuth')
+const aiReply = require('./aiReply')
+const { runSync: syncGoogleReviews } = require('./scripts/syncGoogleReviews')
 
 // pdf-lib's Standard fonts (used by the job sheet's text pages below) are
 // WinAnsi-encoded and can't represent ₹ or most non-Latin1 characters — a
@@ -2818,6 +2821,166 @@ app.delete('/api/admin/feedback/:id', requireAdmin, requireTab('feedback'), (req
   if (!ownsOrder(req, db.getOrder(feedback.order_id))) return res.status(404).json({ error: 'not_found' })
   db.deleteOrderFeedback(feedback.id)
   return res.json({ deleted: true })
+})
+
+// ---- Google Business Profile reviews (AI-drafted replies) ----
+// Kept super-admin-only (not added to BRANCH_TABS) since it holds a live
+// OAuth connection to the business's public Google presence.
+//
+// The OAuth callback below is a plain browser redirect from Google, not an
+// authenticated fetch() — it can never carry the admin's Bearer token, so
+// requireAdmin doesn't apply there. Instead, /oauth/start (which *is*
+// behind requireSuperAdmin, called via adminFetch) mints a short-lived,
+// single-use state token before handing back the Google consent URL; the
+// callback only proceeds if that exact state comes back. Without this, any
+// visitor could hit the callback with their own consent code and hijack
+// the stored connection to their own Google account.
+const googleOAuthStates = new Map() // state -> expiry ms
+function issueOAuthState() {
+  const state = crypto.randomUUID()
+  googleOAuthStates.set(state, Date.now() + 5 * 60 * 1000)
+  return state
+}
+function consumeOAuthState(state) {
+  const expiry = googleOAuthStates.get(state)
+  googleOAuthStates.delete(state)
+  return !!expiry && expiry > Date.now()
+}
+
+async function getGoogleAccessToken() {
+  const auth = db.getGoogleBusinessAuth()
+  if (!auth || !auth.refreshToken) {
+    const err = new Error('Google Business Profile is not connected.')
+    err.code = 'google_not_connected'
+    throw err
+  }
+  const accessToken = await googleBusinessAuth.refreshAccessToken(auth.refreshToken)
+  return { auth, accessToken }
+}
+
+app.get('/api/admin/google-reviews/status', requireSuperAdmin, (req, res) => {
+  const auth = db.getGoogleBusinessAuth()
+  if (!auth) return res.json({ connected: false })
+  return res.json({
+    connected: true,
+    needsLocationPick: !auth.locationId,
+    locationId: auth.locationId || null,
+    connectedAt: auth.connectedAt || null
+  })
+})
+
+app.get('/api/admin/google-reviews/oauth/start', requireSuperAdmin, (req, res) => {
+  if (!googleBusinessAuth.isConfigured()) {
+    return res.status(400).json({ error: 'not_configured', message: 'Google OAuth credentials are not set up yet.' })
+  }
+  const state = issueOAuthState()
+  return res.json({ url: `${googleBusinessAuth.getAuthUrl()}&state=${state}` })
+})
+
+// Unauthenticated by design (see comment above) — protected by the state
+// token instead. Always redirects back into the admin panel rather than
+// returning JSON, since this is a full browser navigation, not a fetch.
+app.get('/api/admin/google-reviews/oauth/callback', async (req, res) => {
+  const { code, state, error } = req.query
+  if (error) return res.redirect(`/admin.html?googleReviews=error&reason=${encodeURIComponent(String(error))}`)
+  if (!state || !consumeOAuthState(String(state))) {
+    return res.redirect('/admin.html?googleReviews=error&reason=invalid_state')
+  }
+  try {
+    const { refreshToken } = await googleBusinessAuth.exchangeCodeForTokens(String(code))
+    if (!refreshToken) {
+      // Google only issues a refresh_token on first consent — getAuthUrl
+      // always sends prompt=consent, so this should be rare, but a stale
+      // existing connection is still better than silently storing nothing.
+      const existing = db.getGoogleBusinessAuth()
+      if (!existing) return res.redirect('/admin.html?googleReviews=error&reason=no_refresh_token')
+    } else {
+      db.setGoogleBusinessAuth({ refreshToken, accountId: null, locationId: null, connectedAt: Date.now() })
+    }
+
+    const accessToken = await googleBusinessAuth.refreshAccessToken(db.getGoogleBusinessAuth().refreshToken)
+    const locations = await googleBusinessAuth.listLocations(accessToken)
+    if (locations.length === 1) {
+      db.setGoogleBusinessAuth({ ...db.getGoogleBusinessAuth(), accountId: locations[0].accountId, locationId: locations[0].locationId })
+      return res.redirect('/admin.html?googleReviews=connected')
+    }
+    // More than one (or zero) locations — leave locationId unset; the admin
+    // UI's status check will see needsLocationPick and show a picker backed
+    // by GET .../locations below.
+    return res.redirect('/admin.html?googleReviews=pick_location')
+  } catch (err) {
+    console.error('[google-reviews] oauth callback failed:', err.message)
+    return res.redirect(`/admin.html?googleReviews=error&reason=${encodeURIComponent(err.code || 'exchange_failed')}`)
+  }
+})
+
+app.get('/api/admin/google-reviews/locations', requireSuperAdmin, async (req, res) => {
+  try {
+    const { accessToken } = await getGoogleAccessToken()
+    const locations = await googleBusinessAuth.listLocations(accessToken)
+    return res.json({ locations })
+  } catch (err) {
+    return res.status(400).json({ error: err.code || 'error', message: err.message })
+  }
+})
+
+app.post('/api/admin/google-reviews/location', requireSuperAdmin, express.json(), (req, res) => {
+  const { accountId, locationId } = req.body || {}
+  const auth = db.getGoogleBusinessAuth()
+  if (!auth) return res.status(400).json({ error: 'google_not_connected' })
+  if (!accountId || !locationId) return res.status(400).json({ error: 'invalid_location' })
+  db.setGoogleBusinessAuth({ ...auth, accountId, locationId })
+  return res.json({ connected: true, locationId })
+})
+
+app.post('/api/admin/google-reviews/disconnect', requireSuperAdmin, (req, res) => {
+  db.clearGoogleBusinessAuth()
+  return res.json({ disconnected: true })
+})
+
+app.get('/api/admin/google-reviews', requireSuperAdmin, (req, res) => {
+  return res.json({ reviews: db.listGoogleReviews(req.query.status) })
+})
+
+app.post('/api/admin/google-reviews/sync', requireSuperAdmin, async (req, res) => {
+  try {
+    const stats = await syncGoogleReviews()
+    return res.json(stats)
+  } catch (err) {
+    return res.status(400).json({ error: err.code || 'sync_failed', message: err.message })
+  }
+})
+
+app.post('/api/admin/google-reviews/:id/draft', requireSuperAdmin, async (req, res) => {
+  const review = db.getGoogleReview(req.params.id)
+  if (!review) return res.status(404).json({ error: 'not_found' })
+  if (!aiReply.isConfigured()) return res.status(400).json({ error: 'ai_not_configured', message: 'AI reply drafting is not set up yet.' })
+  try {
+    const draft = await aiReply.draftReply({ reviewerName: review.reviewer_name, rating: review.rating, reviewText: review.review_text })
+    return res.json({ review: db.saveDraftReply(review.id, draft) })
+  } catch (err) {
+    return res.status(400).json({ error: err.code || 'draft_failed', message: err.message })
+  }
+})
+
+app.post('/api/admin/google-reviews/:id/reply', requireSuperAdmin, express.json(), async (req, res) => {
+  const review = db.getGoogleReview(req.params.id)
+  if (!review) return res.status(404).json({ error: 'not_found' })
+  const text = String(req.body?.text || '').trim()
+  if (!text) return res.status(400).json({ error: 'empty_reply', message: 'Reply text cannot be empty.' })
+  try {
+    const { auth, accessToken } = await getGoogleAccessToken()
+    await googleBusinessAuth.postReply({ accessToken, accountId: auth.accountId, locationId: auth.locationId, reviewId: review.id, replyText: text })
+    return res.json({ review: db.markReplied(review.id, text) })
+  } catch (err) {
+    return res.status(400).json({ error: err.code || 'reply_failed', message: err.message })
+  }
+})
+
+app.post('/api/admin/google-reviews/:id/dismiss', requireSuperAdmin, (req, res) => {
+  const review = db.getGoogleReview(req.params.id)
+  if (!review) return res.status(404).json({ error: 'not_found' })
+  return res.json({ review: db.markDismissed(review.id) })
 })
 
 app.post('/api/admin/orders/:id/restore', requireAdmin, requireTab('orders'), (req, res) => {

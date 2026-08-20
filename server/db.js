@@ -87,6 +87,27 @@ db.exec(`
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_order_feedback_order_id ON order_feedback(order_id);
 
+  -- Public Google Business Profile reviews (Maps/Search — distinct from the
+  -- on-site order_feedback above), synced in from the Business Profile API.
+  -- id is Google's own review resource id, so re-syncing an already-known
+  -- review is a plain upsert, never a duplicate. The OAuth refresh token
+  -- this depends on lives in the settings table under key
+  -- 'google_business_auth', deliberately kept out of DEFAULT_SITE_SETTINGS
+  -- since GET /api/settings is unauthenticated.
+  CREATE TABLE IF NOT EXISTS google_reviews (
+    id TEXT PRIMARY KEY,
+    location_id TEXT,
+    reviewer_name TEXT,
+    rating INTEGER,
+    review_text TEXT,
+    review_created_at INTEGER,
+    ai_draft_reply TEXT,
+    posted_reply TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    replied_at INTEGER,
+    synced_at INTEGER NOT NULL
+  );
+
   -- Multi-branch admin access: a 'super_admin' sees every location; a
   -- 'branch_admin' is scoped to exactly one location_id (see requireAdmin /
   -- scopeLocation in server.js). The legacy single admin_auth settings row is
@@ -2326,6 +2347,66 @@ function getFeedbackStats() {
   return { count: row.count || 0, average: row.average || 0 }
 }
 
+// Google Business Profile OAuth connection — stored in the generic settings
+// table under its own key (never the public 'site' key) since it holds a
+// refresh token that GET /api/settings must never expose.
+function getGoogleBusinessAuth() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('google_business_auth')
+  return row ? JSON.parse(row.value) : null
+}
+
+function setGoogleBusinessAuth(auth) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run('google_business_auth', JSON.stringify(auth))
+}
+
+function clearGoogleBusinessAuth() {
+  db.prepare('DELETE FROM settings WHERE key = ?').run('google_business_auth')
+}
+
+function listGoogleReviews(status) {
+  const where = status ? 'WHERE status = ?' : ''
+  return db.prepare(`SELECT * FROM google_reviews ${where} ORDER BY review_created_at DESC`)
+    .all(status ? [status] : [])
+}
+
+function getGoogleReview(id) {
+  return db.prepare('SELECT * FROM google_reviews WHERE id = ?').get(id) || null
+}
+
+// Reviews are re-fetched on every sync run, so this is always an upsert —
+// only the fields that can actually change on Google's side (text/rating,
+// in the rare case of an edited review) are touched; ai_draft_reply,
+// posted_reply, status, and replied_at are left alone once set locally.
+function upsertGoogleReview({ id, location_id, reviewer_name, rating, review_text, review_created_at }) {
+  db.prepare(`
+    INSERT INTO google_reviews (id, location_id, reviewer_name, rating, review_text, review_created_at, status, synced_at)
+    VALUES (@id, @location_id, @reviewer_name, @rating, @review_text, @review_created_at, 'pending', @synced_at)
+    ON CONFLICT(id) DO UPDATE SET
+      reviewer_name = excluded.reviewer_name,
+      rating = excluded.rating,
+      review_text = excluded.review_text,
+      synced_at = excluded.synced_at
+  `).run({ id, location_id, reviewer_name, rating, review_text, review_created_at, synced_at: Date.now() })
+  return getGoogleReview(id)
+}
+
+function saveDraftReply(id, text) {
+  db.prepare('UPDATE google_reviews SET ai_draft_reply = ? WHERE id = ?').run(text, id)
+  return getGoogleReview(id)
+}
+
+function markReplied(id, postedReply) {
+  db.prepare("UPDATE google_reviews SET status = 'replied', posted_reply = ?, replied_at = ? WHERE id = ?")
+    .run(postedReply, Date.now(), id)
+  return getGoogleReview(id)
+}
+
+function markDismissed(id) {
+  db.prepare("UPDATE google_reviews SET status = 'dismissed' WHERE id = ?").run(id)
+  return getGoogleReview(id)
+}
+
 function createUser({ id, name, email, mobile, password_hash, google_id, marketingOptIn }) {
   const now = Date.now()
   db.prepare(`
@@ -2457,6 +2538,15 @@ module.exports = {
   listOrderFeedback,
   listPublicFeedback,
   getFeedbackStats,
+  getGoogleBusinessAuth,
+  setGoogleBusinessAuth,
+  clearGoogleBusinessAuth,
+  listGoogleReviews,
+  getGoogleReview,
+  upsertGoogleReview,
+  saveDraftReply,
+  markReplied,
+  markDismissed,
   getSiteSettings,
   setSiteSettings,
   getAdminAuth,

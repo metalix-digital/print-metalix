@@ -57,7 +57,9 @@ the repo.
 | `ADMIN_JWT_SECRET` | Signing secret for admin/customer sessions |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Bootstrap super-admin login (used once to seed the DB) |
 | `ADMIN_RESET_EMAIL` | Where admin password-reset links are sent |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
+| `GOOGLE_CLIENT_ID` | Google sign-in (browser-side id-token verification only) |
+| `GOOGLE_CLIENT_SECRET` | Server-side OAuth code exchange for the Google Reviews admin tab (`server/googleBusinessAuth.js`) — not used by sign-in |
+| `ANTHROPIC_API_KEY` | Drafts suggested replies to Google reviews (`server/aiReply.js`) — the review's own text is never touched, only the admin-approved reply |
 | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Email delivery (SMTP) |
 | `CONTACT_EMAIL` | Where "contact us" and "new order" business alerts are sent. **Must be a genuinely different mailbox from `GMAIL_USER`** — Gmail/Workspace delivers self-addressed mail (including aliases of the same account) to Sent only, never Inbox. Defaults to `support@metalix.in`, which equals `GMAIL_USER`, so this must be overridden in production (currently set via a systemd drop-in on the VM, not in git — see `deploy-process` notes). |
 | `SOFFICE_BIN` | Path to LibreOffice `soffice` for Word/PPT → PDF |
@@ -91,6 +93,7 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 | `orders` | One row per order: customer name/contact, uploaded file info, print options (paper, colour, sides, copies), delivery details, branch (`location_id`), amounts, payment/order status, and `archived_at` for soft-delete. |
 | `print_jobs` | Print-queue entries linked to an order, with status and timestamps. |
 | `order_feedback` | One star rating + optional comment per order, left by the customer from the tracking page. |
+| `google_reviews` | Public Google Business Profile reviews synced from the Business Profile API, each with an AI-drafted reply an admin edits and approves before it posts live. |
 | `users` | Customer accounts — name, email, mobile, a hashed password, and optional Google id. |
 | `admin_users` | Staff accounts — a `super_admin` sees every branch; a `branch_admin` is scoped to one `location_id` and a subset of dashboard tabs (`allowed_tabs`). |
 | `locations` | Branches — address, hours, Maps link, `active`/`shop_open` flags. |
@@ -197,6 +200,29 @@ SQLite (`server/data/metalix.db`, WAL mode). Schema and lightweight migrations a
 
 ---
 
+## Google Reviews (AI-drafted replies)
+
+The admin panel's "Google Reviews" tab connects to a Google Business Profile location (OAuth,
+`server/googleBusinessAuth.js`) and syncs in its public reviews. Each new review gets a
+suggested reply drafted by `server/aiReply.js` (Anthropic) — the review's own text is never
+touched, only the reply, and nothing posts to Google until an admin edits/approves it in the
+tab.
+
+- **Setup prerequisites** (external, not code): a Google Business Profile API access request
+  approved for this project (up to ~2 weeks, see Google's Business Profile Help Center), and
+  the `business.manage` OAuth scope added to the existing Google Cloud OAuth client — kept in
+  **Testing** publishing status with the connecting admin's Google account added as a test
+  user, so it never needs Google's full app-verification review.
+- **Sync:** `server/scripts/syncGoogleReviews.js` (`npm run reviews-sync`), on a timer (see
+  `deploy/metalix-reviews-sync.*.example`) — no-ops cleanly until a location is connected.
+  The admin tab also has a "Sync now" button for an immediate pull instead of waiting for the
+  next timer run.
+- **Config:** `GOOGLE_CLIENT_SECRET` and `ANTHROPIC_API_KEY` (see Configuration above). The
+  OAuth refresh token itself lives in the `settings` table under its own key, deliberately
+  kept out of the public `GET /api/settings` response.
+
+---
+
 ## Production
 
 **Live deploys are fully automated.** `.github/workflows/deploy.yml` runs on a self-hosted
@@ -242,6 +268,9 @@ server/
                          server/data/backups/, pruned to last 28, if cloud is unavailable)
   fileRetention.js      Expired-file cleanup + 30-day archive purge
   scripts/bqSync.js     SQLite → BigQuery upsert
+  scripts/syncGoogleReviews.js  Pull Google reviews + draft AI replies
+  googleBusinessAuth.js Google Business Profile OAuth + reviews API client
+  aiReply.js             Anthropic reply drafting
   public/               landing.html (marketing site), admin.html (dashboard),
                          track.html (order tracking + feedback), blog.html/blog-post.html,
                          jobsheet.html (printable job sheet), closed.html (shop-closed page),
@@ -258,3 +287,4 @@ deploy/                 Caddyfile + systemd unit examples (nginx.conf.example: p
 | `npm run build` | root | Install + build the client |
 | `npm run start:prod` | root | Build client, then start server |
 | `npm run bqsync` | `server/` | Run the BigQuery export once |
+| `npm run reviews-sync` | `server/` | Pull new Google reviews + draft AI replies once |

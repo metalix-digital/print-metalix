@@ -1,0 +1,20 @@
+# Oneshot job that pulls new Google Business Profile reviews and drafts an
+# AI reply for each new one. Triggered by metalix-reviews-sync.timer, not
+# enabled on its own. Install to /etc/systemd/system/metalix-reviews-sync.service.
+#
+#   sudo cp /var/www/metalix/deploy/metalix-reviews-sync.service.example \
+#           /etc/systemd/system/metalix-reviews-sync.service
+#
+# No-ops cleanly (logs and exits 0) until a Google Business Profile account
+# has been connected from the admin panel's Google Reviews tab.
+#
+[Unit]
+Description=Metalix — sync Google reviews and draft AI replies
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/metalix/server
+ExecStart=/usr/bin/node scripts/syncGoogleReviews.js

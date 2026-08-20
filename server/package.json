@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "bqsync": "node scripts/bqSync.js"
+    "bqsync": "node scripts/bqSync.js",
+    "reviews-sync": "node scripts/syncGoogleReviews.js"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",

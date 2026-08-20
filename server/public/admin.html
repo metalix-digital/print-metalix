@@ -728,6 +728,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <button class="tab-btn" data-tab="analytics" data-super-only>Analytics</button>
     <button class="tab-btn" data-tab="reports" data-super-only>Reports</button>
     <button class="tab-btn" data-tab="campaigns" data-super-only>Campaigns</button>
+    <button class="tab-btn" data-tab="googlereviews" data-super-only>Google Reviews</button>
     <!-- Everything else lives under this one umbrella tab now, as a sub-nav
          inside panel-settingshub below — see showSettingsSection() and the
          branch-admin visibility logic in showDash(). Not data-super-only:
@@ -973,6 +974,24 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <div class="stages-wrap" style="max-width:none;margin-top:20px;padding:0;" id="templatesTableWrap">
           <p class="subtle" style="padding:20px;">Loading…</p>
         </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-googlereviews">
+      <div id="grConnectBar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
+        <p class="subtle" style="margin:0;">Loading…</p>
+      </div>
+      <div id="grLocationPicker" class="hidden" style="margin-bottom:18px;"></div>
+      <div class="stages-wrap" style="max-width:none;margin-top:0;padding:0;">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 20px 0;">
+          <select id="grStatusFilter" style="max-width:200px;">
+            <option value="pending">Pending reply</option>
+            <option value="replied">Replied</option>
+            <option value="dismissed">Dismissed</option>
+          </select>
+          <button class="dl-btn" type="button" id="grRefreshBtn">↻ Refresh</button>
+        </div>
+        <div id="grList" style="padding:14px 20px;"><p class="subtle">Loading…</p></div>
       </div>
     </div>
 
@@ -3560,6 +3579,214 @@ document.querySelector('.tab-btn[data-tab="campaigns"]').addEventListener('click
   loadCampaignsList();
   loadChannelStatus();
 });
+
+/* -- GOOGLE REVIEWS -- */
+// AI drafts a suggested reply for each incoming public Google review; the
+// review's own text is never touched, only the reply, and nothing posts
+// live until an admin edits/approves it here. See server.js's
+// /api/admin/google-reviews* routes and server/aiReply.js.
+document.querySelector('.tab-btn[data-tab="googlereviews"]').addEventListener('click', loadGoogleReviewsStatus);
+
+async function loadGoogleReviewsStatus(){
+  const bar = document.getElementById('grConnectBar');
+  const picker = document.getElementById('grLocationPicker');
+  picker.classList.add('hidden'); picker.innerHTML = '';
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/status');
+    const data = await res.json();
+    if (!data.connected) {
+      bar.innerHTML = '<button class="save-btn" type="button" id="grConnectBtn" style="margin-top:0;">Connect Google Business Profile</button>';
+      document.getElementById('grConnectBtn').addEventListener('click', connectGoogleReviews);
+      document.getElementById('grList').innerHTML = '<p class="subtle">Connect your Google Business Profile to see reviews here.</p>';
+      return;
+    }
+    if (data.needsLocationPick) {
+      bar.innerHTML = '<p class="subtle" style="margin:0;">Connected — pick which location to sync.</p>';
+      loadLocationPicker();
+      document.getElementById('grList').innerHTML = '';
+      return;
+    }
+    bar.innerHTML =
+      '<p class="subtle" style="margin:0;">Connected' + (data.connectedAt ? ' since ' + escHtml(new Date(data.connectedAt).toLocaleDateString()) : '') + '.</p>' +
+      '<button class="dl-btn" type="button" id="grSyncBtn">↻ Sync now</button>' +
+      '<button class="rate-remove" type="button" id="grDisconnectBtn">Disconnect</button>';
+    document.getElementById('grSyncBtn').addEventListener('click', syncGoogleReviewsNow);
+    document.getElementById('grDisconnectBtn').addEventListener('click', disconnectGoogleReviews);
+    loadGoogleReviewsList();
+  } catch (err) {
+    if (err.message !== 'unauthorized') bar.innerHTML = '<p class="subtle" style="margin:0;">Could not load status.</p>';
+  }
+}
+
+async function connectGoogleReviews(){
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/oauth/start');
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Could not start Google connection.'); return; }
+    location.href = data.url;
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not start Google connection.');
+  }
+}
+
+async function loadLocationPicker(){
+  const picker = document.getElementById('grLocationPicker');
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/locations');
+    const data = await res.json();
+    const locations = data.locations || [];
+    picker.classList.remove('hidden');
+    if (!locations.length){ picker.innerHTML = '<p class="subtle">No locations found on this Google account.</p>'; return; }
+    picker.innerHTML = '<p class="subtle" style="margin:0 0 8px;">Choose the location to sync reviews from:</p>' +
+      locations.map((l, i) => '<button class="dl-btn gr-pick-loc" type="button" data-i="' + i + '" style="margin:0 6px 6px 0;">' + escHtml(l.title || l.locationId) + '</button>').join('');
+    picker.querySelectorAll('.gr-pick-loc').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const l = locations[Number(btn.dataset.i)];
+        const res2 = await adminFetch('/api/admin/google-reviews/location', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId: l.accountId, locationId: l.locationId })
+        });
+        if (!res2.ok){ alert('Could not select location.'); return; }
+        showFlash('Location selected.');
+        loadGoogleReviewsStatus();
+      });
+    });
+  } catch (err) {
+    if (err.message !== 'unauthorized') picker.innerHTML = '<p class="subtle">Could not load locations.</p>';
+  }
+}
+
+async function disconnectGoogleReviews(){
+  const ok = await showConfirmModal(
+    '<h3 class="modal-title">Disconnect Google Business Profile?</h3><p class="modal-sub">Reviews already synced stay here, but no new ones will come in until you reconnect.</p>',
+    'Disconnect', true
+  );
+  if (!ok) return;
+  try {
+    await adminFetch('/api/admin/google-reviews/disconnect', { method: 'POST' });
+    showFlash('Disconnected.');
+    loadGoogleReviewsStatus();
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not disconnect.');
+  }
+}
+
+async function syncGoogleReviewsNow(){
+  const btn = document.getElementById('grSyncBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Syncing…';
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/sync', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Sync failed.'); return; }
+    showFlash('Synced ' + data.synced + ' review(s), drafted ' + data.drafted + '.');
+    loadGoogleReviewsList();
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Sync failed.');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function loadGoogleReviewsList(){
+  const wrap = document.getElementById('grList');
+  const status = document.getElementById('grStatusFilter').value;
+  wrap.innerHTML = '<p class="subtle">Loading…</p>';
+  try {
+    const res = await adminFetch('/api/admin/google-reviews?status=' + encodeURIComponent(status));
+    const data = await res.json();
+    const reviews = data.reviews || [];
+    if (!reviews.length){ wrap.innerHTML = '<p class="subtle">No reviews here.</p>'; return; }
+    wrap.innerHTML = reviews.map((r) => {
+      const stars = '★'.repeat(r.rating || 0) + '☆'.repeat(5 - (r.rating || 0));
+      const actions = status === 'pending'
+        ? '<button class="dl-btn gr-draft" data-id="' + escHtml(r.id) + '">↻ Regenerate</button>' +
+          '<button class="save-btn gr-reply" data-id="' + escHtml(r.id) + '" style="margin-top:0;">Post reply</button>' +
+          '<button class="rate-remove gr-dismiss" data-id="' + escHtml(r.id) + '">Dismiss</button>'
+        : '';
+      return '<div class="stages-wrap" style="max-width:none;margin:0 0 14px;padding:16px;">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+          '<div><b>' + escHtml(r.reviewer_name || 'Anonymous') + '</b> <span style="color:var(--orange);letter-spacing:1px;">' + stars + '</span></div>' +
+          '<span class="subtle">' + escHtml(new Date(r.review_created_at).toLocaleDateString()) + '</span>' +
+        '</div>' +
+        '<p style="margin:8px 0;">' + escHtml(r.review_text || '(no written review)') + '</p>' +
+        (status === 'replied'
+          ? '<p class="subtle" style="margin:8px 0;"><b>Your reply:</b> ' + escHtml(r.posted_reply || '') + '</p>'
+          : '<textarea class="gr-draft-text" data-id="' + escHtml(r.id) + '" style="width:100%;min-height:80px;">' + escHtml(r.ai_draft_reply || '') + '</textarea>') +
+        (actions ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' + actions + '</div>' : '') +
+      '</div>';
+    }).join('');
+    wrap.querySelectorAll('.gr-draft').forEach((btn) => btn.addEventListener('click', () => regenerateDraft(btn.dataset.id)));
+    wrap.querySelectorAll('.gr-reply').forEach((btn) => btn.addEventListener('click', () => postGoogleReply(btn.dataset.id)));
+    wrap.querySelectorAll('.gr-dismiss').forEach((btn) => btn.addEventListener('click', () => dismissGoogleReview(btn.dataset.id)));
+  } catch (err) {
+    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle">Could not load reviews.</p>';
+  }
+}
+
+async function regenerateDraft(id){
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/' + encodeURIComponent(id) + '/draft', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Could not regenerate draft.'); return; }
+    const textarea = document.querySelector('.gr-draft-text[data-id="' + id + '"]');
+    if (textarea) textarea.value = data.review.ai_draft_reply || '';
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not regenerate draft.');
+  }
+}
+
+async function postGoogleReply(id){
+  const textarea = document.querySelector('.gr-draft-text[data-id="' + id + '"]');
+  const text = textarea ? textarea.value.trim() : '';
+  if (!text){ alert('Reply text cannot be empty.'); return; }
+  const ok = await showConfirmModal(
+    '<h3 class="modal-title">Post this reply to Google?</h3><p class="modal-sub">It will appear publicly on your Business Profile right away.</p>',
+    'Post reply', false
+  );
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/' + encodeURIComponent(id) + '/reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (!res.ok){ alert(data.message || 'Could not post reply.'); return; }
+    showFlash('Reply posted.');
+    loadGoogleReviewsList();
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not post reply.');
+  }
+}
+
+async function dismissGoogleReview(id){
+  try {
+    const res = await adminFetch('/api/admin/google-reviews/' + encodeURIComponent(id) + '/dismiss', { method: 'POST' });
+    if (!res.ok){ alert('Could not dismiss.'); return; }
+    loadGoogleReviewsList();
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not dismiss.');
+  }
+}
+
+document.getElementById('grStatusFilter').addEventListener('change', loadGoogleReviewsList);
+document.getElementById('grRefreshBtn').addEventListener('click', loadGoogleReviewsList);
+
+// Lands the admin back on this tab with a status toast after the full-page
+// round trip through Google's consent screen (see server.js's oauth/start
+// and oauth/callback routes) — a plain browser redirect, not a fetch, so
+// this reads the ?googleReviews= query param left on the URL instead.
+function handleGoogleReviewsRedirect(){
+  const params = new URLSearchParams(location.search);
+  const status = params.get('googleReviews');
+  if (!status) return;
+  if (status === 'connected') showFlash('Google Business Profile connected.');
+  else if (status === 'pick_location') showFlash('Connected — choose a location to finish setup.');
+  else if (status === 'error') alert('Could not connect Google Business Profile' + (params.get('reason') ? ' (' + params.get('reason') + ')' : '') + '.');
+  params.delete('googleReviews'); params.delete('reason');
+  const qs = params.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  document.querySelector('.tab-btn[data-tab="googlereviews"]').click();
+}
 
 document.getElementById('newCampaignBtn').addEventListener('click', () => {
   currentCampaign = null;
@@ -7815,7 +8042,7 @@ document.getElementById('editOrderModalSave').addEventListener('click', async ()
   }
 });
 
-if (getToken()) showDash(); else showLogin();
+if (getToken()) { showDash(); handleGoogleReviewsRedirect(); } else showLogin();
 </script>
 </body>
 </html>
