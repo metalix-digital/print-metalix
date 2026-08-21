@@ -2883,9 +2883,9 @@ app.get('/api/admin/google-reviews/oauth/start', requireSuperAdmin, (req, res) =
 // returning JSON, since this is a full browser navigation, not a fetch.
 app.get('/api/admin/google-reviews/oauth/callback', async (req, res) => {
   const { code, state, error } = req.query
-  if (error) return res.redirect(`/admin.html?googleReviews=error&reason=${encodeURIComponent(String(error))}`)
+  if (error) return res.redirect(`/admin?googleReviews=error&reason=${encodeURIComponent(String(error))}`)
   if (!state || !consumeOAuthState(String(state))) {
-    return res.redirect('/admin.html?googleReviews=error&reason=invalid_state')
+    return res.redirect('/admin?googleReviews=error&reason=invalid_state')
   }
   try {
     const { refreshToken } = await googleBusinessAuth.exchangeCodeForTokens(String(code))
@@ -2894,7 +2894,7 @@ app.get('/api/admin/google-reviews/oauth/callback', async (req, res) => {
       // always sends prompt=consent, so this should be rare, but a stale
       // existing connection is still better than silently storing nothing.
       const existing = db.getGoogleBusinessAuth()
-      if (!existing) return res.redirect('/admin.html?googleReviews=error&reason=no_refresh_token')
+      if (!existing) return res.redirect('/admin?googleReviews=error&reason=no_refresh_token')
     } else {
       db.setGoogleBusinessAuth({ refreshToken, accountId: null, locationId: null, connectedAt: Date.now() })
     }
@@ -2903,15 +2903,15 @@ app.get('/api/admin/google-reviews/oauth/callback', async (req, res) => {
     const locations = await googleBusinessAuth.listLocations(accessToken)
     if (locations.length === 1) {
       db.setGoogleBusinessAuth({ ...db.getGoogleBusinessAuth(), accountId: locations[0].accountId, locationId: locations[0].locationId, locationTitle: locations[0].title || null })
-      return res.redirect('/admin.html?googleReviews=connected')
+      return res.redirect('/admin?googleReviews=connected')
     }
     // More than one (or zero) locations — leave locationId unset; the admin
     // UI's status check will see needsLocationPick and show a picker backed
     // by GET .../locations below.
-    return res.redirect('/admin.html?googleReviews=pick_location')
+    return res.redirect('/admin?googleReviews=pick_location')
   } catch (err) {
     console.error('[google-reviews] oauth callback failed:', err.message)
-    return res.redirect(`/admin.html?googleReviews=error&reason=${encodeURIComponent(err.code || 'exchange_failed')}`)
+    return res.redirect(`/admin?googleReviews=error&reason=${encodeURIComponent(err.code || 'exchange_failed')}`)
   }
 })
 
