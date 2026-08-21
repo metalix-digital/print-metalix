@@ -2783,13 +2783,25 @@ app.post('/api/admin/orders/bulk-delete', requireAdmin, requireTab('orders'), ex
 // The only way to grant marketing consent right now besides a customer's own
 // signup-time checkbox — for someone who agreed another way (phone, in
 // person, an old account from before that checkbox existed). Resolves to an
-// actual account by mobile/email same as login does; a guest/walk-in
-// customer with no account has no consent to manage, hence 404 rather than
-// silently no-op-ing.
-app.patch('/api/admin/customers/marketing-opt-in', requireAdmin, requireTab('customers'), express.json(), (req, res) => {
-  const { mobile, email, optIn } = req.body || {}
-  const user = (mobile && db.findUserByIdentifier(mobile)) || (email && db.findUserByIdentifier(email))
-  if (!user) return res.status(404).json({ error: 'no_account', message: "This customer doesn't have an account, so there's no consent to manage." })
+// actual account by mobile/email same as login does. A guest/walk-in
+// customer with no account can't have consent *recorded* without one, so
+// opting one in here creates a minimal account on the spot — same
+// placeholder-password pattern as the New Order phone/walk-in flow's
+// marketing checkbox (see POST /api/admin/orders below): a random hash
+// nobody knows, never handed to the customer; "forgot password" with this
+// mobile/email would let them set a real one if they ever wanted to. Opting
+// a guest *out* stays a 404 — there's no consent recorded to begin with, so
+// nothing to do and no account worth creating just to say no.
+app.patch('/api/admin/customers/marketing-opt-in', requireAdmin, requireTab('customers'), express.json(), async (req, res) => {
+  const { mobile, email, name, optIn } = req.body || {}
+  let user = (mobile && db.findUserByIdentifier(mobile)) || (email && db.findUserByIdentifier(email))
+  if (!user) {
+    if (!optIn) return res.status(404).json({ error: 'no_account', message: "This customer doesn't have an account, so there's no consent to manage." })
+    if (!mobile && !email) return res.status(400).json({ error: 'missing_contact', message: 'Need a mobile number or email to create an account.' })
+    const password_hash = await bcrypt.hash(crypto.randomUUID(), 10)
+    user = db.createUser({ id: crypto.randomUUID(), name: name || 'Customer', email: email || null, mobile: mobile || null, password_hash, marketingOptIn: true })
+    return res.json({ ok: true, marketingOptIn: true, accountCreated: true })
+  }
   db.setMarketingOptIn(user.id, !!optIn)
   return res.json({ ok: true, marketingOptIn: !!optIn })
 })

@@ -4801,11 +4801,15 @@ function renderCustomers(customers){
 // No account behind this row (a guest/walk-in order never tied to a
 // signup) -> there's no verifiable identity to hold consent for, so it's
 // shown as a plain dash rather than a toggle that would silently do nothing.
+// A guest with no account still gets a real, clickable toggle — opting one
+// in creates a minimal account on the spot (see the server route's comment)
+// so their consent has somewhere to live, same as any signed-up customer's.
 function marketingOptInCell(c){
-  if (!c.user_id) return '<span class="subtle">No account</span>';
   const optedIn = !!c.marketing_opt_in;
+  const noContact = !c.customer_mobile && !c.customer_email;
   return '<button type="button" class="opt-in-toggle ' + (optedIn ? 'opt-in-yes' : 'opt-in-no') + '" ' +
-    'data-mobile="' + escHtml(c.customer_mobile || '') + '" data-email="' + escHtml(c.customer_email || '') + '" data-optin="' + optedIn + '">' +
+    'data-mobile="' + escHtml(c.customer_mobile || '') + '" data-email="' + escHtml(c.customer_email || '') + '" data-name="' + escHtml(c.customer_name || '') + '" data-optin="' + optedIn + '"' +
+    (noContact ? ' disabled title="No mobile or email on file — can\'t create an account to store consent."' : (c.user_id ? '' : ' title="No account yet — opting in creates one"')) + '>' +
     (optedIn ? '✓ Opted in' : 'Opted out') + '</button>';
 }
 async function toggleCustomerOptIn(btn){
@@ -4814,13 +4818,14 @@ async function toggleCustomerOptIn(btn){
   try {
     const res = await adminFetch('/api/admin/customers/marketing-opt-in', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mobile: btn.dataset.mobile, email: btn.dataset.email, optIn: next })
+      body: JSON.stringify({ mobile: btn.dataset.mobile, email: btn.dataset.email, name: btn.dataset.name, optIn: next })
     });
     const data = await res.json();
     if (!res.ok) { alert(data.message || 'Could not update.'); btn.disabled = false; return; }
     btn.dataset.optin = String(next);
     btn.className = 'opt-in-toggle ' + (next ? 'opt-in-yes' : 'opt-in-no');
     btn.textContent = next ? '✓ Opted in' : 'Opted out';
+    if (data.accountCreated) loadCustomers(); // user_id now exists — refresh so the row/edit modal reflect it
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Could not update.');
   } finally {
@@ -4847,9 +4852,12 @@ function openEditCustomerModal(customer){
   document.getElementById('ecMobileNote').classList.add('hidden');
   const optInCb = document.getElementById('ecMarketingOptIn');
   const optInNote = document.getElementById('ecMarketingNote');
+  const noContact = !ecOrigMobile && !ecOrigEmail;
   optInCb.checked = ecOrigOptIn;
-  optInCb.disabled = !ecHasAccount;
-  optInNote.textContent = ecHasAccount ? '' : "No account — nothing to manage.";
+  optInCb.disabled = noContact;
+  optInNote.textContent = noContact
+    ? "No mobile or email on file — can't create an account to store consent."
+    : (ecHasAccount ? '' : "No account yet — turning this on creates one.");
   const msg = document.getElementById('editCustomerModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   editCustomerModal.classList.remove('hidden');
@@ -4892,12 +4900,14 @@ document.getElementById('editCustomerModalSave').addEventListener('click', async
   saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
   try {
     const nextOptIn = document.getElementById('ecMarketingOptIn').checked;
-    if (ecHasAccount && nextOptIn !== ecOrigOptIn) {
+    if (nextOptIn !== ecOrigOptIn) {
       // Fired against the original mobile/email (before any rename below) —
-      // that's what the account is still keyed on at this point.
+      // that's what the account is still keyed on at this point. If this
+      // customer has no account yet, opting in creates one on the spot
+      // (server-side) so the consent has somewhere to live.
       const optRes = await adminFetch('/api/admin/customers/marketing-opt-in', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: ecOrigMobile, email: ecOrigEmail, optIn: nextOptIn })
+        body: JSON.stringify({ mobile: ecOrigMobile, email: ecOrigEmail, name, optIn: nextOptIn })
       });
       const optData = await optRes.json();
       if (!optRes.ok) throw new Error(optData.message || 'Could not update marketing consent');
