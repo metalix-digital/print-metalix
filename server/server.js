@@ -2865,6 +2865,7 @@ app.get('/api/admin/google-reviews/status', requireSuperAdmin, (req, res) => {
     connected: true,
     needsLocationPick: !auth.locationId,
     locationId: auth.locationId || null,
+    locationTitle: auth.locationTitle || null,
     connectedAt: auth.connectedAt || null
   })
 })
@@ -2901,7 +2902,7 @@ app.get('/api/admin/google-reviews/oauth/callback', async (req, res) => {
     const accessToken = await googleBusinessAuth.refreshAccessToken(db.getGoogleBusinessAuth().refreshToken)
     const locations = await googleBusinessAuth.listLocations(accessToken)
     if (locations.length === 1) {
-      db.setGoogleBusinessAuth({ ...db.getGoogleBusinessAuth(), accountId: locations[0].accountId, locationId: locations[0].locationId })
+      db.setGoogleBusinessAuth({ ...db.getGoogleBusinessAuth(), accountId: locations[0].accountId, locationId: locations[0].locationId, locationTitle: locations[0].title || null })
       return res.redirect('/admin.html?googleReviews=connected')
     }
     // More than one (or zero) locations — leave locationId unset; the admin
@@ -2925,11 +2926,11 @@ app.get('/api/admin/google-reviews/locations', requireSuperAdmin, async (req, re
 })
 
 app.post('/api/admin/google-reviews/location', requireSuperAdmin, express.json(), (req, res) => {
-  const { accountId, locationId } = req.body || {}
+  const { accountId, locationId, title } = req.body || {}
   const auth = db.getGoogleBusinessAuth()
   if (!auth) return res.status(400).json({ error: 'google_not_connected' })
   if (!accountId || !locationId) return res.status(400).json({ error: 'invalid_location' })
-  db.setGoogleBusinessAuth({ ...auth, accountId, locationId })
+  db.setGoogleBusinessAuth({ ...auth, accountId, locationId, locationTitle: title || null })
   return res.json({ connected: true, locationId })
 })
 

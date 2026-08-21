@@ -676,6 +676,62 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
   .blog-modal .modal-actions{padding:12px 14px 14px;}
   .seg-opt{flex-basis:100%;}
 }
+
+/* Google Reviews tab */
+.gr-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:52px 32px;border:1.5px dashed var(--line);border-radius:var(--radius);gap:12px;}
+.gr-hero-icon{font-size:38px;line-height:1;}
+.gr-hero h3{font-size:17px;font-weight:700;color:var(--ink);}
+.gr-hero p{font-size:13.5px;color:var(--ink3);max-width:420px;line-height:1.6;margin-bottom:6px;}
+
+.gr-status-card{display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--card);border:1.5px solid var(--line);border-radius:12px;margin-bottom:18px;flex-wrap:wrap;}
+.gr-status-icon{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.gr-status-info{flex:1;min-width:180px;}
+.gr-status-info b{font-size:14.5px;color:var(--ink);}
+.gr-status-info .subtle{margin-top:2px;}
+.gr-status-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+.gr-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+.gr-pill{background:var(--card);border:1.5px solid var(--line);color:var(--ink2);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;}
+.gr-pill:hover{border-color:var(--line-hover);}
+.gr-pill.active{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d);}
+.gr-pill .count{background:rgba(0,0,0,.08);border-radius:999px;padding:1px 7px;font-size:11.5px;font-weight:700;}
+.gr-pill.active .count{background:var(--orange);color:#fff;}
+[data-theme="dark"] .gr-pill .count{background:rgba(255,255,255,.1);}
+
+.gr-card{display:flex;flex-direction:column;gap:10px;border:1.5px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--card);margin-bottom:12px;transition:.15s;}
+.gr-card:hover{border-color:var(--line-hover);box-shadow:var(--shadow-sm);}
+.gr-card-top{display:flex;align-items:flex-start;gap:12px;}
+.gr-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;font-family:'Roboto',sans-serif;}
+.gr-card-meta{flex:1;min-width:0;}
+.gr-card-meta b{font-size:14px;color:var(--ink);}
+.gr-stars{color:var(--orange);letter-spacing:1px;font-size:13px;margin-left:6px;}
+.gr-time{font-size:12px;color:var(--ink3);white-space:nowrap;flex-shrink:0;}
+.gr-text{font-size:13.5px;color:var(--ink2);line-height:1.55;}
+.gr-draft-label{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;font-weight:700;color:var(--orange-d);text-transform:uppercase;letter-spacing:.03em;}
+.gr-charcount{font-size:11px;color:var(--ink3);font-weight:600;text-transform:none;letter-spacing:0;}
+.gr-textarea{width:100%;min-height:84px;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;background:var(--paper);color:var(--ink);resize:vertical;transition:.15s;}
+.gr-textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+.gr-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.gr-actions button{display:inline-flex;align-items:center;gap:6px;}
+.gr-replied-box{background:var(--ok-bg);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--ink2);}
+.gr-replied-box b{color:var(--ok);}
+.gr-dismissed-tag{display:inline-block;font-size:11px;font-weight:700;color:var(--ink3);background:var(--line2);border-radius:999px;padding:3px 10px;text-transform:uppercase;letter-spacing:.03em;width:fit-content;}
+
+.gr-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:48px 20px;color:var(--ink3);gap:6px;}
+.gr-empty .icon{font-size:28px;}
+.gr-empty .title{font-size:14px;font-weight:700;color:var(--ink2);}
+.gr-empty .sub{font-size:12.5px;max-width:320px;}
+
+.gr-spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:gr-spin .7s linear infinite;flex-shrink:0;}
+.gr-spin.dark{border-color:var(--line);border-top-color:var(--orange);}
+@keyframes gr-spin{to{transform:rotate(360deg);}}
+
+.gr-loc-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);cursor:pointer;transition:.15s;margin-bottom:8px;width:100%;text-align:left;font:inherit;color:var(--ink);}
+.gr-loc-opt:hover{border-color:var(--orange);background:var(--orange-soft);}
+.gr-loc-opt .arrow{color:var(--orange-d);font-weight:700;}
+
+.gr-btn-outline{background:none;border:1.5px solid var(--line);color:var(--ink3);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Roboto',sans-serif;flex-shrink:0;transition:.15s;}
+.gr-btn-outline:hover{border-color:var(--err);color:var(--err);background:var(--err-bg);}
 </style>
 <script>
 (function(){
@@ -978,21 +1034,10 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     </div>
 
     <div class="panel" id="panel-googlereviews">
-      <div id="grConnectBar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
-        <p class="subtle" style="margin:0;">Loading…</p>
-      </div>
-      <div id="grLocationPicker" class="hidden" style="margin-bottom:18px;"></div>
-      <div class="stages-wrap" style="max-width:none;margin-top:0;padding:0;">
-        <div style="display:flex;align-items:center;gap:10px;padding:14px 20px 0;">
-          <select id="grStatusFilter" style="max-width:200px;">
-            <option value="pending">Pending reply</option>
-            <option value="replied">Replied</option>
-            <option value="dismissed">Dismissed</option>
-          </select>
-          <button class="dl-btn" type="button" id="grRefreshBtn">↻ Refresh</button>
-        </div>
-        <div id="grList" style="padding:14px 20px;"><p class="subtle">Loading…</p></div>
-      </div>
+      <div id="grStatusBar"><p class="subtle">Loading…</p></div>
+      <div id="grStatTiles" class="stat-tiles hidden"></div>
+      <div id="grPills" class="gr-pills hidden"></div>
+      <div id="grList"></div>
     </div>
 
     <div class="panel" id="panel-settingshub">
@@ -3587,68 +3632,125 @@ document.querySelector('.tab-btn[data-tab="campaigns"]').addEventListener('click
 // /api/admin/google-reviews* routes and server/aiReply.js.
 document.querySelector('.tab-btn[data-tab="googlereviews"]').addEventListener('click', loadGoogleReviewsStatus);
 
+// Reviews are fetched once (unfiltered) and re-filtered client-side when the
+// admin switches pills — instant, no round trip per click.
+let grAllReviews = [];
+let grFilter = 'pending';
+const GR_FILTERS = [
+  { key: 'pending', label: 'Pending reply' },
+  { key: 'replied', label: 'Replied' },
+  { key: 'dismissed', label: 'Dismissed' }
+];
+
+function grTimeAgo(ts){
+  if (!ts) return '';
+  const min = Math.floor((Date.now() - ts) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + 'm ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h ago';
+  const day = Math.floor(hr / 24);
+  if (day < 30) return day + 'd ago';
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return mo + 'mo ago';
+  return Math.floor(mo / 12) + 'y ago';
+}
+
+function grInitials(name){
+  const parts = String(name || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().split(/\s+/).filter(Boolean);
+  return (parts.slice(0, 2).map((w) => w[0]).join('') || '?').toUpperCase();
+}
+
 async function loadGoogleReviewsStatus(){
-  const bar = document.getElementById('grConnectBar');
-  const picker = document.getElementById('grLocationPicker');
-  picker.classList.add('hidden'); picker.innerHTML = '';
+  const bar = document.getElementById('grStatusBar');
   try {
     const res = await adminFetch('/api/admin/google-reviews/status');
     const data = await res.json();
     if (!data.connected) {
-      bar.innerHTML = '<button class="save-btn" type="button" id="grConnectBtn" style="margin-top:0;">Connect Google Business Profile</button>';
+      bar.innerHTML =
+        '<div class="gr-hero">' +
+          '<div class="gr-hero-icon">⭐</div>' +
+          '<h3>Connect your Google Business Profile</h3>' +
+          '<p>Once connected, new public reviews sync in automatically and AI drafts a suggested reply for each one — you always edit and approve before anything posts live.</p>' +
+          '<button class="save-btn" type="button" id="grConnectBtn" style="margin-top:0;">Connect Google Business Profile</button>' +
+        '</div>';
       document.getElementById('grConnectBtn').addEventListener('click', connectGoogleReviews);
-      document.getElementById('grList').innerHTML = '<p class="subtle">Connect your Google Business Profile to see reviews here.</p>';
-      return;
-    }
-    if (data.needsLocationPick) {
-      bar.innerHTML = '<p class="subtle" style="margin:0;">Connected — pick which location to sync.</p>';
-      loadLocationPicker();
+      document.getElementById('grStatTiles').classList.add('hidden');
+      document.getElementById('grPills').classList.add('hidden');
       document.getElementById('grList').innerHTML = '';
       return;
     }
+    if (data.needsLocationPick) {
+      bar.innerHTML =
+        '<div class="gr-status-card">' +
+          '<div class="gr-status-icon">⭐</div>' +
+          '<div class="gr-status-info"><b>Connected</b><div class="subtle">Choose which location to sync reviews from.</div></div>' +
+        '</div>' +
+        '<div id="grLocPicker"><p class="subtle">Loading locations…</p></div>';
+      document.getElementById('grStatTiles').classList.add('hidden');
+      document.getElementById('grPills').classList.add('hidden');
+      document.getElementById('grList').innerHTML = '';
+      loadLocationPicker();
+      return;
+    }
     bar.innerHTML =
-      '<p class="subtle" style="margin:0;">Connected' + (data.connectedAt ? ' since ' + escHtml(new Date(data.connectedAt).toLocaleDateString()) : '') + '.</p>' +
-      '<button class="dl-btn" type="button" id="grSyncBtn">↻ Sync now</button>' +
-      '<button class="rate-remove" type="button" id="grDisconnectBtn">Disconnect</button>';
+      '<div class="gr-status-card">' +
+        '<div class="gr-status-icon">⭐</div>' +
+        '<div class="gr-status-info"><b>' + escHtml(data.locationTitle || 'Connected') + '</b><div class="subtle" id="grLastSynced">' + (data.connectedAt ? 'Connected ' + grTimeAgo(data.connectedAt) : 'Connected') + '</div></div>' +
+        '<div class="gr-status-actions">' +
+          '<button class="dl-btn" type="button" id="grSyncBtn">↻ Sync now</button>' +
+          '<button class="gr-btn-outline" type="button" id="grDisconnectBtn">Disconnect</button>' +
+        '</div>' +
+      '</div>';
     document.getElementById('grSyncBtn').addEventListener('click', syncGoogleReviewsNow);
     document.getElementById('grDisconnectBtn').addEventListener('click', disconnectGoogleReviews);
     loadGoogleReviewsList();
   } catch (err) {
-    if (err.message !== 'unauthorized') bar.innerHTML = '<p class="subtle" style="margin:0;">Could not load status.</p>';
+    if (err.message !== 'unauthorized') bar.innerHTML = '<p class="subtle">Could not load status.</p>';
   }
 }
 
 async function connectGoogleReviews(){
+  const btn = document.getElementById('grConnectBtn');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="gr-spin"></span> Connecting…';
   try {
     const res = await adminFetch('/api/admin/google-reviews/oauth/start');
     const data = await res.json();
-    if (!res.ok){ alert(data.message || 'Could not start Google connection.'); return; }
+    if (!res.ok){ alert(data.message || 'Could not start Google connection.'); btn.disabled = false; btn.innerHTML = orig; return; }
     location.href = data.url;
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Could not start Google connection.');
+    btn.disabled = false; btn.innerHTML = orig;
   }
 }
 
 async function loadLocationPicker(){
-  const picker = document.getElementById('grLocationPicker');
+  const picker = document.getElementById('grLocPicker');
   try {
     const res = await adminFetch('/api/admin/google-reviews/locations');
     const data = await res.json();
     const locations = data.locations || [];
-    picker.classList.remove('hidden');
     if (!locations.length){ picker.innerHTML = '<p class="subtle">No locations found on this Google account.</p>'; return; }
-    picker.innerHTML = '<p class="subtle" style="margin:0 0 8px;">Choose the location to sync reviews from:</p>' +
-      locations.map((l, i) => '<button class="dl-btn gr-pick-loc" type="button" data-i="' + i + '" style="margin:0 6px 6px 0;">' + escHtml(l.title || l.locationId) + '</button>').join('');
-    picker.querySelectorAll('.gr-pick-loc').forEach((btn) => {
+    picker.innerHTML = locations.map((l, i) =>
+      '<button type="button" class="gr-loc-opt" data-i="' + i + '">' + escHtml(l.title || l.locationId) + '<span class="arrow">→</span></button>'
+    ).join('');
+    picker.querySelectorAll('.gr-loc-opt').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const l = locations[Number(btn.dataset.i)];
-        const res2 = await adminFetch('/api/admin/google-reviews/location', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accountId: l.accountId, locationId: l.locationId })
-        });
-        if (!res2.ok){ alert('Could not select location.'); return; }
-        showFlash('Location selected.');
-        loadGoogleReviewsStatus();
+        btn.disabled = true; btn.innerHTML = '<span class="gr-spin dark"></span> Connecting…';
+        try {
+          const res2 = await adminFetch('/api/admin/google-reviews/location', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId: l.accountId, locationId: l.locationId, title: l.title })
+          });
+          if (!res2.ok){ alert('Could not select location.'); btn.disabled = false; return; }
+          showFlash('Location connected.');
+          loadGoogleReviewsStatus();
+        } catch (err) {
+          if (err.message !== 'unauthorized') alert('Could not select location.');
+          btn.disabled = false;
+        }
       });
     });
   } catch (err) {
@@ -3673,8 +3775,8 @@ async function disconnectGoogleReviews(){
 
 async function syncGoogleReviewsNow(){
   const btn = document.getElementById('grSyncBtn');
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Syncing…';
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="gr-spin dark"></span> Syncing…';
   try {
     const res = await adminFetch('/api/admin/google-reviews/sync', { method: 'POST' });
     const data = await res.json();
@@ -3684,55 +3786,120 @@ async function syncGoogleReviewsNow(){
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Sync failed.');
   } finally {
-    btn.disabled = false; btn.textContent = orig;
+    btn.disabled = false; btn.innerHTML = orig;
   }
 }
 
 async function loadGoogleReviewsList(){
-  const wrap = document.getElementById('grList');
-  const status = document.getElementById('grStatusFilter').value;
-  wrap.innerHTML = '<p class="subtle">Loading…</p>';
+  const list = document.getElementById('grList');
+  const tiles = document.getElementById('grStatTiles');
+  const pillsWrap = document.getElementById('grPills');
+  list.innerHTML = '<p class="subtle" style="padding:20px 0;">Loading reviews…</p>';
   try {
-    const res = await adminFetch('/api/admin/google-reviews?status=' + encodeURIComponent(status));
+    const res = await adminFetch('/api/admin/google-reviews');
     const data = await res.json();
-    const reviews = data.reviews || [];
-    if (!reviews.length){ wrap.innerHTML = '<p class="subtle">No reviews here.</p>'; return; }
-    wrap.innerHTML = reviews.map((r) => {
-      const stars = '★'.repeat(r.rating || 0) + '☆'.repeat(5 - (r.rating || 0));
-      const actions = status === 'pending'
-        ? '<button class="dl-btn gr-draft" data-id="' + escHtml(r.id) + '">↻ Regenerate</button>' +
-          '<button class="save-btn gr-reply" data-id="' + escHtml(r.id) + '" style="margin-top:0;">Post reply</button>' +
-          '<button class="rate-remove gr-dismiss" data-id="' + escHtml(r.id) + '">Dismiss</button>'
-        : '';
-      return '<div class="stages-wrap" style="max-width:none;margin:0 0 14px;padding:16px;">' +
-        '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
-          '<div><b>' + escHtml(r.reviewer_name || 'Anonymous') + '</b> <span style="color:var(--orange);letter-spacing:1px;">' + stars + '</span></div>' +
-          '<span class="subtle">' + escHtml(new Date(r.review_created_at).toLocaleDateString()) + '</span>' +
-        '</div>' +
-        '<p style="margin:8px 0;">' + escHtml(r.review_text || '(no written review)') + '</p>' +
-        (status === 'replied'
-          ? '<p class="subtle" style="margin:8px 0;"><b>Your reply:</b> ' + escHtml(r.posted_reply || '') + '</p>'
-          : '<textarea class="gr-draft-text" data-id="' + escHtml(r.id) + '" style="width:100%;min-height:80px;">' + escHtml(r.ai_draft_reply || '') + '</textarea>') +
-        (actions ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' + actions + '</div>' : '') +
-      '</div>';
-    }).join('');
-    wrap.querySelectorAll('.gr-draft').forEach((btn) => btn.addEventListener('click', () => regenerateDraft(btn.dataset.id)));
-    wrap.querySelectorAll('.gr-reply').forEach((btn) => btn.addEventListener('click', () => postGoogleReply(btn.dataset.id)));
-    wrap.querySelectorAll('.gr-dismiss').forEach((btn) => btn.addEventListener('click', () => dismissGoogleReview(btn.dataset.id)));
+    grAllReviews = data.reviews || [];
+
+    const total = grAllReviews.length;
+    const avg = total ? (grAllReviews.reduce((s, r) => s + (r.rating || 0), 0) / total).toFixed(1) : '—';
+    tiles.classList.toggle('hidden', total === 0);
+    tiles.innerHTML =
+      '<div class="stat-tile"><div class="stat-label">Total reviews</div><div class="stat-value">' + total + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-label">Average rating</div><div class="stat-value">' + avg + (total ? ' ★' : '') + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-label">Pending reply</div><div class="stat-value">' + grAllReviews.filter((r) => r.status === 'pending').length + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-label">Replied</div><div class="stat-value">' + grAllReviews.filter((r) => r.status === 'replied').length + '</div></div>';
+
+    const lastSynced = document.getElementById('grLastSynced');
+    if (lastSynced && total) {
+      lastSynced.textContent = 'Last synced ' + grTimeAgo(Math.max(...grAllReviews.map((r) => r.synced_at || 0)));
+    }
+
+    pillsWrap.classList.remove('hidden');
+    pillsWrap.innerHTML = GR_FILTERS.map((f) =>
+      '<button type="button" class="gr-pill' + (grFilter === f.key ? ' active' : '') + '" data-key="' + f.key + '">' + f.label +
+      ' <span class="count">' + grAllReviews.filter((r) => r.status === f.key).length + '</span></button>'
+    ).join('');
+    pillsWrap.querySelectorAll('.gr-pill').forEach((btn) => {
+      btn.addEventListener('click', () => { grFilter = btn.dataset.key; renderGoogleReviewsList(); });
+    });
+
+    renderGoogleReviewsList();
   } catch (err) {
-    if (err.message !== 'unauthorized') wrap.innerHTML = '<p class="subtle">Could not load reviews.</p>';
+    if (err.message !== 'unauthorized') list.innerHTML = '<p class="subtle" style="padding:20px 0;">Could not load reviews.</p>';
   }
 }
 
+function renderGoogleReviewsList(){
+  const wrap = document.getElementById('grList');
+  document.querySelectorAll('.gr-pill').forEach((b) => b.classList.toggle('active', b.dataset.key === grFilter));
+  const reviews = grAllReviews.filter((r) => r.status === grFilter);
+  if (!reviews.length){
+    const empty = {
+      pending: { icon: '🎉', title: 'All caught up', sub: 'No reviews waiting for a reply right now.' },
+      replied: { icon: '💬', title: 'No replies yet', sub: 'Replies you post will show up here.' },
+      dismissed: { icon: '🗂️', title: 'Nothing dismissed', sub: 'Reviews you skip will show up here.' }
+    }[grFilter];
+    wrap.innerHTML = '<div class="gr-empty"><div class="icon">' + empty.icon + '</div><div class="title">' + empty.title + '</div><div class="sub">' + empty.sub + '</div></div>';
+    return;
+  }
+  wrap.innerHTML = reviews.map((r) => {
+    const stars = '★'.repeat(r.rating || 0) + '☆'.repeat(5 - (r.rating || 0));
+    let body;
+    if (r.status === 'replied') {
+      body = '<div class="gr-replied-box"><b>Your reply:</b> ' + escHtml(r.posted_reply || '') + '</div>';
+    } else if (r.status === 'dismissed') {
+      body = '<span class="gr-dismissed-tag">Dismissed</span>';
+    } else {
+      const draftLen = (r.ai_draft_reply || '').length;
+      body =
+        '<div class="gr-draft-label"><span>✨ AI-drafted reply — edit before posting</span><span class="gr-charcount" id="grChar-' + escHtml(r.id) + '">' + draftLen + ' chars</span></div>' +
+        '<textarea class="gr-textarea gr-draft-text" data-id="' + escHtml(r.id) + '" placeholder="' + (r.ai_draft_reply ? '' : 'No AI draft yet — click Regenerate, or write your own reply.') + '">' + escHtml(r.ai_draft_reply || '') + '</textarea>' +
+        '<div class="gr-actions">' +
+          '<button class="dl-btn gr-draft-btn" type="button" data-id="' + escHtml(r.id) + '">↻ Regenerate</button>' +
+          '<button class="save-btn gr-reply-btn" type="button" data-id="' + escHtml(r.id) + '" style="margin-top:0;">Post reply</button>' +
+          '<button class="gr-btn-outline gr-dismiss-btn" type="button" data-id="' + escHtml(r.id) + '">Dismiss</button>' +
+        '</div>';
+    }
+    return '<div class="gr-card">' +
+      '<div class="gr-card-top">' +
+        '<div class="gr-avatar">' + escHtml(grInitials(r.reviewer_name)) + '</div>' +
+        '<div class="gr-card-meta"><b>' + escHtml(r.reviewer_name || 'Anonymous') + '</b><span class="gr-stars">' + stars + '</span></div>' +
+        '<span class="gr-time">' + grTimeAgo(r.review_created_at) + '</span>' +
+      '</div>' +
+      '<div class="gr-text">' + escHtml(r.review_text || '(no written review)') + '</div>' +
+      body +
+    '</div>';
+  }).join('');
+
+  wrap.querySelectorAll('.gr-draft-text').forEach((ta) => {
+    ta.addEventListener('input', () => {
+      const counter = document.getElementById('grChar-' + ta.dataset.id);
+      if (counter) counter.textContent = ta.value.length + ' chars';
+    });
+  });
+  wrap.querySelectorAll('.gr-draft-btn').forEach((btn) => btn.addEventListener('click', () => regenerateDraft(btn.dataset.id)));
+  wrap.querySelectorAll('.gr-reply-btn').forEach((btn) => btn.addEventListener('click', () => postGoogleReply(btn.dataset.id)));
+  wrap.querySelectorAll('.gr-dismiss-btn').forEach((btn) => btn.addEventListener('click', () => dismissGoogleReview(btn.dataset.id)));
+}
+
 async function regenerateDraft(id){
+  const btn = document.querySelector('.gr-draft-btn[data-id="' + id + '"]');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="gr-spin dark"></span> Drafting…'; }
   try {
     const res = await adminFetch('/api/admin/google-reviews/' + encodeURIComponent(id) + '/draft', { method: 'POST' });
     const data = await res.json();
     if (!res.ok){ alert(data.message || 'Could not regenerate draft.'); return; }
+    const idx = grAllReviews.findIndex((r) => r.id === id);
+    if (idx !== -1) grAllReviews[idx] = data.review;
     const textarea = document.querySelector('.gr-draft-text[data-id="' + id + '"]');
     if (textarea) textarea.value = data.review.ai_draft_reply || '';
+    const counter = document.getElementById('grChar-' + id);
+    if (counter) counter.textContent = (data.review.ai_draft_reply || '').length + ' chars';
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Could not regenerate draft.');
+  } finally {
+    if (btn){ btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
@@ -3745,16 +3912,20 @@ async function postGoogleReply(id){
     'Post reply', false
   );
   if (!ok) return;
+  const btn = document.querySelector('.gr-reply-btn[data-id="' + id + '"]');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="gr-spin"></span> Posting…'; }
   try {
     const res = await adminFetch('/api/admin/google-reviews/' + encodeURIComponent(id) + '/reply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
     });
     const data = await res.json();
-    if (!res.ok){ alert(data.message || 'Could not post reply.'); return; }
+    if (!res.ok){ alert(data.message || 'Could not post reply.'); if (btn){ btn.disabled = false; btn.innerHTML = orig; } return; }
     showFlash('Reply posted.');
     loadGoogleReviewsList();
   } catch (err) {
     if (err.message !== 'unauthorized') alert('Could not post reply.');
+    if (btn){ btn.disabled = false; btn.innerHTML = orig; }
   }
 }
 
@@ -3767,9 +3938,6 @@ async function dismissGoogleReview(id){
     if (err.message !== 'unauthorized') alert('Could not dismiss.');
   }
 }
-
-document.getElementById('grStatusFilter').addEventListener('change', loadGoogleReviewsList);
-document.getElementById('grRefreshBtn').addEventListener('click', loadGoogleReviewsList);
 
 // Lands the admin back on this tab with a status toast after the full-page
 // round trip through Google's consent screen (see server.js's oauth/start
