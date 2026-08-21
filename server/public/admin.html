@@ -4171,7 +4171,8 @@ document.getElementById('campImageFileInput').addEventListener('change', async (
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Upload failed');
     const textarea = document.getElementById('campBodyHtml');
-    const imgTag = '<img src="' + data.url + '" alt="" style="max-width:100%;display:block;" />';
+    const absoluteUrl = window.location.origin + data.url;
+    const imgTag = '<img src="' + absoluteUrl + '" alt="" style="max-width:100%;display:block;" />';
     const start = textarea.selectionStart ?? textarea.value.length;
     const end = textarea.selectionEnd ?? textarea.value.length;
     textarea.value = textarea.value.slice(0, start) + imgTag + textarea.value.slice(end);
