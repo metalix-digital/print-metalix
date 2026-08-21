@@ -828,6 +828,8 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       </div>
       <div class="bulk-bar hidden" id="custBulkBar">
         <span class="count"><b id="custBulkCount">0</b> selected</span>
+        <button class="b-apply" id="custBulkOptIn" type="button">Mark opted-in</button>
+        <button class="b-clear" id="custBulkOptOut" type="button">Mark opted-out</button>
         <button class="b-del" id="custBulkArchive" type="button">Archive</button>
         <button class="b-clear" id="custBulkClear" type="button">Clear</button>
       </div>
@@ -4712,6 +4714,42 @@ document.getElementById('custBulkClear').addEventListener('click', () => {
   document.getElementById('custSelectAll').checked = false;
   updateCustBulkBar();
 });
+// Bulk version of the same per-customer opt-in toggle already on each row
+// (marketingOptInCell/toggleCustomerOptIn below) — for an admin who already
+// has consent from a batch of customers by some other means (a checkout
+// checkbox not yet synced, phone/in-person confirmation) and wants to apply
+// it faster than one row at a time. Same underlying marketing_opt_in flag,
+// same account-required semantics — guests with no account are silently
+// skipped server-side, not an error.
+async function bulkSetCustomerOptIn(optIn){
+  const mobiles = Array.from(selectedCustomers);
+  if (!mobiles.length) return;
+  const verb = optIn ? 'opt in' : 'opt out';
+  const ok = await showConfirmModal(
+    '<h3 class="modal-title">' + (optIn ? 'Mark' : 'Remove') + ' ' + mobiles.length + ' customer' + (mobiles.length === 1 ? '' : 's') + ' ' + (optIn ? 'as opted-in' : 'from marketing') + '?</h3>' +
+    '<p class="modal-sub">' + (optIn
+      ? 'Only do this for customers you already have real consent from (a checkout checkbox, phone, or in-person confirmation) — this makes them eligible for email, WhatsApp, and SMS marketing.'
+      : 'They will no longer receive marketing campaigns on any channel.') + '</p>',
+    optIn ? 'Mark opted-in' : 'Mark opted-out', !optIn
+  );
+  if (!ok) return;
+  try {
+    const res = await adminFetch('/api/admin/customers/bulk-marketing-opt-in', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mobiles, optIn })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || ('Could not ' + verb + ' customers.'));
+    selectedCustomers.clear();
+    updateCustBulkBar();
+    loadCustomers();
+    showFlash('Updated ' + data.updated + ' customer' + (data.updated === 1 ? '' : 's') + (data.skipped ? ' (' + data.skipped + ' skipped, no account)' : '') + '.');
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert(err.message || ('Could not ' + verb + ' customers.'));
+  }
+}
+document.getElementById('custBulkOptIn').addEventListener('click', () => bulkSetCustomerOptIn(true));
+document.getElementById('custBulkOptOut').addEventListener('click', () => bulkSetCustomerOptIn(false));
+
 document.getElementById('custBulkArchive').addEventListener('click', async () => {
   const mobiles = Array.from(selectedCustomers);
   if (!mobiles.length) return;

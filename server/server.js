@@ -2730,6 +2730,25 @@ app.patch('/api/admin/customers/marketing-opt-in', requireAdmin, requireTab('cus
   return res.json({ ok: true, marketingOptIn: !!optIn })
 })
 
+// Bulk version of the route above — same "admin is asserting real consent"
+// semantics, just applied to a batch. Guests with no account are silently
+// skipped (counted, not errored) rather than failing the whole request.
+app.post('/api/admin/customers/bulk-marketing-opt-in', requireAdmin, requireTab('customers'), express.json(), (req, res) => {
+  const { mobiles, optIn } = req.body || {}
+  if (!Array.isArray(mobiles) || !mobiles.length) {
+    return res.status(400).json({ error: 'missing_fields', message: 'Select at least one customer.' })
+  }
+  let updated = 0
+  let skipped = 0
+  for (const mobile of mobiles) {
+    const user = db.findUserByIdentifier(mobile)
+    if (!user) { skipped++; continue }
+    db.setMarketingOptIn(user.id, !!optIn)
+    updated++
+  }
+  return res.json({ updated, skipped })
+})
+
 // Archive a customer (identified by mobile) — archives all their orders.
 app.delete('/api/admin/customers/:mobile', requireAdmin, requireTab('customers'), (req, res) => {
   const orders = db.archiveCustomerByMobile(req.params.mobile, scopeLocation(req))
