@@ -1429,6 +1429,12 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
         <label>Email <span class="opt">(optional — needed if you want them to get the confirmation email too)</span></label>
         <input type="email" id="noCustomerEmail" placeholder="customer@email.com" />
       </div>
+      <div class="field">
+        <label class="tab-check" style="margin:0;">
+          <input type="checkbox" id="noMarketingOptIn" />
+          Customer agreed to receive marketing updates (WhatsApp / SMS / Email)
+        </label>
+      </div>
 
       <div class="field">
         <label>Add items to this order</label>
@@ -7683,6 +7689,7 @@ async function openNewOrderModal(){
   document.getElementById('noCustomerName').value = '';
   document.getElementById('noCustomerMobile').value = '';
   document.getElementById('noCustomerEmail').value = '';
+  document.getElementById('noMarketingOptIn').checked = false;
   document.getElementById('noAddrLine').value = '';
   document.getElementById('noAddrCity').value = '';
   document.getElementById('noAddrState').value = '';
@@ -7854,6 +7861,7 @@ document.getElementById('newOrderModalSave').addEventListener('click', async () 
 
   const payload = {
     customerName, customerMobile, customerEmail: customerEmail || undefined,
+    marketingOptIn: document.getElementById('noMarketingOptIn').checked,
     locationId: document.getElementById('noLocationSelect').value || undefined,
     files: baseFiles.concat(serviceFiles),
     deliveryMethod,

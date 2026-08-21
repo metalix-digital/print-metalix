@@ -4018,7 +4018,7 @@ app.post('/api/orders', express.json(), async (req, res) => {
 // never accept an already-paid flag straight from the request body.
 app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json(), async (req, res) => {
   const {
-    customerName, customerMobile, customerEmail,
+    customerName, customerMobile, customerEmail, marketingOptIn,
     files,
     deliveryMethod, deliveryAddress, deliveryCity, deliveryState, deliveryPincode,
     deliveryTiming, scheduledAt,
@@ -4072,9 +4072,35 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
   // pick in the New Order modal's customer search.
   const matchedUser = db.findUserByMobileOrEmail(customerMobile, customerEmail || null)
 
+  // A phone/walk-in customer who verbally agrees to marketing during the
+  // call has no users row to record that consent on — order creation never
+  // creates one (see findUserByMobileOrEmail's comment above). Rather than
+  // losing a real opt-in, create a minimal account here so it's tracked the
+  // same way as everyone else's: same marketing_opt_in flag, same campaign
+  // audience logic, no separate guest-consent system needed. The random
+  // password_hash is never given to the customer; "forgot password" with
+  // this mobile/email would let them set a real one if they ever wanted to.
+  let orderCustomerId = matchedUser ? matchedUser.id : null
+  if (marketingOptIn) {
+    if (matchedUser) {
+      db.setMarketingOptIn(matchedUser.id, true)
+    } else {
+      const placeholderHash = await bcrypt.hash(crypto.randomUUID(), 10)
+      const newUser = db.createUser({
+        id: crypto.randomUUID(),
+        name: customerName,
+        email: customerEmail || null,
+        mobile: customerMobile,
+        password_hash: placeholderHash,
+        marketingOptIn: true
+      })
+      orderCustomerId = newUser.id
+    }
+  }
+
   const order = db.createOrder({
     id: orderId,
-    customer_id: matchedUser ? matchedUser.id : null,
+    customer_id: orderCustomerId,
     customer_name: customerName,
     customer_mobile: customerMobile,
     customer_email: customerEmail || null,
