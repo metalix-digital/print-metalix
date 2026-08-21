@@ -1408,15 +1408,22 @@ app.get('/api/me', requireCustomer, (req, res) => {
   return res.json({ user: publicUser(user) })
 })
 
-// Always returns the same generic response whether or not the email is
-// registered — avoids leaking which emails have accounts.
+// Always returns the same generic response whether or not the account is
+// registered — avoids leaking which accounts exist. Looks the account up by
+// mobile or email (same as login), but the reset link itself can only ever
+// be delivered by email — there's no approved SMS/WhatsApp template for an
+// arbitrary reset link yet (same DLT/Meta template requirement as campaigns;
+// see server/campaigns.js), so an account with no email on file (e.g. one
+// created by an admin from the Customers tab purely to hold marketing
+// consent — see PATCH /api/admin/customers/marketing-opt-in) has no
+// self-service reset path right now and needs an admin's help instead.
 app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
-  const { email } = req.body || {}
-  const generic = { message: 'If that email is registered, a reset link has been sent.' }
-  if (!email) return res.json(generic)
+  const identifier = (req.body && (req.body.identifier || req.body.email)) || ''
+  const generic = { message: 'If that account has an email on file, a reset link has been sent to it.' }
+  if (!identifier) return res.json(generic)
 
-  const user = db.findUserByEmail(email)
-  if (user) {
+  const user = db.findUserByIdentifier(identifier)
+  if (user && user.email) {
     const rawToken = crypto.randomBytes(32).toString('hex')
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
     db.createPasswordReset({

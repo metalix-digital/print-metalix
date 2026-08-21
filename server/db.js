@@ -2187,6 +2187,18 @@ function isMarketingSuppressed(contact, channel) {
 // Optional filters narrow further: locationId (customers who've ordered
 // from that branch), sinceOrderDays (ordered within the last N days),
 // minOrders (order count at least this many).
+//
+// A user's orders are matched by mobile/email, not orders.customer_id —
+// customer_id is only populated when the order was placed while actually
+// logged in (see getOptionalCustomerId in server.js); a guest checkout, or
+// an admin-entered phone/walk-in order, never sets it even for someone who
+// does have an account with the same mobile/email. Matching by customer_id
+// alone silently dropped almost every real opted-in customer from every
+// campaign's audience — same mobile/email join listCustomers already uses
+// for the Customers tab, so "Opted in" there and "counted in this
+// campaign" here now agree. Also requires a real confirmed order (paid, or
+// COD) same as listCustomers — a still-pending/failed order shouldn't count
+// as a customer relationship for targeting purposes.
 function getCampaignAudience(channel, filter) {
   filter = filter || {}
   const contactCol = channel === 'email' ? 'u.email' : 'u.mobile'
@@ -2194,7 +2206,12 @@ function getCampaignAudience(channel, filter) {
   let sql = `
     SELECT u.id, u.name, u.email, u.mobile, COUNT(o.id) as orderCount, MAX(o.created_at) as lastOrderAt
     FROM users u
-    JOIN orders o ON o.customer_id = u.id AND o.archived_at IS NULL
+    JOIN orders o ON (
+      o.customer_id = u.id
+      OR (u.mobile IS NOT NULL AND u.mobile != '' AND o.customer_mobile = u.mobile)
+      OR (u.email IS NOT NULL AND u.email != '' AND o.customer_email = u.email)
+    )
+      AND o.archived_at IS NULL AND (o.payment_status = 'paid' OR o.payment_method = 'cod')
     WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''
       AND NOT EXISTS (SELECT 1 FROM marketing_suppressions s WHERE s.contact = LOWER(${contactCol}) AND s.channel = @channel)
   `
@@ -2249,11 +2266,17 @@ function getCampaignAudienceStats(channel) {
   const totalOptedIn = db.prepare(`SELECT COUNT(*) as c FROM users u WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''`).get().c
   // The audience query always JOINs orders (a campaign targets customers
   // who've actually bought something), so an opted-in customer with no
-  // non-archived order can never appear in ANY campaign, filtered or not —
-  // worth surfacing separately from "filters too narrow".
+  // qualifying order can never appear in ANY campaign, filtered or not —
+  // worth surfacing separately from "filters too narrow". Same mobile/email
+  // join and confirmed-order filter as getCampaignAudience above.
   const withOrders = db.prepare(`
     SELECT COUNT(DISTINCT u.id) as c FROM users u
-    JOIN orders o ON o.customer_id = u.id AND o.archived_at IS NULL
+    JOIN orders o ON (
+      o.customer_id = u.id
+      OR (u.mobile IS NOT NULL AND u.mobile != '' AND o.customer_mobile = u.mobile)
+      OR (u.email IS NOT NULL AND u.email != '' AND o.customer_email = u.email)
+    )
+      AND o.archived_at IS NULL AND (o.payment_status = 'paid' OR o.payment_method = 'cod')
     WHERE u.marketing_opt_in = 1 AND ${contactCol} IS NOT NULL AND ${contactCol} != ''
   `).get().c
   return { totalOptedIn, withOrders }
