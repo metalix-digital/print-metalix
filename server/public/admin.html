@@ -579,6 +579,31 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
 .blog-modal .field textarea.mono{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;}
 .new-order-modal .field select{width:100%;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);}
 .new-order-modal .field select:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft);}
+
+/* New Order — full-screen layout. Scoped to the #newOrderModal id, not the
+   shared .new-order-modal class (Edit Order reuses that class for its field
+   styling and stays a normal centered dialog). */
+#newOrderModal.modal-overlay{padding:0;}
+#newOrderModal .modal-card{max-width:none;width:100%;height:100%;max-height:none;border-radius:0;}
+#newOrderModal .blog-modal-head{padding:18px 32px;border-bottom:1.5px solid var(--line);}
+#newOrderModal .blog-modal-head .modal-title{font-size:19px;}
+#newOrderModal .blog-modal-close{width:34px;height:34px;font-size:15px;}
+#newOrderModal .blog-modal-body{padding:24px 32px 4px;}
+#newOrderModal .modal-actions{padding:16px 32px 20px;border-top:1px solid var(--line);}
+.no-body-grid{display:grid;grid-template-columns:1fr 320px;gap:28px;max-width:1240px;margin:0 auto;}
+.no-main-col{display:flex;flex-direction:column;gap:18px;min-width:0;}
+.no-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px 6px;}
+.no-card-title{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.no-side-col{min-width:0;}
+.no-summary-sticky{position:sticky;top:0;}
+.no-summary-sticky .order-breakdown{max-width:none;}
+@media(max-width:960px){
+  .no-body-grid{grid-template-columns:1fr;max-width:640px;}
+  .no-summary-sticky{position:static;}
+}
+@media(max-width:640px){
+  #newOrderModal .blog-modal-head,#newOrderModal .blog-modal-body,#newOrderModal .modal-actions{padding-left:16px;padding-right:16px;}
+}
 .seg-row{display:flex;gap:10px;flex-wrap:wrap;}
 .seg-opt{display:flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:9px;padding:9px 13px;font-size:13px;color:var(--ink2);cursor:pointer;}
 .seg-opt:has(input:checked){border-color:var(--orange);color:var(--ink);background:var(--orange-soft);}
@@ -1410,205 +1435,226 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <button class="blog-modal-close" id="newOrderModalClose" type="button" aria-label="Close">✕</button>
     </div>
     <div class="blog-modal-body">
-      <div class="field" style="position:relative;">
-        <label>Existing customer? <span class="opt">(search by name, mobile, or email to autofill)</span></label>
-        <input type="text" id="noCustomerSearch" placeholder="Start typing to search…" autocomplete="off" />
-        <div class="no-customer-results hidden" id="noCustomerResults"></div>
-      </div>
-      <div class="field-grid">
-        <div class="field">
-          <label>Customer name</label>
-          <input type="text" id="noCustomerName" placeholder="Full name" />
-        </div>
-        <div class="field">
-          <label>Mobile</label>
-          <input type="text" id="noCustomerMobile" placeholder="10-digit mobile" maxlength="10" />
-        </div>
-      </div>
-      <div class="field">
-        <label>Email <span class="opt">(optional — needed if you want them to get the confirmation email too)</span></label>
-        <input type="email" id="noCustomerEmail" placeholder="customer@email.com" />
-      </div>
-      <div class="field">
-        <label class="tab-check" style="margin:0;">
-          <input type="checkbox" id="noMarketingOptIn" />
-          Customer agreed to receive marketing updates (WhatsApp / SMS / Email)
-        </label>
-      </div>
+      <div class="no-body-grid">
+        <div class="no-main-col">
 
-      <div class="field">
-        <label>Add items to this order</label>
-        <div class="no-file-note">Add as many of each as you like — documents, passport photos, stationery, and stamps can all be mixed in one order.</div>
-      </div>
-
-      <div class="field branch-col">
-        <label>Branch <span class="opt">(which location ships/fulfils this order)</span></label>
-        <select id="noLocationSelect"></select>
-      </div>
-
-      <div class="field" id="noDocumentSection">
-        <label>Print lines</label>
-        <div class="no-file-controls">
-          <button class="btn-file" id="noQuickAddBtn" type="button">+ Add line</button>
-          <span class="no-file-note">Pick a page type and how many prints — the price comes from the rate card, not a file. Attaching a file is optional and only for reference/printing.</span>
-        </div>
-        <div class="table-scroll">
-        <table class="no-file-table hidden" id="noQuickTable">
-          <thead><tr><th>Page type</th><th>Prints</th><th>File</th><th>Amount</th><th></th></tr></thead>
-          <tbody id="noQuickTableBody"></tbody>
-        </table>
-        </div>
-      </div>
-
-      <div class="field" id="noPassportSection">
-        <label>Passport photo packs</label>
-        <div class="no-file-controls">
-          <button class="btn-file" id="noPassportAddBtn" type="button">+ Add pack</button>
-          <span class="no-file-note">Photo is optional here — attach it now if you have it (e.g. pasted from WhatsApp elsewhere), or leave it for later. Printed on A4 glossy paper.</span>
-        </div>
-        <div class="table-scroll">
-        <table class="no-file-table hidden" id="noPassportTable">
-          <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th>Amount</th><th></th></tr></thead>
-          <tbody id="noPassportTableBody"></tbody>
-        </table>
-        </div>
-      </div>
-
-      <div class="field" id="noStationerySection">
-        <label>Stationery products</label>
-        <div class="no-file-controls">
-          <button class="btn-file" id="noStationeryAddBtn" type="button">+ Add product</button>
-          <span class="no-file-note">Priced and stock-checked against the live catalog — same as a customer order.</span>
-        </div>
-        <div class="table-scroll">
-        <table class="no-file-table hidden" id="noStationeryTable">
-          <thead><tr><th>Product</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
-          <tbody id="noStationeryTableBody"></tbody>
-        </table>
-        </div>
-      </div>
-
-      <div class="field" id="noStampSection">
-        <label>Custom stamps</label>
-        <div class="no-file-controls">
-          <button class="btn-file" id="noStampAddBtn" type="button">+ Add stamp</button>
-          <span class="no-file-note">One card per stamp — text is one line per row, up to 6 lines. Logo is optional.</span>
-        </div>
-        <div id="noStampList"></div>
-      </div>
-
-      <div class="field">
-        <label>Additional services <span class="opt">(optional — e.g. photo editing)</span></label>
-        <div class="no-file-controls">
-          <button class="btn-file" id="noServiceAddBtn" type="button">+ Add service</button>
-        </div>
-        <div class="table-scroll">
-        <table class="no-file-table hidden" id="noServiceTable">
-          <thead><tr><th>Service</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
-          <tbody id="noServiceTableBody"></tbody>
-        </table>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Fulfilment</label>
-        <div class="seg-row">
-          <label class="seg-opt"><input type="radio" name="noDelivery" value="pickup" checked /><span>Collect from shop</span></label>
-          <label class="seg-opt"><input type="radio" name="noDelivery" value="delivery" /><span>Home delivery</span></label>
-        </div>
-      </div>
-      <div class="field-grid hidden" id="noAddressFields">
-        <div class="field">
-          <label>Address</label>
-          <input type="text" id="noAddrLine" placeholder="House no, street, locality" />
-        </div>
-        <div class="field">
-          <label>City</label>
-          <input type="text" id="noAddrCity" placeholder="City" />
-        </div>
-        <div class="field">
-          <label>State</label>
-          <input type="text" id="noAddrState" placeholder="State" />
-        </div>
-        <div class="field">
-          <label>PIN code</label>
-          <input type="text" id="noAddrPincode" placeholder="6-digit PIN" maxlength="6" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Payment</label>
-        <div class="seg-row">
-          <label class="seg-opt"><input type="radio" name="noPayment" value="later" checked /><span>Pay later (cash/UPI on pickup or delivery)</span></label>
-          <label class="seg-opt"><input type="radio" name="noPayment" value="paid" /><span>Already paid (cash/UPI collected now)</span></label>
-          <label class="seg-opt"><input type="radio" name="noPayment" value="link" /><span>Send payment link (online, via SMS)</span></label>
-        </div>
-      </div>
-      <div class="field-grid hidden" id="noPaidModeFields">
-        <div class="field">
-          <label>Collected via</label>
-          <select id="noPaymentMode">
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Discount <span class="opt">(optional)</span></label>
-        <div class="seg-row">
-          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="none" checked /><span>None</span></label>
-          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="code" /><span>Coupon code</span></label>
-          <label class="seg-opt"><input type="radio" name="noDiscountMode" value="custom" /><span>Custom amount</span></label>
-        </div>
-      </div>
-      <div class="field-grid hidden" id="noDiscountCodeFields">
-        <div class="field">
-          <label>Code</label>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="noDiscountCode" placeholder="e.g. WELCOME10" maxlength="20" style="text-transform:uppercase;flex:1;" />
-            <button type="button" class="btn-file" id="noDiscountCodeApplyBtn">Check</button>
+          <div class="no-card">
+            <div class="no-card-title">Customer</div>
+            <div class="field" style="position:relative;">
+              <label>Existing customer? <span class="opt">(search by name, mobile, or email to autofill)</span></label>
+              <input type="text" id="noCustomerSearch" placeholder="Start typing to search…" autocomplete="off" />
+              <div class="no-customer-results hidden" id="noCustomerResults"></div>
+            </div>
+            <div class="field-grid">
+              <div class="field">
+                <label>Customer name</label>
+                <input type="text" id="noCustomerName" placeholder="Full name" />
+              </div>
+              <div class="field">
+                <label>Mobile</label>
+                <input type="text" id="noCustomerMobile" placeholder="10-digit mobile" maxlength="10" />
+              </div>
+            </div>
+            <div class="field">
+              <label>Email <span class="opt">(optional — needed if you want them to get the confirmation email too)</span></label>
+              <input type="email" id="noCustomerEmail" placeholder="customer@email.com" />
+            </div>
+            <div class="field">
+              <label style="display:flex;align-items:flex-start;gap:8px;margin:0;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;">
+                <input type="checkbox" id="noMarketingOptIn" style="width:16px;height:16px;padding:0;margin-top:2px;flex-shrink:0;accent-color:var(--orange);" />
+                <span style="flex:1;min-width:0;">Customer agreed to receive marketing updates (WhatsApp / SMS / Email)</span>
+              </label>
+            </div>
           </div>
-          <div class="save-message hidden" id="noDiscountCodeMsg" style="margin-top:6px;"></div>
-        </div>
-      </div>
-      <div class="field-grid hidden" id="noDiscountCustomFields">
-        <div class="field">
-          <label>Type</label>
-          <select id="noDiscountType">
-            <option value="percent">% off</option>
-            <option value="flat">₹ off</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Value</label>
-          <input type="number" id="noDiscountValue" min="0" step="0.5" />
-        </div>
-        <div class="field">
-          <label>Reason <span class="opt">(optional)</span></label>
-          <input type="text" id="noDiscountReason" maxlength="200" placeholder="e.g. Regular customer" />
-        </div>
-      </div>
 
-      <div class="field">
-        <label>Notes <span class="opt">(optional — visible to staff, shown on the job sheet)</span></label>
-        <textarea id="noNotes" maxlength="500" rows="2"></textarea>
-      </div>
+          <div class="no-card">
+            <div class="no-card-title">Items</div>
+            <div class="field">
+              <div class="no-file-note">Add as many of each as you like — documents, passport photos, stationery, and stamps can all be mixed in one order.</div>
+            </div>
 
-      <div class="order-breakdown" id="noBreakdown">
-        <div class="bd-title">Order summary</div>
-        <div class="bd-row"><span>Print cost</span><span id="noBdPrint">₹0</span></div>
-        <div class="bd-row hidden" id="noBdStationeryRow"><span>Stationery</span><span id="noBdStationery">₹0</span></div>
-        <div class="bd-row hidden" id="noBdStampRow"><span>Custom Stamps</span><span id="noBdStamp">₹0</span></div>
-        <div class="bd-row hidden" id="noBdServicesRow"><span>Additional services</span><span id="noBdServices">₹0</span></div>
-        <div class="bd-row"><span>Handling charge</span><span id="noBdHandling">₹0</span></div>
-        <div class="bd-row"><span>Delivery charge</span><span id="noBdDelivery">₹0</span></div>
-        <div class="bd-row hidden" id="noBdDiscountRow"><span id="noBdDiscountLabel">Discount</span><span id="noBdDiscount" style="color:var(--ok);">−₹0</span></div>
-        <div class="bd-row"><span>GST</span><span id="noBdGst">₹0</span></div>
-        <div class="bd-row bd-total"><span>Total</span><span id="noBdTotal">₹0</span></div>
-      </div>
+            <div class="field branch-col">
+              <label>Branch <span class="opt">(which location ships/fulfils this order)</span></label>
+              <select id="noLocationSelect"></select>
+            </div>
 
-      <div class="save-message hidden" id="newOrderModalMsg"></div>
+            <div class="field" id="noDocumentSection">
+              <label>Print lines</label>
+              <div class="no-file-controls">
+                <button class="btn-file" id="noQuickAddBtn" type="button">+ Add line</button>
+                <span class="no-file-note">Pick a page type and how many prints — the price comes from the rate card, not a file. Attaching a file is optional and only for reference/printing.</span>
+              </div>
+              <div class="table-scroll">
+              <table class="no-file-table hidden" id="noQuickTable">
+                <thead><tr><th>Page type</th><th>Prints</th><th>File</th><th>Amount</th><th></th></tr></thead>
+                <tbody id="noQuickTableBody"></tbody>
+              </table>
+              </div>
+            </div>
+
+            <div class="field" id="noPassportSection">
+              <label>Passport photo packs</label>
+              <div class="no-file-controls">
+                <button class="btn-file" id="noPassportAddBtn" type="button">+ Add pack</button>
+                <span class="no-file-note">Photo is optional here — attach it now if you have it (e.g. pasted from WhatsApp elsewhere), or leave it for later. Printed on A4 glossy paper.</span>
+              </div>
+              <div class="table-scroll">
+              <table class="no-file-table hidden" id="noPassportTable">
+                <thead><tr><th>Size</th><th>Pack</th><th>Photo</th><th>Amount</th><th></th></tr></thead>
+                <tbody id="noPassportTableBody"></tbody>
+              </table>
+              </div>
+            </div>
+
+            <div class="field" id="noStationerySection">
+              <label>Stationery products</label>
+              <div class="no-file-controls">
+                <button class="btn-file" id="noStationeryAddBtn" type="button">+ Add product</button>
+                <span class="no-file-note">Priced and stock-checked against the live catalog — same as a customer order.</span>
+              </div>
+              <div class="table-scroll">
+              <table class="no-file-table hidden" id="noStationeryTable">
+                <thead><tr><th>Product</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+                <tbody id="noStationeryTableBody"></tbody>
+              </table>
+              </div>
+            </div>
+
+            <div class="field" id="noStampSection">
+              <label>Custom stamps</label>
+              <div class="no-file-controls">
+                <button class="btn-file" id="noStampAddBtn" type="button">+ Add stamp</button>
+                <span class="no-file-note">One card per stamp — text is one line per row, up to 6 lines. Logo is optional.</span>
+              </div>
+              <div id="noStampList"></div>
+            </div>
+
+            <div class="field">
+              <label>Additional services <span class="opt">(optional — e.g. photo editing)</span></label>
+              <div class="no-file-controls">
+                <button class="btn-file" id="noServiceAddBtn" type="button">+ Add service</button>
+              </div>
+              <div class="table-scroll">
+              <table class="no-file-table hidden" id="noServiceTable">
+                <thead><tr><th>Service</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+                <tbody id="noServiceTableBody"></tbody>
+              </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="no-card">
+            <div class="no-card-title">Fulfilment &amp; payment</div>
+            <div class="field">
+              <label>Fulfilment</label>
+              <div class="seg-row">
+                <label class="seg-opt"><input type="radio" name="noDelivery" value="pickup" checked /><span>Collect from shop</span></label>
+                <label class="seg-opt"><input type="radio" name="noDelivery" value="delivery" /><span>Home delivery</span></label>
+              </div>
+            </div>
+            <div class="field-grid hidden" id="noAddressFields">
+              <div class="field">
+                <label>Address</label>
+                <input type="text" id="noAddrLine" placeholder="House no, street, locality" />
+              </div>
+              <div class="field">
+                <label>City</label>
+                <input type="text" id="noAddrCity" placeholder="City" />
+              </div>
+              <div class="field">
+                <label>State</label>
+                <input type="text" id="noAddrState" placeholder="State" />
+              </div>
+              <div class="field">
+                <label>PIN code</label>
+                <input type="text" id="noAddrPincode" placeholder="6-digit PIN" maxlength="6" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Payment</label>
+              <div class="seg-row">
+                <label class="seg-opt"><input type="radio" name="noPayment" value="later" checked /><span>Pay later (cash/UPI on pickup or delivery)</span></label>
+                <label class="seg-opt"><input type="radio" name="noPayment" value="paid" /><span>Already paid (cash/UPI collected now)</span></label>
+                <label class="seg-opt"><input type="radio" name="noPayment" value="link" /><span>Send payment link (online, via SMS)</span></label>
+              </div>
+            </div>
+            <div class="field-grid hidden" id="noPaidModeFields">
+              <div class="field">
+                <label>Collected via</label>
+                <select id="noPaymentMode">
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Discount <span class="opt">(optional)</span></label>
+              <div class="seg-row">
+                <label class="seg-opt"><input type="radio" name="noDiscountMode" value="none" checked /><span>None</span></label>
+                <label class="seg-opt"><input type="radio" name="noDiscountMode" value="code" /><span>Coupon code</span></label>
+                <label class="seg-opt"><input type="radio" name="noDiscountMode" value="custom" /><span>Custom amount</span></label>
+              </div>
+            </div>
+            <div class="field-grid hidden" id="noDiscountCodeFields">
+              <div class="field">
+                <label>Code</label>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" id="noDiscountCode" placeholder="e.g. WELCOME10" maxlength="20" style="text-transform:uppercase;flex:1;" />
+                  <button type="button" class="btn-file" id="noDiscountCodeApplyBtn">Check</button>
+                </div>
+                <div class="save-message hidden" id="noDiscountCodeMsg" style="margin-top:6px;"></div>
+              </div>
+            </div>
+            <div class="field-grid hidden" id="noDiscountCustomFields">
+              <div class="field">
+                <label>Type</label>
+                <select id="noDiscountType">
+                  <option value="percent">% off</option>
+                  <option value="flat">₹ off</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Value</label>
+                <input type="number" id="noDiscountValue" min="0" step="0.5" />
+              </div>
+              <div class="field">
+                <label>Reason <span class="opt">(optional)</span></label>
+                <input type="text" id="noDiscountReason" maxlength="200" placeholder="e.g. Regular customer" />
+              </div>
+            </div>
+          </div>
+
+          <div class="no-card">
+            <div class="no-card-title">Notes</div>
+            <div class="field">
+              <label>Notes <span class="opt">(optional — visible to staff, shown on the job sheet)</span></label>
+              <textarea id="noNotes" maxlength="500" rows="2"></textarea>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="no-side-col">
+          <div class="no-summary-sticky">
+            <div class="order-breakdown" id="noBreakdown">
+              <div class="bd-title">Order summary</div>
+              <div class="bd-row"><span>Print cost</span><span id="noBdPrint">₹0</span></div>
+              <div class="bd-row hidden" id="noBdStationeryRow"><span>Stationery</span><span id="noBdStationery">₹0</span></div>
+              <div class="bd-row hidden" id="noBdStampRow"><span>Custom Stamps</span><span id="noBdStamp">₹0</span></div>
+              <div class="bd-row hidden" id="noBdServicesRow"><span>Additional services</span><span id="noBdServices">₹0</span></div>
+              <div class="bd-row"><span>Handling charge</span><span id="noBdHandling">₹0</span></div>
+              <div class="bd-row"><span>Delivery charge</span><span id="noBdDelivery">₹0</span></div>
+              <div class="bd-row hidden" id="noBdDiscountRow"><span id="noBdDiscountLabel">Discount</span><span id="noBdDiscount" style="color:var(--ok);">−₹0</span></div>
+              <div class="bd-row"><span>GST</span><span id="noBdGst">₹0</span></div>
+              <div class="bd-row bd-total"><span>Total</span><span id="noBdTotal">₹0</span></div>
+            </div>
+            <div class="save-message hidden" id="newOrderModalMsg"></div>
+          </div>
+        </div>
+
+      </div>
     </div>
     <div class="modal-actions">
       <button class="modal-cancel" id="newOrderModalCancel" type="button">Cancel</button>
