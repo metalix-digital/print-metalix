@@ -1093,6 +1093,59 @@ app.post('/api/admin/products/upload-image', requireSuperAdmin, (req, res) => {
   })
 })
 
+// Every image ever uploaded through the shared /product-uploads pipeline —
+// product photos, blog cover images, stamp reference photos, and campaign
+// email images all land in the same flat directory (see productImageUpload
+// above), with no dedicated media table. Rather than tracking usage in a
+// second place that could drift, "used" is computed live on each request by
+// scanning every table that can hold one of these URLs (including HTML
+// fields, via a plain <img src> regex) and diffing against what's on disk.
+function listProductUploadUsage() {
+  const usedIn = new Map()
+  const addUsage = (url, label) => {
+    if (!url || typeof url !== 'string' || !url.startsWith('/product-uploads/')) return
+    if (!usedIn.has(url)) usedIn.set(url, [])
+    usedIn.get(url).push(label)
+  }
+  const addFromHtml = (html, label) => {
+    if (!html) return
+    const re = /<img[^>]+src=["']([^"']+)["']/gi
+    let m
+    while ((m = re.exec(html))) addUsage(m[1], label)
+  }
+  db.listProducts({ includeInactive: true }).forEach((p) => {
+    (p.images || []).forEach((url) => addUsage(url, `Product: ${p.name}`))
+  })
+  db.listBlogPosts({ includeUnpublished: true }).forEach((p) => {
+    addUsage(p.cover_image, `Blog: ${p.title}`)
+    addFromHtml(p.body, `Blog: ${p.title}`)
+  })
+  const stampTypes = ((db.getPricing().stamps || {}).types || [])
+  stampTypes.forEach((t) => {
+    addUsage(t.imageUrl, `Stamp type: ${t.label}`)
+    ;(t.sizes || []).forEach((s) => addUsage(s.imageUrl, `Stamp size: ${t.label} / ${s.label}`))
+  })
+  db.listCampaigns().forEach((c) => addFromHtml(c.body_html, `Campaign: ${c.name}`))
+  return usedIn
+}
+
+app.get('/api/admin/product-images', requireSuperAdmin, (req, res) => {
+  const usedIn = listProductUploadUsage()
+  const files = fs.readdirSync(productUploadsDir).filter((f) => !f.startsWith('.'))
+  const images = files.map((filename) => {
+    const url = `/product-uploads/${filename}`
+    const stat = fs.statSync(path.join(productUploadsDir, filename))
+    return {
+      url,
+      uploadedAt: stat.mtimeMs,
+      size: stat.size,
+      used: usedIn.has(url),
+      usedIn: usedIn.get(url) || []
+    }
+  }).sort((a, b) => b.uploadedAt - a.uploadedAt)
+  return res.json({ images })
+})
+
 // Downloadable CSV starter — header row + two filled-in sample products so
 // admins can see the exact expected shape before bulk-editing their own
 // catalog. Re-uploading it unedited would create those two sample SKUs,

@@ -376,6 +376,13 @@ label.report-col-check:has(input:checked){border-color:var(--orange) !important;
 .modal-cancel:hover{background:var(--surface-hover);}
 .modal-ok{background:var(--orange);color:#fff;border-color:var(--orange);}
 .modal-ok:hover{background:var(--orange-d);}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;max-height:420px;overflow-y:auto;padding:2px;}
+.gallery-tile{position:relative;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;aspect-ratio:1;background:var(--line-soft);}
+.gallery-tile:hover{border-color:var(--orange);}
+.gallery-tile img{width:100%;height:100%;object-fit:cover;display:block;}
+.gallery-badge{position:absolute;top:5px;right:5px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;}
+.gallery-badge.used{background:#2e8b57;}
+.gallery-badge.idle{background:#8a8a8a;}
 .modal-ok:focus-visible,.modal-cancel:focus-visible{outline:2px solid var(--orange);outline-offset:2px;}
 
 /* ============ visual refresh ============ */
@@ -1384,6 +1391,20 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="blog-modal-body" id="bulkUploadResultBody"></div>
     <div class="modal-actions">
       <button class="modal-ok" id="bulkUploadResultOk" type="button">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="imageGalleryModal">
+  <div class="modal-card" role="dialog" aria-modal="true" style="max-width:640px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h3 class="modal-title" style="margin-bottom:0;">Image gallery</h3>
+      <button class="btn-file" type="button" id="imageGalleryUploadBtn">⬆ Upload new</button>
+    </div>
+    <p class="modal-sub">Every image uploaded for products, blog posts, stamps, and past campaigns — pick one to reuse, or upload new. "Idle" means it isn't used anywhere right now.</p>
+    <div class="gallery-grid" id="imageGalleryGrid"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="imageGalleryCloseBtn" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -4154,9 +4175,60 @@ document.querySelectorAll('input[name=audSource]').forEach((r) => r.addEventList
 // use (server.js's POST /api/admin/products/upload-image), just aimed at
 // this textarea instead of a single cover-image field. A real URL, not a
 // data: URI, since most email clients strip or mishandle inline data URIs.
+function insertImageTag(textarea, absoluteUrl) {
+  const imgTag = '<img src="' + absoluteUrl + '" alt="" style="max-width:100%;display:block;" />';
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.slice(0, start) + imgTag + textarea.value.slice(end);
+  textarea.focus();
+  textarea.selectionStart = textarea.selectionEnd = start + imgTag.length;
+}
+
+// "Insert image" opens a gallery of every image already uploaded through
+// this same pipeline (product photos, blog covers, stamp photos, past
+// campaign images all share one pool — see GET /api/admin/product-images)
+// so an existing photo can be reused instead of re-uploading it, with an
+// "Upload new" option inside the modal for anything not in the pool yet.
+let imageGalleryTarget = null;
+const imageGalleryModal = document.getElementById('imageGalleryModal');
 document.getElementById('campInsertImageBtn').addEventListener('click', () => {
+  imageGalleryTarget = document.getElementById('campBodyHtml');
+  imageGalleryModal.classList.remove('hidden');
+  loadImageGallery();
+});
+function closeImageGallery() { imageGalleryModal.classList.add('hidden'); }
+document.getElementById('imageGalleryCloseBtn').addEventListener('click', closeImageGallery);
+imageGalleryModal.addEventListener('click', (e) => { if (e.target === imageGalleryModal) closeImageGallery(); });
+document.getElementById('imageGalleryUploadBtn').addEventListener('click', () => {
   document.getElementById('campImageFileInput').click();
 });
+
+async function loadImageGallery() {
+  const grid = document.getElementById('imageGalleryGrid');
+  grid.innerHTML = '<p class="subtle">Loading…</p>';
+  try {
+    const res = await adminFetch('/api/admin/product-images');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Could not load images.');
+    if (!data.images.length) { grid.innerHTML = '<p class="subtle">No images uploaded yet — use "Upload new" above.</p>'; return; }
+    grid.innerHTML = data.images.map((img) => (
+      '<div class="gallery-tile" data-url="' + escHtml(img.url) + '" title="' +
+        (img.used ? escHtml('Used in: ' + img.usedIn.join(', ')) : 'Not used anywhere right now') + '">' +
+        '<img src="' + escHtml(img.url) + '" alt="" loading="lazy" />' +
+        '<span class="gallery-badge ' + (img.used ? 'used' : 'idle') + '">' + (img.used ? 'Used' : 'Idle') + '</span>' +
+      '</div>'
+    )).join('');
+    grid.querySelectorAll('.gallery-tile').forEach((tile) => {
+      tile.addEventListener('click', () => {
+        if (imageGalleryTarget) insertImageTag(imageGalleryTarget, window.location.origin + tile.dataset.url);
+        closeImageGallery();
+      });
+    });
+  } catch (err) {
+    if (err.message !== 'unauthorized') grid.innerHTML = '<p class="subtle">' + escHtml(err.message || 'Could not load images.') + '</p>';
+  }
+}
+
 document.getElementById('campImageFileInput').addEventListener('change', async () => {
   const input = document.getElementById('campImageFileInput');
   const msg = document.getElementById('campImageMsg');
@@ -4170,15 +4242,9 @@ document.getElementById('campImageFileInput').addEventListener('change', async (
     const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Upload failed');
-    const textarea = document.getElementById('campBodyHtml');
-    const absoluteUrl = window.location.origin + data.url;
-    const imgTag = '<img src="' + absoluteUrl + '" alt="" style="max-width:100%;display:block;" />';
-    const start = textarea.selectionStart ?? textarea.value.length;
-    const end = textarea.selectionEnd ?? textarea.value.length;
-    textarea.value = textarea.value.slice(0, start) + imgTag + textarea.value.slice(end);
-    textarea.focus();
-    textarea.selectionStart = textarea.selectionEnd = start + imgTag.length;
+    if (imageGalleryTarget) insertImageTag(imageGalleryTarget, window.location.origin + data.url);
     msg.classList.add('hidden');
+    closeImageGallery();
   } catch (err) {
     if (err.message !== 'unauthorized') { msg.textContent = err.message || 'Could not upload image.'; }
   } finally {
