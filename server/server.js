@@ -4072,6 +4072,13 @@ app.post('/api/admin/orders', requireAdmin, requireTab('orders'), express.json()
   // pick in the New Order modal's customer search.
   const matchedUser = db.findUserByMobileOrEmail(customerMobile, customerEmail || null)
 
+  // An account matched by email only (e.g. signed up via Google, which
+  // never captures a mobile) stays invisible to WhatsApp/SMS campaign
+  // audiences even after opting in — backfill it from this real, staff-
+  // verified phone order. See backfillUserMobileIfMissing's comment for why
+  // this is only safe on the admin-entered path, not customer self-checkout.
+  if (matchedUser) db.backfillUserMobileIfMissing(matchedUser.id, customerMobile)
+
   // A phone/walk-in customer who verbally agrees to marketing during the
   // call has no users row to record that consent on — order creation never
   // creates one (see findUserByMobileOrEmail's comment above). Rather than

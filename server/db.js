@@ -2053,6 +2053,25 @@ function setMarketingOptIn(userId, optIn) {
     .run(optIn ? 1 : 0, Date.now(), userId)
 }
 
+// An account created without a mobile on file (e.g. Google sign-in, which
+// only captures email) stays invisible to WhatsApp/SMS campaign audiences
+// forever, even once opted in — getCampaignAudience requires a non-null
+// u.mobile for those channels. A phone/walk-in order is a real, verified
+// mobile for that exact person, so it's safe to backfill here specifically
+// (unlike a logged-in customer's self-checkout, where the delivery contact
+// on one order isn't necessarily their own number — e.g. ordering as a
+// gift). Silently no-ops if the mobile is already taken by a different
+// account, rather than throwing on the unique index and breaking order
+// creation over a best-effort enhancement.
+function backfillUserMobileIfMissing(userId, mobile) {
+  if (!mobile) return
+  const user = getUserById(userId)
+  if (!user || user.mobile) return
+  const owner = db.prepare('SELECT id FROM users WHERE mobile = ?').get(mobile)
+  if (owner && owner.id !== userId) return
+  db.prepare('UPDATE users SET mobile = ?, updated_at = ? WHERE id = ?').run(mobile, Date.now(), userId)
+}
+
 function listMessageTemplates(channel) {
   const rows = channel
     ? db.prepare('SELECT * FROM message_templates WHERE channel = ? ORDER BY created_at DESC').all(channel)
@@ -2509,6 +2528,7 @@ module.exports = {
   getSalesAnalytics,
   getOrdersForLineItemReport,
   setMarketingOptIn,
+  backfillUserMobileIfMissing,
   listMessageTemplates,
   getMessageTemplate,
   createMessageTemplate,
