@@ -82,8 +82,10 @@ async function listLocations(accessToken) {
     err.code = 'google_business_accounts_failed'
     throw err
   }
+  const accounts = accountsData.accounts || []
   const locations = []
-  for (const account of accountsData.accounts || []) {
+  let lastError = null
+  for (const account of accounts) {
     const locRes = await fetch(`${API_BASE}/${account.name}/locations?readMask=name,title`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     })
@@ -92,7 +94,18 @@ async function listLocations(accessToken) {
       for (const loc of locData.locations || []) {
         locations.push({ accountId: account.name, locationId: loc.name, title: loc.title })
       }
+    } else {
+      lastError = locData.error?.message || `Locations request failed (HTTP ${locRes.status})`
     }
+  }
+  // Accounts existed but every locations call failed (API not yet enabled/
+  // approved, insufficient permission, etc.) — surface the real reason
+  // instead of an empty array, which reads identically to "this account
+  // genuinely has zero listings" and hides what's actually wrong.
+  if (!locations.length && accounts.length && lastError) {
+    const err = new Error(lastError)
+    err.code = 'google_business_locations_failed'
+    throw err
   }
   return locations
 }

@@ -3812,6 +3812,7 @@ async function loadLocationPicker(){
   try {
     const res = await adminFetch('/api/admin/google-reviews/locations');
     const data = await res.json();
+    if (!res.ok) { picker.innerHTML = '<p class="subtle">' + escHtml(data.message || 'Could not load locations.') + '</p>'; return; }
     const locations = data.locations || [];
     if (!locations.length){ picker.innerHTML = '<p class="subtle">No locations found on this Google account.</p>'; return; }
     picker.innerHTML = locations.map((l, i) =>
