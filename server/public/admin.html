@@ -1002,8 +1002,13 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
               <p class="camp-section-hint">A footer with your business address and an unsubscribe link is added automatically and can't be removed.</p>
               <div class="field"><label>Subject</label><input type="text" id="campSubject" placeholder="Subject line" /></div>
               <div class="field" style="margin-top:12px;">
-                <label>Body (HTML)</label>
-                <textarea id="campBodyHtml" rows="10" style="width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:13.5px/1.6 'Roboto',sans-serif;box-sizing:border-box;" placeholder="&lt;p&gt;Hi there — here's 10% off your next order...&lt;/p&gt;"></textarea>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <label style="margin:0;">Body (HTML)</label>
+                  <button class="btn-file" type="button" id="campInsertImageBtn">🖼 Insert image</button>
+                  <input type="file" id="campImageFileInput" accept="image/*" class="hidden" />
+                </div>
+                <textarea id="campBodyHtml" rows="10" style="width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:13.5px/1.6 'Roboto',sans-serif;box-sizing:border-box;margin-top:8px;" placeholder="&lt;p&gt;Hi there — here's 10% off your next order...&lt;/p&gt;"></textarea>
+                <p class="subtle hidden" id="campImageMsg" style="margin-top:6px;"></p>
               </div>
             </div>
 
@@ -4143,6 +4148,42 @@ async function saveCampaignDraft(){
 document.querySelectorAll('input[name=audSource]').forEach((r) => r.addEventListener('change', () => {
   document.getElementById('audResult').textContent = '';
 }));
+
+// Inserts a real hosted <img> tag into the email body at the cursor
+// position — same public upload pipeline product/blog/stamp photos already
+// use (server.js's POST /api/admin/products/upload-image), just aimed at
+// this textarea instead of a single cover-image field. A real URL, not a
+// data: URI, since most email clients strip or mishandle inline data URIs.
+document.getElementById('campInsertImageBtn').addEventListener('click', () => {
+  document.getElementById('campImageFileInput').click();
+});
+document.getElementById('campImageFileInput').addEventListener('change', async () => {
+  const input = document.getElementById('campImageFileInput');
+  const msg = document.getElementById('campImageMsg');
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('image', file);
+  msg.textContent = 'Uploading…';
+  msg.classList.remove('hidden');
+  try {
+    const res = await adminFetch('/api/admin/products/upload-image', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Upload failed');
+    const textarea = document.getElementById('campBodyHtml');
+    const imgTag = '<img src="' + data.url + '" alt="" style="max-width:100%;display:block;" />';
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    textarea.value = textarea.value.slice(0, start) + imgTag + textarea.value.slice(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + imgTag.length;
+    msg.classList.add('hidden');
+  } catch (err) {
+    if (err.message !== 'unauthorized') { msg.textContent = err.message || 'Could not upload image.'; }
+  } finally {
+    input.value = '';
+  }
+});
 
 document.getElementById('audPreviewBtn').addEventListener('click', async () => {
   const result = document.getElementById('audResult');
