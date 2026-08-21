@@ -17,7 +17,8 @@ async function loadSecretsIntoEnv() {
     ['TWILIO_AUTH_TOKEN', 'twilio-auth-token'],
     ['TWILIO_MESSAGING_SERVICE_SID', 'twilio-messaging-service-sid'],
     ['TWILIO_ORDER_CONFIRMATION_TEMPLATE_SID', 'twilio-order-confirmation-template-sid'],
-    ['TWILIO_PAYMENT_LINK_TEMPLATE_SID', 'twilio-payment-link-template-sid']
+    ['TWILIO_PAYMENT_LINK_TEMPLATE_SID', 'twilio-payment-link-template-sid'],
+    ['TWILIO_WHATSAPP_NUMBER', 'twilio-whatsapp-number']
   ].filter(([envVar]) => !process.env[envVar])
 
   if (!needed.length) return
