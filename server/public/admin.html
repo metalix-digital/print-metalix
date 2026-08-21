@@ -383,6 +383,8 @@ label.report-col-check:has(input:checked){border-color:var(--orange) !important;
 .gallery-badge{position:absolute;top:5px;right:5px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;}
 .gallery-badge.used{background:#2e8b57;}
 .gallery-badge.idle{background:#8a8a8a;}
+.gallery-delete{position:absolute;top:5px;left:5px;width:22px;height:22px;border:none;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.gallery-delete:hover{background:#c0392b;}
 .modal-ok:focus-visible,.modal-cancel:focus-visible{outline:2px solid var(--orange);outline-offset:2px;}
 
 /* ============ visual refresh ============ */
@@ -1401,7 +1403,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <h3 class="modal-title" style="margin-bottom:0;">Image gallery</h3>
       <button class="btn-file" type="button" id="imageGalleryUploadBtn">⬆ Upload new</button>
     </div>
-    <p class="modal-sub">Every image uploaded for products, blog posts, stamps, and past campaigns — pick one to reuse, or upload new. "Idle" means it isn't used anywhere right now.</p>
+    <p class="modal-sub">Every image uploaded for products, blog posts, stamps, and past campaigns — pick one to reuse, or upload new. "Idle" means it isn't used anywhere right now — idle images show a 🗑 to delete them.</p>
     <div class="gallery-grid" id="imageGalleryGrid"></div>
     <div class="modal-actions">
       <button class="modal-cancel" id="imageGalleryCloseBtn" type="button">Close</button>
@@ -4216,12 +4218,28 @@ async function loadImageGallery() {
         (img.used ? escHtml('Used in: ' + img.usedIn.join(', ')) : 'Not used anywhere right now') + '">' +
         '<img src="' + escHtml(img.url) + '" alt="" loading="lazy" />' +
         '<span class="gallery-badge ' + (img.used ? 'used' : 'idle') + '">' + (img.used ? 'Used' : 'Idle') + '</span>' +
+        (img.used ? '' : '<button type="button" class="gallery-delete" data-url="' + escHtml(img.url) + '" title="Delete this image">🗑</button>') +
       '</div>'
     )).join('');
     grid.querySelectorAll('.gallery-tile').forEach((tile) => {
       tile.addEventListener('click', () => {
         if (imageGalleryTarget) insertImageTag(imageGalleryTarget, window.location.origin + tile.dataset.url);
         closeImageGallery();
+      });
+    });
+    grid.querySelectorAll('.gallery-delete').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this image from the server? This can\'t be undone.')) return;
+        const filename = btn.dataset.url.split('/').pop();
+        try {
+          const delRes = await adminFetch('/api/admin/product-images/' + encodeURIComponent(filename), { method: 'DELETE' });
+          const delData = await delRes.json();
+          if (!delRes.ok) throw new Error(delData.message || 'Could not delete image.');
+          loadImageGallery();
+        } catch (err) {
+          if (err.message !== 'unauthorized') alert(err.message || 'Could not delete image.');
+        }
       });
     });
   } catch (err) {

@@ -1146,6 +1146,17 @@ app.get('/api/admin/product-images', requireSuperAdmin, (req, res) => {
   return res.json({ images })
 })
 
+app.delete('/api/admin/product-images/:filename', requireSuperAdmin, (req, res) => {
+  const filename = path.basename(req.params.filename)
+  const filePath = path.join(productUploadsDir, filename)
+  if (path.dirname(filePath) !== productUploadsDir) return res.status(400).json({ error: 'invalid_filename' })
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'not_found' })
+  const usedIn = listProductUploadUsage().get(`/product-uploads/${filename}`)
+  if (usedIn) return res.status(409).json({ error: 'image_referenced', message: `Still used in: ${usedIn.join(', ')}`, usedIn })
+  fs.unlinkSync(filePath)
+  return res.json({ deleted: true })
+})
+
 // Downloadable CSV starter — header row + two filled-in sample products so
 // admins can see the exact expected shape before bulk-editing their own
 // catalog. Re-uploading it unedited would create those two sample SKUs,
