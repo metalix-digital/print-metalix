@@ -3190,6 +3190,30 @@ app.get('/api/admin/customers', requireAdmin, requireTab('customers'), (req, res
   return res.json({ customers: db.listCustomers(scopeLocation(req)) })
 })
 
+// Same data/scoping as the list above (a branch admin only ever exports
+// their own branch's customers), just as a CSV — same shape as the
+// feedback export just below.
+app.get('/api/admin/customers/export', requireAdmin, requireTab('customers'), (req, res) => {
+  const customers = db.listCustomers(scopeLocation(req))
+  const marketingLabel = (c) => (!c.user_id ? 'No account' : (c.marketing_opt_in ? 'Opted in' : 'Opted out'))
+  const rows = [
+    ['Name', 'Mobile', 'Email', 'Orders', 'Total Spent (₹)', 'Last Order', 'Marketing'],
+    ...customers.map((c) => [
+      c.customer_name || '',
+      c.customer_mobile || '',
+      c.customer_email || '',
+      c.order_count,
+      c.total_spent,
+      c.last_order_at ? new Date(c.last_order_at).toISOString() : '',
+      marketingLabel(c)
+    ])
+  ]
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="customers-${new Date().toISOString().slice(0, 10)}.csv"`)
+  return res.send('\uFEFF' + csv)
+})
+
 // Sales analytics — super-admin only (matches Pricing/Locations/Settings),
 // no branch scoping since there's no branch-restricted UI for it yet.
 // Same explicit from/to range shape as the Reports tab's line-item export,

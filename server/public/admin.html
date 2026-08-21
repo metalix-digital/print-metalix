@@ -859,6 +859,7 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
     <div class="panel" id="panel-customers">
       <div class="filters">
         <input type="text" id="customerSearch" placeholder="Search by name, mobile, or email" />
+        <button type="button" class="btn-file" id="exportCustomersBtn">⬇ Export CSV</button>
       </div>
       <div class="bulk-bar hidden" id="custBulkBar">
         <span class="count"><b id="custBulkCount">0</b> selected</span>
@@ -1837,6 +1838,13 @@ th.cbcol,td.cbcol{width:44px;padding-left:18px;}
       <div class="field">
         <label>Email <span class="opt">(optional)</span></label>
         <input type="email" id="ecEmail" placeholder="customer@email.com" />
+      </div>
+      <div class="field">
+        <label>Marketing consent</label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <label class="shop-switch"><input type="checkbox" id="ecMarketingOptIn" /><span class="slider"></span></label>
+          <span class="subtle" id="ecMarketingNote"></span>
+        </div>
       </div>
       <p class="detail" id="ecMobileNote" style="margin:0;">Changing the mobile number moves this customer's full order history under the new number.</p>
       <div class="save-message hidden" id="editCustomerModalMsg"></div>
@@ -4823,14 +4831,25 @@ async function toggleCustomerOptIn(btn){
 /* -- EDIT CUSTOMER (modal) -- */
 const editCustomerModal = document.getElementById('editCustomerModal');
 let ecOrigMobile = null;
+let ecOrigEmail = null;
+let ecHasAccount = false;
+let ecOrigOptIn = false;
 
 function openEditCustomerModal(customer){
   if (!customer) return;
   ecOrigMobile = customer.customer_mobile || '';
+  ecOrigEmail = customer.customer_email || '';
+  ecHasAccount = !!customer.user_id;
+  ecOrigOptIn = !!customer.marketing_opt_in;
   document.getElementById('ecName').value = customer.customer_name || '';
   document.getElementById('ecMobile').value = ecOrigMobile;
-  document.getElementById('ecEmail').value = customer.customer_email || '';
+  document.getElementById('ecEmail').value = ecOrigEmail;
   document.getElementById('ecMobileNote').classList.add('hidden');
+  const optInCb = document.getElementById('ecMarketingOptIn');
+  const optInNote = document.getElementById('ecMarketingNote');
+  optInCb.checked = ecOrigOptIn;
+  optInCb.disabled = !ecHasAccount;
+  optInNote.textContent = ecHasAccount ? '' : "No account — nothing to manage.";
   const msg = document.getElementById('editCustomerModalMsg');
   msg.classList.add('hidden'); msg.textContent = '';
   editCustomerModal.classList.remove('hidden');
@@ -4872,6 +4891,17 @@ document.getElementById('editCustomerModalSave').addEventListener('click', async
   const saveBtn = document.getElementById('editCustomerModalSave');
   saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
   try {
+    const nextOptIn = document.getElementById('ecMarketingOptIn').checked;
+    if (ecHasAccount && nextOptIn !== ecOrigOptIn) {
+      // Fired against the original mobile/email (before any rename below) —
+      // that's what the account is still keyed on at this point.
+      const optRes = await adminFetch('/api/admin/customers/marketing-opt-in', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile: ecOrigMobile, email: ecOrigEmail, optIn: nextOptIn })
+      });
+      const optData = await optRes.json();
+      if (!optRes.ok) throw new Error(optData.message || 'Could not update marketing consent');
+    }
     const res = await adminFetch('/api/admin/customers/' + encodeURIComponent(ecOrigMobile), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mobile, email })
     });
@@ -4989,6 +5019,30 @@ async function loadCustomers(){
     if (err.message !== 'unauthorized') body.innerHTML = '<tr><td colspan="8" class="empty">Failed to load customers</td></tr>';
   }
 }
+
+async function exportCustomersCsv(){
+  const btn = document.getElementById('exportCustomersBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Exporting…';
+  try {
+    const res = await adminFetch('/api/admin/customers/export');
+    if (!res.ok){ alert('Could not export customers.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'customers-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    if (err.message !== 'unauthorized') alert('Could not export customers.');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+document.getElementById('exportCustomersBtn').addEventListener('click', exportCustomersCsv);
 
 // Confirm + archive a customer (archives all their orders, recoverable 30 days).
 async function deleteCustomer(mobile, name, count){
