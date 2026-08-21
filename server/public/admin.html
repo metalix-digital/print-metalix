@@ -3377,24 +3377,32 @@ function rangeToDates(mode){
 }
 const toDateInputValue = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-function applyReportRange(mode){
+// setDatesOnly=true just fills the date inputs (used for the page-load
+// default, before there's any admin session to fetch a preview with);
+// everywhere else (button clicks, below) also runs the preview immediately,
+// same as the Analytics tab's range pills, instead of leaving the admin to
+// separately notice and click Preview after every range change.
+function applyReportRange(mode, setDatesOnly){
   document.querySelectorAll('#panel-reports .range-btn').forEach((b) => b.classList.toggle('active', b.dataset.range === mode));
   const { from, to } = rangeToDates(mode);
   document.getElementById('reportFrom').value = toDateInputValue(from);
   document.getElementById('reportTo').value = toDateInputValue(to);
+  if (!setDatesOnly) previewReport();
 }
 document.querySelectorAll('#panel-reports .range-btn').forEach((btn) => {
   btn.addEventListener('click', () => applyReportRange(btn.dataset.range));
 });
 // Hand-editing either date is its own choice of range — drop the quick-range
 // highlight so it doesn't keep claiming "Last 30 days" once it no longer
-// matches.
+// matches, and re-run the preview against the new range, same as the
+// Analytics tab's date inputs.
 ['reportFrom', 'reportTo'].forEach((id) => {
   document.getElementById(id).addEventListener('change', () => {
     document.querySelectorAll('#panel-reports .range-btn').forEach((b) => b.classList.remove('active'));
+    if (getReportRangeMs()) previewReport();
   });
 });
-applyReportRange('30');
+applyReportRange('30', true);
 
 function getReportRangeMs(){
   const fromStr = document.getElementById('reportFrom').value;
