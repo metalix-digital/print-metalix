@@ -12,7 +12,6 @@ Allow: /api/blog
 Allow: /api/coupons/featured
 Disallow: /admin
 Disallow: /api/
-Disallow: /orders
 Disallow: /order-success/
 Disallow: /track/
 
