@@ -1070,7 +1070,23 @@ function getSiteSettings() {
   }
 }
 
+// A social URL saved without a scheme (e.g. "instagram.com/in/metalix") renders
+// as a relative <a href>, which browsers/crawlers resolve against the current
+// page — producing bogus URLs like print.metalix.in/instagram.com/in/metalix
+// that Google then crawls and reports 404. Force a scheme here so that class
+// of bug can't reach the front end regardless of how settings were saved.
+function withUrlScheme(url) {
+  const trimmed = String(url || '').trim()
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
 function setSiteSettings(settings) {
+  if (settings && settings.social) {
+    for (const key of Object.keys(settings.social)) {
+      settings.social[key] = withUrlScheme(settings.social[key])
+    }
+  }
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run('site', JSON.stringify(settings))
 }

@@ -1430,7 +1430,11 @@ function applySettings(s){
       if (s.social[key] && row) {
         const a = document.createElement('a');
         a.className = 'social-btn';
-        a.href = s.social[key];
+        // A URL saved without a scheme (e.g. "instagram.com/in/x") would
+        // otherwise render as a relative link, resolving to a bogus
+        // print.metalix.in/instagram.com/... URL that crawlers pick up.
+        const url = s.social[key];
+        a.href = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
         a.target = '_blank';
         a.title = key.charAt(0).toUpperCase() + key.slice(1);
         a.textContent = icons[key];
